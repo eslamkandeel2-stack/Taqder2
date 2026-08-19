@@ -146,35 +146,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ success: true, result: parsed });
     }
 
-    // 4. تعديل ومواءمة النصوص بين المذكر والمؤنث
+    // 4. تعديل ومواءمة النصوص بين المذكر والمؤنث (سريع وبدون تأخير)
     if (pathname === '/adapt-gender-ai' || pathname === '/adapt-gender-ai/') {
       const { text, targetGender, gender } = bodyData || {};
       const selectedGender = targetGender || gender;
       const isFemale = selectedGender === 'female' || selectedGender === 'female_student' || selectedGender === 'طالبة' || selectedGender === 'مؤنث';
 
-      const prompt = `أنت خبير لغة عربية وبلاغة. قم بتعديل النص التالي ليكون موجهاً بأسلوب صحيح ودقيق لغوياً لتكريم (${isFemale ? 'طالبة (أنثى/مؤنث)' : 'طالب (ذكر/مذكر)'}).
-قم بتعديل كافة الأفعال، الضمائر، والأسماء لتناسب الجنس المطلوب بدقة بدون تغيير المعنى الأساسي للنص.
-أرجع JSON فقط بالتنسيق التالي:
-{
-  "adaptedText": "النص المعدل هنا"
-}
+      if (!apiKey) {
+        return res.status(200).json({
+          success: true,
+          adaptedText: text || '',
+          result: text || ''
+        });
+      }
+
+      const prompt = `عدّل النص العربي التالي ليكون موجهاً لتكريم (${isFemale ? 'طالبة / أنثى' : 'طالب / مذكر'}) فقط. 
+قم بتعديل كافة الأفعال، الضمائر، والأسماء بدقة لغوية وبلاغية. 
+أرجِع النص المعدّل النهائي فقط بدون أي مقدمات أو شرح أو أقواس.
 
 النص الأصلي:
-"${text || ''}"`;
+${text || ''}`;
 
       try {
-        const resultText = await callGeminiDirectly(apiKey, model, prompt, true);
-        const parsed = parseJsonSafely(resultText);
-
-        const finalAdaptedText = parsed?.adaptedText || parsed?.result || resultText || text;
+        // نرسل الطلب كنص عادي (isJson = false) لسرعة التوليد الفائقة
+        const resultText = await callGeminiDirectly(apiKey, model, prompt, false);
+        const cleanResult = resultText.trim().replace(/^["']|["']$/g, '');
 
         return res.status(200).json({
           success: true,
-          adaptedText: finalAdaptedText,
-          result: finalAdaptedText
+          adaptedText: cleanResult || text,
+          result: cleanResult || text
         });
       } catch (aiErr: any) {
-        console.error('Adapt Gender Processing Error:', aiErr);
+        console.error('Adapt Gender AI Error:', aiErr);
         return res.status(200).json({
           success: true,
           adaptedText: text || '',
@@ -183,14 +187,3 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    if (pathname === '' || pathname === '/') {
-      return res.status(200).json({ status: 'ok', message: 'Vercel Serverless API is active' });
-    }
-
-    return res.status(404).json({ error: 'Endpoint Not Found', pathname });
-
-  } catch (error: any) {
-    console.error('API Error:', error);
-    return res.status(500).json({ success: false, error: error.message || 'حدث خطأ في الخادم' });
-  }
-}
