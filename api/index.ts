@@ -146,7 +146,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ success: true, result: parsed });
     }
 
-    // 4. تعديل ومواءمة النصوص بين المذكر والمؤنث (إصلاح رابط API 404)
+    // 4. تعديل ومواءمة النصوص بين المذكر والمؤنث (معالجة مضمونة وإصلاح خطأ 404)
     if (pathname === '/adapt-gender-ai' || pathname === '/adapt-gender-ai/') {
       const { text, targetGender, gender, isBatch } = bodyData || {};
       const selectedGender = targetGender || gender;
@@ -166,11 +166,11 @@ ${text}`;
       } else {
          prompt = `أنت خبير لغة عربية. قم بتعديل النص التالي ليكون موجهاً لتكريم (${isFemale ? 'طالبة / أنثى' : 'طالب / مذكر'}):
 "${text || ''}"
-أرجع النص المعدل فقط.`;
+أرجع النص المعدل فقط بدون أي شرح أو مقدمات.`;
       }
 
       try {
-        // استدعاء دالة callGeminiDirectly المعرفة في الأعلى بدلاً من كتابة URL يدوي قد يسبب 404
+        // الاستدعاء المباشر عبر الدالة المركزية بالملف بدلاً من URL يدوي
         const resultText = await callGeminiDirectly(
           apiKey,
           model || 'gemini-3.6-flash',
@@ -186,4 +186,3 @@ ${text}`;
         return res.status(200).json({ success: true, adaptedText: text || '' });
       }
     }
-
