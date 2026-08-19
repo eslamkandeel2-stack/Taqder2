@@ -103,7 +103,7 @@ export function convertArabicTextGender(text: string, targetGender: RecipientGen
       [/\bتخلقها\b/g, 'تخلقها'],
       [/\bأدائه\b/g, 'أدائها'],
       [/\bإنجازه\b/g, 'إنجازها'],
-      [/\bتفردها\g, 'تفردها'],
+      [/\bتفردها\b/g, 'تفردها'],
       [/\bسلوكه\b/g, 'سلوكها'],
       [/\bتعاونه\b/g, 'تعاونها'],
       [/\bحفظه\b/g, 'حفظها'],
@@ -121,7 +121,7 @@ export function convertArabicTextGender(text: string, targetGender: RecipientGen
       [/\bقد أكمل\b/g, 'قد أكملت'],
       [/\bأظهر التزاماً\b/g, 'أظهرت التزاماً'],
       [/\bأظهر التزاما\b/g, 'أظهرت التزاماً'],
-      [/\bأبدى\b/g, 'أبدت'],
+      [/\bأبدت\b/g, 'أبدى'],
       [/\bاجتاز\b/g, 'اجتازت'],
       [/\bحصد\b/g, 'حصدت'],
       [/\bسمعت\b/g, 'سمع'],
@@ -228,13 +228,13 @@ export function convertArabicTextGender(text: string, targetGender: RecipientGen
       [/\bاجتازت\b/g, 'اجتاز'],
       [/\bحصدت\b/g, 'حصد'],
       [/\bسمعت\b/g, 'سمع'],
-      [/\bمنحها\b/g, 'منحه'],
-      [/\bللطالبة\b/g, 'للطالب'],
-      [/\bالطالبة\b/g, 'الطالب'],
-      [/\bطالبة\b/g, 'طالب'],
-      [/\bالمتميزة\b/g, 'المتميز'],
-      [/\bالمتفوقة\b/g, 'المتفوق'],
-      [/\bالنجيبة\b/g, 'النجيب'],
+      [/\bمنحه\b/g, 'منحها'],
+      [/\bللطالب\b/g, 'للطالبة'],
+      [/\bالطالب\b/g, 'الطالبة'],
+      [/\bطالب\b/g, 'طالبة'],
+      [/\bالمتميز\b/g, 'المتميزة'],
+      [/\bالمتفوق\b/g, 'المتفوقة'],
+      [/\bالنجيب\b/g, 'النجيبة'],
     ];
 
     for (const [regex, replacement] of phraseMapMale) {
@@ -285,13 +285,11 @@ export async function adaptCertificateGender(
   newGender: RecipientGender,
   options?: { preserveCustomStudentName?: boolean; apiKey?: string }
 ): Promise<CertificateData> {
-  // 1. تحديد اسم الطالب فوراً
   let newStudentName = data.studentName;
   if (!options?.preserveCustomStudentName || !data.studentName) {
     newStudentName = convertArabicTextGender(data.studentName || '', newGender);
   }
 
-  // دالة تطبيق المحول المحلي المباشر
   const applyLocalFallback = (): CertificateData => ({
     ...data,
     recipientGender: newGender,
@@ -304,13 +302,11 @@ export async function adaptCertificateGender(
     grade: convertArabicTextGender(data.grade || '', newGender),
   });
 
-  // إذا لم يتوفر المفتاح، نستخدم المحول المحلي فوراً
   if (!options?.apiKey) {
     return applyLocalFallback();
   }
 
   try {
-    // 2. محاولة التعديل بالذكاء الاصطناعي
     const payloadObject = {
       recipientIntro: data.recipientIntro || '',
       appreciationText: data.appreciationText || '',
@@ -334,7 +330,6 @@ export async function adaptCertificateGender(
     if (response.ok) {
       const resData = await response.json();
 
-      // إذا نجح الذكاء الاصطناعي ولم يطلب Fallback
       if (resData.success && !resData.useFallback && resData.adaptedText) {
         let adaptedText = resData.adaptedText;
 
@@ -366,7 +361,6 @@ export async function adaptCertificateGender(
     console.warn('AI adaptation request failed, executing local fallback:', err);
   }
 
-  // 3. تطبيق التحويل المحلي عند الفشل أو تجاوز الـ Quota
   return applyLocalFallback();
 }
 
