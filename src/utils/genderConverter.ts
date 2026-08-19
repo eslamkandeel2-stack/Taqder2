@@ -280,31 +280,86 @@ export async function convertArabicTextGenderAI(text: string, targetGender: Reci
 /**
  * Transforms CertificateData object matching TypeScript types seamlessly
  */
-export function adaptCertificateGender(
+export async function adaptCertificateGender(
   data: CertificateData,
   newGender: RecipientGender,
   options?: { preserveCustomStudentName?: boolean; apiKey?: string }
-): CertificateData {
-  const maleSampleNames = ['عبد الله بن محمد العتيبي', 'محمد بن عبد الله آل سعود', 'عبد الله بن خالد الشهري', 'أحمد بن محمد العتيبي'];
-  const femaleSampleNames = ['سارة بنت أحمد الغامدي', 'منى بنت يوسف الغامدي', 'نورة بنت خالد الدوسري', 'فاطمة بنت محمد العتيبي'];
+): Promise<CertificateData> {
+  const isFemale = newGender === 'female';
 
+  // المحول المحلي لمعالجة الاسم
   let newStudentName = data.studentName;
   if (!options?.preserveCustomStudentName || !data.studentName) {
-    if (newGender === 'female' && (maleSampleNames.includes(data.studentName) || detectGenderFromName(data.studentName) === 'male')) {
-      newStudentName = convertArabicTextGender(data.studentName, 'female');
-      if (newStudentName === data.studentName) {
-        newStudentName = 'سارة بنت أحمد الغامدي';
-      }
-    } else if (newGender === 'male' && (femaleSampleNames.includes(data.studentName) || detectGenderFromName(data.studentName) === 'female')) {
-      newStudentName = convertArabicTextGender(data.studentName, 'male');
-      if (newStudentName === data.studentName) {
-        newStudentName = 'عبد الله بن محمد العتيبي';
-      }
-    }
-  } else {
-    newStudentName = convertArabicTextGender(data.studentName, newGender);
+      newStudentName = convertArabicTextGender(data.studentName || '', newGender);
   }
 
+  // إذا لم يتوفر مفتاح API، نستخدم المحول المحلي لكل الحقول
+  if (!options?.apiKey) {
+    return {
+      ...data,
+      recipientGender: newGender,
+      studentName: newStudentName,
+      recipientIntro: convertArabicTextGender(data.recipientIntro || '', newGender),
+      appreciationText: convertArabicTextGender(data.appreciationText || '', newGender),
+      badgeTitle: convertArabicTextGender(data.badgeTitle || '', newGender),
+      title: convertArabicTextGender(data.title || '', newGender),
+      subtitle: convertArabicTextGender(data.subtitle || '', newGender),
+      grade: convertArabicTextGender(data.grade || '', newGender),
+    };
+  }
+
+  try {
+    // إرسال طلب واحد مجمع للذكاء الاصطناعي (يحل مشكلة التأخير والـ Timeout)
+    const payloadText = JSON.stringify({
+      recipientIntro: data.recipientIntro || '',
+      appreciationText: data.appreciationText || '',
+      badgeTitle: data.badgeTitle || '',
+      title: data.title || '',
+      subtitle: data.subtitle || '',
+      grade: data.grade || ''
+    });
+
+    const response = await fetch('/api/adapt-gender-ai', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-gemini-api-key': options.apiKey,
+      },
+      body: JSON.stringify({
+        text: payloadText,
+        targetGender: newGender,
+        apiKey: options.apiKey,
+        isBatch: true // نرسل راية (Flag) تخبر السيرفر أن هذا طلب مجمع
+      }),
+    });
+
+    if (!response.ok) throw new Error('API Request Failed');
+
+    const result = await response.json();
+    
+    // إذا عاد JSON سليم من السيرفر
+    if (result.adaptedText) {
+       let parsedData = result.adaptedText;
+       if (typeof parsedData === 'string') {
+          parsedData = JSON.parse(parsedData.replace(/```json/g, '').replace(/```/g, '').trim());
+       }
+       return {
+         ...data,
+         recipientGender: newGender,
+         studentName: newStudentName,
+         recipientIntro: parsedData.recipientIntro || data.recipientIntro,
+         appreciationText: parsedData.appreciationText || data.appreciationText,
+         badgeTitle: parsedData.badgeTitle || data.badgeTitle,
+         title: parsedData.title || data.title,
+         subtitle: parsedData.subtitle || data.subtitle,
+         grade: parsedData.grade || data.grade,
+       };
+    }
+  } catch (error) {
+    console.warn('AI batch processing failed, falling back to local converter', error);
+  }
+
+  // في حال فشل الذكاء الاصطناعي، استخدم المحول المحلي فوراً
   return {
     ...data,
     recipientGender: newGender,
@@ -317,6 +372,7 @@ export function adaptCertificateGender(
     grade: convertArabicTextGender(data.grade || '', newGender),
   };
 }
+
 
 /**
  * Robust local fallback generator for certificate content
