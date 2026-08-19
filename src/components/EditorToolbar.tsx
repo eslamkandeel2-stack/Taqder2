@@ -794,8 +794,6 @@ export const EditorToolbar: React.FC<Props> = ({
   ];
 
   
-    // 1. Instant local rule-based conversion so UI updates immediately
-   const handleGenderChange = async (newGender: 'male' | 'female') => {
     // 1. تحديث شاشة الشهادة فوراً بالمحول المحلي (0 ثانية)
     const quickUpdatedData: CertificateData = {
       ...certificateData,
