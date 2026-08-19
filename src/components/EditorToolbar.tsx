@@ -793,36 +793,46 @@ export const EditorToolbar: React.FC<Props> = ({
     { key: 'badgeTitle', label: 'عنوان الوسام', icon: '🏅' },
   ];
 
-  
-    // 1. تحديث شاشة الشهادة فوراً بالمحول المحلي (0 ثانية)
-    const quickUpdatedData: CertificateData = {
-      ...certificateData,
-      recipientGender: newGender,
-      studentName: convertArabicTextGender(certificateData.studentName || '', newGender),
-      recipientIntro: convertArabicTextGender(certificateData.recipientIntro || '', newGender),
-      appreciationText: convertArabicTextGender(certificateData.appreciationText || '', newGender),
-      badgeTitle: convertArabicTextGender(certificateData.badgeTitle || '', newGender),
-      title: convertArabicTextGender(certificateData.title || '', newGender),
-      subtitle: convertArabicTextGender(certificateData.subtitle || '', newGender),
-      grade: convertArabicTextGender(certificateData.grade || '', newGender),
-    };
+  const handleGenderChange = async (gender: RecipientGender) => {
+    // 1. Instant local rule-based conversion so UI updates immediately
+    const updated = adaptCertificateGender(certificateData, gender, { preserveCustomStudentName: true });
+    onChange(updated);
 
-    // تطبيق التغيير فوراً على الشاشة لتستجيب الأزرار لحظياً
-    onChange(quickUpdatedData);
-
-    // 2. محاولة تحسين الصياغة بالذكاء الاصطناعي في الخلفية
+    // 2. Call AI API in background for ultra-refined AI Arabic phrasing adaptation
     try {
-      const apiKey = localStorage.getItem('gemini_api_key') || '';
-      const aiData = await adaptCertificateGender(certificateData, newGender, { apiKey });
-      
-      if (aiData) {
-        onChange(aiData);
+      setIsAdaptingGenderAi(true);
+      const response = await fetch('/api/adapt-gender-ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          certificateData: updated,
+          targetGender: gender,
+        }),
+      });
+
+      let json: any = null;
+      try {
+        const text = await response.text();
+        if (text && (text.trim().startsWith('{') || text.trim().startsWith('['))) {
+          json = JSON.parse(text);
+        }
+      } catch (parseErr) {
+        console.warn('Failed to parse gender AI JSON response:', parseErr);
+      }
+
+      if (json && json.success && json.result) {
+        onChange({
+          ...updated,
+          ...json.result,
+          recipientGender: gender,
+        });
       }
     } catch (err) {
-      console.log('Using instant local gender conversion fallback');
+      console.warn('AI background gender adaptation failed, using local conversion:', err);
+    } finally {
+      setIsAdaptingGenderAi(false);
     }
   };
-
 
   const applyPresetTemplate = (presetId: string) => {
     const preset = TEMPLATE_PRESETS.find(p => p.id === presetId);
