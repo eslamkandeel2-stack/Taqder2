@@ -100,7 +100,7 @@ export function convertArabicTextGender(text: string, targetGender: RecipientGen
       [/\bتميزه\b/g, 'تميزها'],
       [/\bإتمامه\b/g, 'إتمامها'],
       [/\bإتقانه\b/g, 'إتقانها'],
-      [/\bتخلقه\b/g, 'تخلقها'],
+      [/\bتخلقها\b/g, 'تخلقها'],
       [/\bأدائه\b/g, 'أدائها'],
       [/\bإنجازه\b/g, 'إنجازها'],
       [/\bتفردها\b/g, 'تفردها'],
@@ -246,7 +246,7 @@ export function convertArabicTextGender(text: string, targetGender: RecipientGen
 }
 
 /**
- * Single AI Adapter Call Function
+ * Single AI Adapter Call Function with Smart Parsing
  */
 export async function convertArabicTextGenderAI(text: string, targetGender: RecipientGender, apiKey?: string): Promise<string> {
   if (!text || typeof text !== 'string') return text;
@@ -287,13 +287,13 @@ export async function adaptCertificateGender(
 ): Promise<CertificateData> {
   const isFemale = newGender === 'female';
 
-  // المحول المحلي لمعالجة الاسم
+  // 1. تحويل اسم الطالب فوراً
   let newStudentName = data.studentName;
   if (!options?.preserveCustomStudentName || !data.studentName) {
-      newStudentName = convertArabicTextGender(data.studentName || '', newGender);
+    newStudentName = convertArabicTextGender(data.studentName || '', newGender);
   }
 
-  // إذا لم يتوفر مفتاح API، نستخدم المحول المحلي لكل الحقول
+  // 2. إذا لم يمرر مفتاح، قم بالتحويل المحلي اللحظي
   if (!options?.apiKey) {
     return {
       ...data,
@@ -309,15 +309,12 @@ export async function adaptCertificateGender(
   }
 
   try {
-    // إرسال طلب واحد مجمع للذكاء الاصطناعي (يحل مشكلة التأخير والـ Timeout)
-    const payloadText = JSON.stringify({
+    // 3. استدعاء الذكاء الاصطناعي للحقول الرئيسية بالشهادة
+    const payloadObject = {
       recipientIntro: data.recipientIntro || '',
       appreciationText: data.appreciationText || '',
-      badgeTitle: data.badgeTitle || '',
-      title: data.title || '',
-      subtitle: data.subtitle || '',
-      grade: data.grade || ''
-    });
+      badgeTitle: data.badgeTitle || ''
+    };
 
     const response = await fetch('/api/adapt-gender-ai', {
       method: 'POST',
@@ -326,40 +323,45 @@ export async function adaptCertificateGender(
         'x-gemini-api-key': options.apiKey,
       },
       body: JSON.stringify({
-        text: payloadText,
+        text: JSON.stringify(payloadObject),
         targetGender: newGender,
         apiKey: options.apiKey,
-        isBatch: true // نرسل راية (Flag) تخبر السيرفر أن هذا طلب مجمع
+        isBatch: true
       }),
     });
 
-    if (!response.ok) throw new Error('API Request Failed');
+    if (response.ok) {
+      const resData = await response.json();
+      let adaptedText = resData.adaptedText || resData.result;
 
-    const result = await response.json();
-    
-    // إذا عاد JSON سليم من السيرفر
-    if (result.adaptedText) {
-       let parsedData = result.adaptedText;
-       if (typeof parsedData === 'string') {
-          parsedData = JSON.parse(parsedData.replace(/```json/g, '').replace(/```/g, '').trim());
-       }
-       return {
-         ...data,
-         recipientGender: newGender,
-         studentName: newStudentName,
-         recipientIntro: parsedData.recipientIntro || data.recipientIntro,
-         appreciationText: parsedData.appreciationText || data.appreciationText,
-         badgeTitle: parsedData.badgeTitle || data.badgeTitle,
-         title: parsedData.title || data.title,
-         subtitle: parsedData.subtitle || data.subtitle,
-         grade: parsedData.grade || data.grade,
-       };
+      if (typeof adaptedText === 'string') {
+        try {
+          const cleanJson = adaptedText.replace(/```json/g, '').replace(/```/g, '').trim();
+          adaptedText = JSON.parse(cleanJson);
+        } catch (e) {
+          adaptedText = null;
+        }
+      }
+
+      if (adaptedText && typeof adaptedText === 'object') {
+        return {
+          ...data,
+          recipientGender: newGender,
+          studentName: newStudentName,
+          recipientIntro: adaptedText.recipientIntro || convertArabicTextGender(data.recipientIntro || '', newGender),
+          appreciationText: adaptedText.appreciationText || convertArabicTextGender(data.appreciationText || '', newGender),
+          badgeTitle: adaptedText.badgeTitle || convertArabicTextGender(data.badgeTitle || '', newGender),
+          title: convertArabicTextGender(data.title || '', newGender),
+          subtitle: convertArabicTextGender(data.subtitle || '', newGender),
+          grade: convertArabicTextGender(data.grade || '', newGender),
+        };
+      }
     }
-  } catch (error) {
-    console.warn('AI batch processing failed, falling back to local converter', error);
+  } catch (err) {
+    console.warn('AI adaptation fallback triggered:', err);
   }
 
-  // في حال فشل الذكاء الاصطناعي، استخدم المحول المحلي فوراً
+  // 4. Fallback محلي في حال وجود أي مشكلة
   return {
     ...data,
     recipientGender: newGender,
@@ -372,7 +374,6 @@ export async function adaptCertificateGender(
     grade: convertArabicTextGender(data.grade || '', newGender),
   };
 }
-
 
 /**
  * Robust local fallback generator for certificate content
