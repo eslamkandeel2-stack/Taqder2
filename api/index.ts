@@ -146,14 +146,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ success: true, result: parsed });
     }
 
-    // 4. تعديل ومواءمة النصوص بين المذكر والمؤنث (معالجة مضمونة وإصلاح خطأ 404)
+    // 4. تعديل ومواءمة النصوص بين المذكر والمؤنث (ذكاء اصطناعي + تحويل محلي احتياطي)
     if (pathname === '/adapt-gender-ai' || pathname === '/adapt-gender-ai/') {
       const { text, targetGender, gender, isBatch } = bodyData || {};
       const selectedGender = targetGender || gender;
       const isFemale = selectedGender === 'female' || selectedGender === 'female_student' || selectedGender === 'طالبة' || selectedGender === 'مؤنث';
 
+      // إذا لم يتوفر مفتاح API، اطلب التعديل المحلي فوراً
       if (!apiKey) {
-        return res.status(200).json({ success: true, adaptedText: text || '' });
+        return res.status(200).json({ success: true, useFallback: true });
       }
 
       let prompt = '';
@@ -166,11 +167,11 @@ ${text}`;
       } else {
          prompt = `أنت خبير لغة عربية. قم بتعديل النص التالي ليكون موجهاً لتكريم (${isFemale ? 'طالبة / أنثى' : 'طالب / مذكر'}):
 "${text || ''}"
-أرجع النص المعدل فقط بدون أي شرح أو مقدمات.`;
+أرجع النص المعدل فقط بدون أي شرح.`;
       }
 
       try {
-        // الاستدعاء المباشر عبر الدالة المركزية بالملف بدلاً من URL يدوي
+        // محاولة استدعاء الذكاء الاصطناعي
         const resultText = await callGeminiDirectly(
           apiKey,
           model || 'gemini-3.6-flash',
@@ -180,9 +181,18 @@ ${text}`;
 
         const cleanResult = isBatch ? resultText : resultText.trim().replace(/^["']|["']$/g, '');
 
-        return res.status(200).json({ success: true, adaptedText: cleanResult });
+        return res.status(200).json({ 
+          success: true, 
+          adaptedText: cleanResult,
+          useFallback: false 
+        });
       } catch (aiErr: any) {
-        console.error('Adapt Gender AI Error:', aiErr);
-        return res.status(200).json({ success: true, adaptedText: text || '' });
+        console.warn('AI Adaptation Failed / Quota Exceeded. Falling back to local conversion:', aiErr.message);
+        // عند حدوث أي خطأ (Quota/Timeout/Network)، يرجع الاستجابة لتفعيل المحول المحلي
+        return res.status(200).json({ 
+          success: true, 
+          useFallback: true,
+          errorNote: aiErr.message 
+        });
       }
     }
