@@ -28,14 +28,14 @@ function extractAiCredentials(req: VercelRequest) {
 
   const headerModel = req.headers['x-gemini-model'] as string | undefined;
   const bodyModel = bodyData?.model as string | undefined;
-  const model = (headerModel || bodyModel || 'gemini-3.6-flash').trim();
+  const model = (headerModel || bodyModel || 'gemini-2.5-flash').trim();
 
   return { apiKey, model, bodyData };
 }
 
-// دالة الاتصال المباشر بـ REST API بدون استخدام SDK
+// دالة الاتصال المباشر بـ REST API
 async function callGeminiDirectly(apiKey: string, model: string, prompt: string, isJson: boolean = false) {
-  const cleanModel = model.startsWith('gemini-') ? model : 'gemini-3.6-flash';
+  const cleanModel = model.startsWith('gemini-') ? model : 'gemini-2.5-flash';
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent?key=${apiKey}`;
 
   const payload: any = {
@@ -91,13 +91,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       return res.status(200).json({
         success: true,
-        modelUsed: model || 'gemini-3.6-flash',
+        modelUsed: model || 'gemini-2.5-flash',
         sampleResponse: resultText.trim(),
         message: `تم الاتصال بنموذج الذكاء الاصطناعي بنجاح! 🟢`,
       });
     }
 
-    // 2. تحسين وبلاغة النصوص الفردية (إرجاع البدائل عبر الذكاء الاصطناعي)
+    // 2. تحسين وبلاغة النصوص الفردية
     if (pathname === '/ai-improve-text' || pathname === '/ai-improve-text/') {
       const { text, type, style, gender, studentName, subject } = bodyData || {};
       const isFemale = gender === 'female';
@@ -131,6 +131,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const resultText = await callGeminiDirectly(apiKey, model, prompt, true);
 
       return res.status(200).json({ success: true, result: JSON.parse(resultText || '{}') });
+    }
+
+    // 4. تعديل ومواءمة النصوص بين المذكر والمؤنث (جديد)
+    if (pathname === '/adapt-gender-ai' || pathname === '/adapt-gender-ai/') {
+      const { text, targetGender, gender } = bodyData || {};
+      const selectedGender = targetGender || gender;
+      const isFemale = selectedGender === 'female' || selectedGender === 'female_student' || selectedGender === 'طالبة' || selectedGender === 'مؤنث';
+
+      const prompt = `أنت خبير لغة عربية وبلاغة. قم بتعديل النص التالي ليكون موجهاً بأسلوب صحيح ودقيق لغوياً لتكريم (${isFemale ? 'طالبة (أنثى/مؤنث)' : 'طالب (ذكر/مذكر)'}).
+قم بتعديل كافة الأفعال، الضمائر، والأسماء لتناسب الجنس المطلوب بدقة بدون تغيير المعنى الأساسي للنص.
+أرجع JSON فقط بالتنسيق التالي:
+{
+  "adaptedText": "النص المعدل هنا"
+}
+
+النص الأصلي:
+"${text || ''}"`;
+
+      const resultText = await callGeminiDirectly(apiKey, model, prompt, true);
+      const parsed = JSON.parse(resultText || '{}');
+
+      return res.status(200).json({
+        success: true,
+        adaptedText: parsed.adaptedText || parsed.result || text,
+        result: parsed.adaptedText || parsed.result || text
+      });
     }
 
     if (pathname === '' || pathname === '/') {
