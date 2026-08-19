@@ -146,7 +146,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ success: true, result: parsed });
     }
 
-    // 4. تعديل ومواءمة النصوص بين المذكر والمؤنث (سريع وبدون تأخير)
+    // 4. تعديل ومواءمة النصوص بين المذكر والمؤنث (فائق السرعة)
     if (pathname === '/adapt-gender-ai' || pathname === '/adapt-gender-ai/') {
       const { text, targetGender, gender } = bodyData || {};
       const selectedGender = targetGender || gender;
@@ -160,25 +160,42 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
       }
 
-      const prompt = `عدّل النص العربي التالي ليكون موجهاً لتكريم (${isFemale ? 'طالبة / أنثى' : 'طالب / مذكر'}) فقط. 
-قم بتعديل كافة الأفعال، الضمائر، والأسماء بدقة لغوية وبلاغية. 
-أرجِع النص المعدّل النهائي فقط بدون أي مقدمات أو شرح أو أقواس.
-
-النص الأصلي:
-${text || ''}`;
+      const prompt = `حول النص التالي ليكون موجهاً لـ (${isFemale ? 'طالبة' : 'طالب'}):
+"${text || ''}"
+أرجع النص المعدل فقط بدون أي مقدمات.`;
 
       try {
-        // نرسل الطلب كنص عادي (isJson = false) لسرعة التوليد الفائقة
-        const resultText = await callGeminiDirectly(apiKey, model, prompt, false);
-        const cleanResult = resultText.trim().replace(/^["']|["']$/g, '');
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`;
+        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000); // قطع الاتصال تلقائياً إذا تجاوز 8 ثوانٍ
+
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+              maxOutputTokens: 200, // تحديد مخرجات قصيرة جداً للسرعة
+              temperature: 0.2
+            }
+          })
+        });
+
+        clearTimeout(timeoutId);
+
+        const data = await response.json();
+        const outputText = data?.candidates?.[0]?.content?.parts?.[0]?.text || text;
+        const cleanResult = outputText.trim().replace(/^["']|["']$/g, '');
 
         return res.status(200).json({
           success: true,
-          adaptedText: cleanResult || text,
-          result: cleanResult || text
+          adaptedText: cleanResult,
+          result: cleanResult
         });
       } catch (aiErr: any) {
-        console.error('Adapt Gender AI Error:', aiErr);
+        console.error('Adapt Gender AI Error / Timeout:', aiErr);
         return res.status(200).json({
           success: true,
           adaptedText: text || '',
@@ -186,4 +203,3 @@ ${text || ''}`;
         });
       }
     }
-
