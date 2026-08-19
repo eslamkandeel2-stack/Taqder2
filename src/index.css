@@ -1,0 +1,268 @@
+@import "tailwindcss";
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+/* Print Optimization Media Queries */
+@media print {
+  @page {
+    size: auto;
+    margin: 0mm;
+  }
+
+  html, body {
+    background: #ffffff !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    overflow: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  /* Hide non-printable UI elements */
+  header, nav, footer, button, .no-print, [role="dialog"], .toast-bar, iframe {
+    display: none !important;
+  }
+
+  body * {
+    visibility: hidden !important;
+  }
+
+  #certificate-print-area,
+  #certificate-print-area * {
+    visibility: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  #certificate-print-area {
+    position: fixed !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    max-width: none !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    transform: none !important;
+    z-index: 999999 !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+}
+
+/* Dynamic CSS Grid Layout System for #certificate-print-area */
+#certificate-print-area,
+#certificate-print-area .cert-main-grid {
+  box-sizing: border-box;
+}
+
+#certificate-print-area .cert-main-grid {
+  display: grid;
+  height: 100%;
+  width: 100%;
+  box-sizing: border-box;
+  gap: 12px;
+  padding: 32px 40px 30px 40px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 1. Classic Standard Layout (الافتراضي المتوازن) */
+#certificate-print-area .cert-layout-classic-standard,
+#certificate-print-area .cert-layout-classic {
+  grid-template-rows: auto auto 1fr auto auto;
+  grid-template-columns: 100%;
+  grid-template-areas:
+    "header"
+    "title"
+    "body"
+    "stamps"
+    "signatures";
+  align-content: space-between;
+  gap: 12px;
+}
+
+/* 2. Modern Split Layout (العصري المدمج) */
+#certificate-print-area .cert-layout-modern-split,
+#certificate-print-area .cert-layout-modern {
+  grid-template-rows: auto auto 1fr auto;
+  grid-template-columns: 1fr 1fr;
+  grid-template-areas:
+    "header header"
+    "title title"
+    "body body"
+    "stamps signatures";
+  align-content: space-between;
+  gap: 16px;
+}
+
+/* 3. Sidebar Right Layout (الإطار الجانبي الأيمن) */
+#certificate-print-area .cert-layout-sidebar-right,
+#certificate-print-area .cert-layout-sidebar {
+  grid-template-rows: auto auto 1fr auto;
+  grid-template-columns: 220px 1fr;
+  grid-template-areas:
+    "stamps header"
+    "stamps title"
+    "stamps body"
+    "stamps signatures";
+  align-content: space-between;
+  gap: 18px;
+}
+
+/* 4. Sidebar Left Layout (الإطار الجانبي الأيسر) */
+#certificate-print-area .cert-layout-sidebar-left {
+  grid-template-rows: auto auto 1fr auto;
+  grid-template-columns: 1fr 220px;
+  grid-template-areas:
+    "header stamps"
+    "title stamps"
+    "body stamps"
+    "signatures stamps";
+  align-content: space-between;
+  gap: 18px;
+}
+
+/* 5. Minimal Centered Layout (الملكي المتمركز) */
+#certificate-print-area .cert-layout-minimal-centered,
+#certificate-print-area .cert-layout-centered {
+  grid-template-rows: auto auto 1fr auto auto;
+  grid-template-columns: 100%;
+  grid-template-areas:
+    "header"
+    "title"
+    "body"
+    "stamps"
+    "signatures";
+  align-content: space-around;
+  justify-items: center;
+  gap: 16px;
+}
+
+/* 6. Executive Horizontal Layout (التنفيذي الأكاديمي) */
+#certificate-print-area .cert-layout-executive-horizontal,
+#certificate-print-area .cert-layout-executive {
+  grid-template-rows: auto auto 1fr auto;
+  grid-template-columns: 1fr 210px;
+  grid-template-areas:
+    "header header"
+    "title title"
+    "body stamps"
+    "signatures signatures";
+  align-content: space-between;
+  gap: 16px;
+}
+
+/* 7. Diploma Grand Layout (دبلوم التخرج الرفيع) */
+#certificate-print-area .cert-layout-diploma-grand {
+  grid-template-rows: auto auto 1fr auto auto;
+  grid-template-columns: 100%;
+  grid-template-areas:
+    "header"
+    "title"
+    "body"
+    "signatures"
+    "stamps";
+  align-content: space-between;
+  gap: 14px;
+}
+
+/* Common Grid Areas */
+#certificate-print-area .cert-area-header,
+#certificate-print-area [data-grid-area="header"] {
+  grid-area: header;
+}
+
+#certificate-print-area .cert-area-title,
+#certificate-print-area [data-grid-area="title"] {
+  grid-area: title;
+}
+
+#certificate-print-area .cert-area-body,
+#certificate-print-area [data-grid-area="body"] {
+  grid-area: body;
+  min-height: 0;
+}
+
+#certificate-print-area .cert-area-stamps,
+#certificate-print-area [data-grid-area="stamps"] {
+  grid-area: stamps;
+}
+
+#certificate-print-area .cert-area-signatures,
+#certificate-print-area [data-grid-area="signatures"] {
+  grid-area: signatures;
+}
+
+/* Header Internal Grid */
+#certificate-print-area .cert-header-grid {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  grid-template-areas: "school logo date";
+  align-items: center;
+  width: 100%;
+}
+
+/* Stamps Internal Grid & Sidebar Variations */
+#certificate-print-area .cert-stamps-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-areas: "badge stamp footer";
+  align-items: center;
+  justify-items: center;
+  width: 100%;
+}
+
+#certificate-print-area .cert-layout-sidebar-right .cert-stamps-grid,
+#certificate-print-area .cert-layout-sidebar .cert-stamps-grid,
+#certificate-print-area .cert-layout-sidebar-left .cert-stamps-grid,
+#certificate-print-area .cert-layout-executive-horizontal .cert-stamps-grid,
+#certificate-print-area .cert-layout-executive .cert-stamps-grid {
+  grid-template-columns: 1fr;
+  grid-template-rows: repeat(3, auto);
+  grid-template-areas:
+    "badge"
+    "stamp"
+    "footer";
+  height: 100%;
+  align-content: space-evenly;
+  gap: 12px;
+}
+
+#certificate-print-area .cert-layout-modern-split .cert-stamps-grid,
+#certificate-print-area .cert-layout-modern .cert-stamps-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-areas: "badge stamp footer";
+  gap: 4px;
+}
+
+#certificate-print-area [data-grid-area="badge"],
+#certificate-print-area .cert-area-badge {
+  grid-area: badge;
+}
+
+#certificate-print-area [data-grid-area="stamp"],
+#certificate-print-area .cert-area-stamp {
+  grid-area: stamp;
+}
+
+#certificate-print-area [data-grid-area="footer"],
+#certificate-print-area [data-grid-area="verification"],
+#certificate-print-area .cert-area-footer {
+  grid-area: footer;
+}
+

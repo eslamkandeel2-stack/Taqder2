@@ -1,0 +1,6 @@
+{
+  "name": "تطبيق شهادات التقدير بالذكاء الاصطناعي",
+  "description": "تطبيق متكامل لتصميم وتخصيص وتصدير شهادات التقدير والشكر للطلاب بالذكاء الاصطناعي بدعم كامل للغة العربية وتصدير PDF عالي الجودة.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
