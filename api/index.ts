@@ -33,6 +33,16 @@ function extractAiCredentials(req: VercelRequest) {
   return { apiKey, model, bodyData };
 }
 
+// دالة تنظيف واستخراج الـ JSON بأمان
+function parseJsonSafely(text: string) {
+  try {
+    const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
+    return JSON.parse(cleanText);
+  } catch (e) {
+    return null;
+  }
+}
+
 // دالة الاتصال المباشر بـ REST API
 async function callGeminiDirectly(apiKey: string, model: string, prompt: string, isJson: boolean = false) {
   const cleanModel = model.startsWith('gemini-') ? model : 'gemini-2.5-flash';
@@ -113,7 +123,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 }`;
 
       const resultText = await callGeminiDirectly(apiKey, model, prompt, true);
-      const parsed = JSON.parse(resultText || '{}');
+      const parsed = parseJsonSafely(resultText) || {};
 
       return res.status(200).json({
         success: true,
@@ -129,11 +139,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const prompt = `أنت خبير صياغة شهادات تقدير. أرجِع JSON فقط يحتوي على الحقول: title, recipientIntro, appreciationText, poemOrQuote, badgeTitle لتكريم ${isFemale ? 'طالبة' : 'طالب'} اسمه/ا ${studentName || ''} في مادة ${subject || 'التفوق العام'}.`;
 
       const resultText = await callGeminiDirectly(apiKey, model, prompt, true);
+      const parsed = parseJsonSafely(resultText) || {};
 
-      return res.status(200).json({ success: true, result: JSON.parse(resultText || '{}') });
+      return res.status(200).json({ success: true, result: parsed });
     }
 
-    // 4. تعديل ومواءمة النصوص بين المذكر والمؤنث (جديد)
+    // 4. تعديل ومواءمة النصوص بين المذكر والمؤنث
     if (pathname === '/adapt-gender-ai' || pathname === '/adapt-gender-ai/') {
       const { text, targetGender, gender } = bodyData || {};
       const selectedGender = targetGender || gender;
@@ -150,12 +161,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 "${text || ''}"`;
 
       const resultText = await callGeminiDirectly(apiKey, model, prompt, true);
-      const parsed = JSON.parse(resultText || '{}');
+      const parsed = parseJsonSafely(resultText);
+
+      const finalAdaptedText = parsed?.adaptedText || parsed?.result || resultText || text;
 
       return res.status(200).json({
         success: true,
-        adaptedText: parsed.adaptedText || parsed.result || text,
-        result: parsed.adaptedText || parsed.result || text
+        adaptedText: finalAdaptedText,
+        result: finalAdaptedText
       });
     }
 
