@@ -168,7 +168,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`;
         
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 8000); // قطع الاتصال تلقائياً إذا تجاوز 8 ثوانٍ
+        const timeoutId = setTimeout(() => controller.abort(), 80000); // قطع الاتصال تلقائياً إذا تجاوز 80 ثوانٍ
 
         const response = await fetch(url, {
           method: 'POST',
