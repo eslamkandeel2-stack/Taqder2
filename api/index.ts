@@ -146,7 +146,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ success: true, result: parsed });
     }
 
-    // 4. تعديل ومواءمة النصوص بين المذكر والمؤنث (معالجة الطلب المجمع السريع)
+    // 4. تعديل ومواءمة النصوص بين المذكر والمؤنث (إصلاح رابط API 404)
     if (pathname === '/adapt-gender-ai' || pathname === '/adapt-gender-ai/') {
       const { text, targetGender, gender, isBatch } = bodyData || {};
       const selectedGender = targetGender || gender;
@@ -170,31 +170,15 @@ ${text}`;
       }
 
       try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
-        
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 12000); // 12 ثانية حد أقصى
+        // استدعاء دالة callGeminiDirectly المعرفة في الأعلى بدلاً من كتابة URL يدوي قد يسبب 404
+        const resultText = await callGeminiDirectly(
+          apiKey,
+          model || 'gemini-3.6-flash',
+          prompt,
+          !!isBatch
+        );
 
-        const response = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          signal: controller.signal,
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: {
-              temperature: 0.1, // تقليل درجة الحرارة لزيادة السرعة والوضوح
-              responseMimeType: isBatch ? 'application/json' : 'text/plain'
-            }
-          })
-        });
-
-        clearTimeout(timeoutId);
-
-        if (!response.ok) throw new Error(`API Error: ${response.status}`);
-
-        const data = await response.json();
-        const outputText = data?.candidates?.[0]?.content?.parts?.[0]?.text || text;
-        const cleanResult = isBatch ? outputText : outputText.trim().replace(/^["']|["']$/g, '');
+        const cleanResult = isBatch ? resultText : resultText.trim().replace(/^["']|["']$/g, '');
 
         return res.status(200).json({ success: true, adaptedText: cleanResult });
       } catch (aiErr: any) {
@@ -202,3 +186,4 @@ ${text}`;
         return res.status(200).json({ success: true, adaptedText: text || '' });
       }
     }
+
