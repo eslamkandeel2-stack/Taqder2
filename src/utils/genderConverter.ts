@@ -103,7 +103,7 @@ export function convertArabicTextGender(text: string, targetGender: RecipientGen
       [/\bتخلقها\b/g, 'تخلقها'],
       [/\bأدائه\b/g, 'أدائها'],
       [/\bإنجازه\b/g, 'إنجازها'],
-      [/\bتفردها\b/g, 'تفردها'],
+      [/\bتفردها\g, 'تفردها'],
       [/\bسلوكه\b/g, 'سلوكها'],
       [/\bتعاونه\b/g, 'تعاونها'],
       [/\bحفظه\b/g, 'حفظها'],
@@ -278,22 +278,21 @@ export async function convertArabicTextGenderAI(text: string, targetGender: Reci
 }
 
 /**
- * Transforms CertificateData object instant locally to bypass AI Quota Limits
+ * Transforms CertificateData object matching TypeScript types with AI first, then Instant Local Fallback
  */
-export function adaptCertificateGender(
+export async function adaptCertificateGender(
   data: CertificateData,
   newGender: RecipientGender,
   options?: { preserveCustomStudentName?: boolean; apiKey?: string }
-): CertificateData {
+): Promise<CertificateData> {
+  // 1. تحديد اسم الطالب فوراً
   let newStudentName = data.studentName;
   if (!options?.preserveCustomStudentName || !data.studentName) {
     newStudentName = convertArabicTextGender(data.studentName || '', newGender);
-  } else {
-    newStudentName = convertArabicTextGender(data.studentName || '', newGender);
   }
 
-  // تحويل مباشر وسريع لجميع حقول الشهادة بدون انتظار API لمنع التعليق
-  return {
+  // دالة تطبيق المحول المحلي المباشر
+  const applyLocalFallback = (): CertificateData => ({
     ...data,
     recipientGender: newGender,
     studentName: newStudentName,
@@ -303,7 +302,72 @@ export function adaptCertificateGender(
     title: convertArabicTextGender(data.title || '', newGender),
     subtitle: convertArabicTextGender(data.subtitle || '', newGender),
     grade: convertArabicTextGender(data.grade || '', newGender),
-  };
+  });
+
+  // إذا لم يتوفر المفتاح، نستخدم المحول المحلي فوراً
+  if (!options?.apiKey) {
+    return applyLocalFallback();
+  }
+
+  try {
+    // 2. محاولة التعديل بالذكاء الاصطناعي
+    const payloadObject = {
+      recipientIntro: data.recipientIntro || '',
+      appreciationText: data.appreciationText || '',
+      badgeTitle: data.badgeTitle || ''
+    };
+
+    const response = await fetch('/api/adapt-gender-ai', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-gemini-api-key': options.apiKey,
+      },
+      body: JSON.stringify({
+        text: JSON.stringify(payloadObject),
+        targetGender: newGender,
+        apiKey: options.apiKey,
+        isBatch: true
+      }),
+    });
+
+    if (response.ok) {
+      const resData = await response.json();
+
+      // إذا نجح الذكاء الاصطناعي ولم يطلب Fallback
+      if (resData.success && !resData.useFallback && resData.adaptedText) {
+        let adaptedText = resData.adaptedText;
+
+        if (typeof adaptedText === 'string') {
+          try {
+            const cleanJson = adaptedText.replace(/```json/g, '').replace(/```/g, '').trim();
+            adaptedText = JSON.parse(cleanJson);
+          } catch (e) {
+            adaptedText = null;
+          }
+        }
+
+        if (adaptedText && typeof adaptedText === 'object') {
+          return {
+            ...data,
+            recipientGender: newGender,
+            studentName: newStudentName,
+            recipientIntro: adaptedText.recipientIntro || convertArabicTextGender(data.recipientIntro || '', newGender),
+            appreciationText: adaptedText.appreciationText || convertArabicTextGender(data.appreciationText || '', newGender),
+            badgeTitle: adaptedText.badgeTitle || convertArabicTextGender(data.badgeTitle || '', newGender),
+            title: convertArabicTextGender(data.title || '', newGender),
+            subtitle: convertArabicTextGender(data.subtitle || '', newGender),
+            grade: convertArabicTextGender(data.grade || '', newGender),
+          };
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('AI adaptation request failed, executing local fallback:', err);
+  }
+
+  // 3. تطبيق التحويل المحلي عند الفشل أو تجاوز الـ Quota
+  return applyLocalFallback();
 }
 
 /**
