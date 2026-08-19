@@ -146,29 +146,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ success: true, result: parsed });
     }
 
-    // 4. تعديل ومواءمة النصوص بين المذكر والمؤنث (فائق السرعة)
+    // 4. تعديل ومواءمة النصوص بين المذكر والمؤنث (معالجة الطلب المجمع السريع)
     if (pathname === '/adapt-gender-ai' || pathname === '/adapt-gender-ai/') {
-      const { text, targetGender, gender } = bodyData || {};
+      const { text, targetGender, gender, isBatch } = bodyData || {};
       const selectedGender = targetGender || gender;
       const isFemale = selectedGender === 'female' || selectedGender === 'female_student' || selectedGender === 'طالبة' || selectedGender === 'مؤنث';
 
       if (!apiKey) {
-        return res.status(200).json({
-          success: true,
-          adaptedText: text || '',
-          result: text || ''
-        });
+        return res.status(200).json({ success: true, adaptedText: text || '' });
       }
 
-      const prompt = `حول النص التالي ليكون موجهاً لـ (${isFemale ? 'طالبة' : 'طالب'}):
+      let prompt = '';
+      if (isBatch) {
+         prompt = `أنت خبير لغة عربية. سأعطيك كائن JSON يحتوي على نصوص شهادة.
+قم بتعديل كافة الأفعال، الضمائر، والأسماء لتناسب (${isFemale ? 'طالبة / أنثى' : 'طالب / مذكر'}).
+يجب أن ترجع النتيجة كـ JSON فقط وبنفس المفاتيح.
+النص الأصلي (JSON):
+${text}`;
+      } else {
+         prompt = `أنت خبير لغة عربية. قم بتعديل النص التالي ليكون موجهاً لتكريم (${isFemale ? 'طالبة / أنثى' : 'طالب / مذكر'}):
 "${text || ''}"
-أرجع النص المعدل فقط بدون أي مقدمات.`;
+أرجع النص المعدل فقط.`;
+      }
 
       try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`;
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
         
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 80000); // قطع الاتصال تلقائياً إذا تجاوز 80 ثوانٍ
+        const timeoutId = setTimeout(() => controller.abort(), 12000); // 12 ثانية حد أقصى
 
         const response = await fetch(url, {
           method: 'POST',
@@ -177,29 +182,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
             generationConfig: {
-              maxOutputTokens: 200, // تحديد مخرجات قصيرة جداً للسرعة
-              temperature: 0.2
+              temperature: 0.1, // تقليل درجة الحرارة لزيادة السرعة والوضوح
+              responseMimeType: isBatch ? 'application/json' : 'text/plain'
             }
           })
         });
 
         clearTimeout(timeoutId);
 
+        if (!response.ok) throw new Error(`API Error: ${response.status}`);
+
         const data = await response.json();
         const outputText = data?.candidates?.[0]?.content?.parts?.[0]?.text || text;
-        const cleanResult = outputText.trim().replace(/^["']|["']$/g, '');
+        const cleanResult = isBatch ? outputText : outputText.trim().replace(/^["']|["']$/g, '');
 
-        return res.status(200).json({
-          success: true,
-          adaptedText: cleanResult,
-          result: cleanResult
-        });
+        return res.status(200).json({ success: true, adaptedText: cleanResult });
       } catch (aiErr: any) {
-        console.error('Adapt Gender AI Error / Timeout:', aiErr);
-        return res.status(200).json({
-          success: true,
-          adaptedText: text || '',
-          result: text || ''
-        });
+        console.error('Adapt Gender AI Error:', aiErr);
+        return res.status(200).json({ success: true, adaptedText: text || '' });
       }
     }
