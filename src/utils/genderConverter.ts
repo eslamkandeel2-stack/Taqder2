@@ -25,7 +25,40 @@ export function detectGenderFromName(name: string): RecipientGender {
 }
 
 /**
- * Converts Arabic phrasing between male (مذكر) and female (مؤنث)
+ * Converts Arabic phrasing between male (مذكر) and female (مؤنث) using AI Backend
+ */
+export async function convertArabicTextGenderAI(text: string, targetGender: RecipientGender, apiKey?: string): Promise<string> {
+  if (!text || typeof text !== 'string') return text;
+
+  try {
+    const response = await fetch('/api/adapt-gender-ai', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-gemini-api-key': apiKey || '',
+      },
+      body: JSON.stringify({
+        text,
+        targetGender,
+        gender: targetGender,
+        apiKey: apiKey || '',
+      }),
+    });
+
+    if (!response.ok) {
+      return convertArabicTextGender(text, targetGender);
+    }
+
+    const data = await response.json();
+    return data.adaptedText || data.result || convertArabicTextGender(text, targetGender);
+  } catch (error) {
+    console.warn('AI gender adaptation failed, falling back to local converter:', error);
+    return convertArabicTextGender(text, targetGender);
+  }
+}
+
+/**
+ * Converts Arabic phrasing locally (Regex fallback)
  */
 export function convertArabicTextGender(text: string, targetGender: RecipientGender): string {
   if (!text || typeof text !== 'string') return text;
@@ -33,7 +66,6 @@ export function convertArabicTextGender(text: string, targetGender: RecipientGen
   let result = text;
 
   if (targetGender === 'female') {
-    // Replace slash options first
     result = result.replace(/الطالب[\/ـ_-]+ة/g, 'الطالبة');
     result = result.replace(/الطالب[\/ـ_-]+ـة/g, 'الطالبة');
     result = result.replace(/الأستاذ[\/ـ_-]+ة/g, 'الأستاذة');
@@ -44,7 +76,6 @@ export function convertArabicTextGender(text: string, targetGender: RecipientGen
     result = result.replace(/المتطوع[\/ـ_-]+ـة/g, 'المتطوعة');
     result = result.replace(/طالب[\/ـ_-]+ـة/g, 'طالبة');
 
-    // Specific Multi-word Phrases & Pronouns (Male -> Female)
     const phraseMapFemale: [RegExp, string][] = [
       [/\bعبد الله بن\b/g, 'فاطمة بنت'],
       [/\bبن\b/g, 'بنت'],
@@ -140,7 +171,6 @@ export function convertArabicTextGender(text: string, targetGender: RecipientGen
       result = result.replace(regex, replacement);
     }
   } else {
-    // Target Gender === 'male'
     result = result.replace(/الطالب[\/ـ_-]+ة/g, 'الطالب');
     result = result.replace(/الطالب[\/ـ_-]+ـة/g, 'الطالب');
     result = result.replace(/الأستاذ[\/ـ_-]+ة/g, 'الأستاذ');
@@ -151,7 +181,6 @@ export function convertArabicTextGender(text: string, targetGender: RecipientGen
     result = result.replace(/المتطوع[\/ـ_-]+ـة/g, 'المتطوع');
     result = result.replace(/طالب[\/ـ_-]+ـة/g, 'طالب');
 
-    // Specific Multi-word Phrases & Pronouns (Female -> Male)
     const phraseMapMale: [RegExp, string][] = [
       [/\bبنت\b/g, 'بن'],
       [/\bللطالبة المبدعة\b/g, 'للطالب المبدع'],
@@ -204,7 +233,7 @@ export function convertArabicTextGender(text: string, targetGender: RecipientGen
       [/\bعطائها\b/g, 'عطائه'],
       [/\bجهودها\b/g, 'جهوده'],
       [/\bتفانيها\b/g, 'تفانيه'],
-      [/\bتحقيقها\b/g, 'تحقيقه'],
+      [/\bتحقيقها\b/g, 'تحقيقها'],
       [/\bتميزها\b/g, 'تميزه'],
       [/\bإتمامها\b/g, 'إتمامه'],
       [/\bإتقانها\b/g, 'إتقانه'],
@@ -250,43 +279,52 @@ export function convertArabicTextGender(text: string, targetGender: RecipientGen
 }
 
 /**
- * Transforms an entire CertificateData object to match the selected recipient gender
+ * Transforms an entire CertificateData object to match the selected recipient gender with AI
  */
-export function adaptCertificateGender(
+export async function adaptCertificateGender(
   data: CertificateData,
   newGender: RecipientGender,
-  options?: { preserveCustomStudentName?: boolean }
-): CertificateData {
+  options?: { preserveCustomStudentName?: boolean; apiKey?: string }
+): Promise<CertificateData> {
   const maleSampleNames = ['عبد الله بن محمد العتيبي', 'محمد بن عبد الله آل سعود', 'عبد الله بن خالد الشهري', 'أحمد بن محمد العتيبي'];
   const femaleSampleNames = ['سارة بنت أحمد الغامدي', 'منى بنت يوسف الغامدي', 'نورة بنت خالد الدوسري', 'فاطمة بنت محمد العتيبي'];
 
   let newStudentName = data.studentName;
   if (!options?.preserveCustomStudentName || !data.studentName) {
     if (newGender === 'female' && (maleSampleNames.includes(data.studentName) || detectGenderFromName(data.studentName) === 'male')) {
-      newStudentName = convertArabicTextGender(data.studentName, 'female');
+      newStudentName = await convertArabicTextGenderAI(data.studentName, 'female', options?.apiKey);
       if (newStudentName === data.studentName) {
         newStudentName = 'سارة بنت أحمد الغامدي';
       }
     } else if (newGender === 'male' && (femaleSampleNames.includes(data.studentName) || detectGenderFromName(data.studentName) === 'female')) {
-      newStudentName = convertArabicTextGender(data.studentName, 'male');
+      newStudentName = await convertArabicTextGenderAI(data.studentName, 'male', options?.apiKey);
       if (newStudentName === data.studentName) {
         newStudentName = 'عبد الله بن محمد العتيبي';
       }
     }
   } else {
-    newStudentName = convertArabicTextGender(data.studentName, newGender);
+    newStudentName = await convertArabicTextGenderAI(data.studentName, newGender, options?.apiKey);
   }
+
+  const [recipientIntro, appreciationText, badgeTitle, title, subtitle, grade] = await Promise.all([
+    convertArabicTextGenderAI(data.recipientIntro || '', newGender, options?.apiKey),
+    convertArabicTextGenderAI(data.appreciationText || '', newGender, options?.apiKey),
+    convertArabicTextGenderAI(data.badgeTitle || '', newGender, options?.apiKey),
+    convertArabicTextGenderAI(data.title || '', newGender, options?.apiKey),
+    convertArabicTextGenderAI(data.subtitle || '', newGender, options?.apiKey),
+    convertArabicTextGenderAI(data.grade || '', newGender, options?.apiKey),
+  ]);
 
   return {
     ...data,
     recipientGender: newGender,
     studentName: newStudentName,
-    recipientIntro: convertArabicTextGender(data.recipientIntro || '', newGender),
-    appreciationText: convertArabicTextGender(data.appreciationText || '', newGender),
-    badgeTitle: convertArabicTextGender(data.badgeTitle || '', newGender),
-    title: convertArabicTextGender(data.title || '', newGender),
-    subtitle: convertArabicTextGender(data.subtitle || '', newGender),
-    grade: convertArabicTextGender(data.grade || '', newGender),
+    recipientIntro,
+    appreciationText,
+    badgeTitle,
+    title,
+    subtitle,
+    grade,
   };
 }
 
@@ -324,13 +362,13 @@ export function generateLocalCertificateFallback(params: {
     : `تقديراً لجهوده المتميزة وتفوقه المشهود في ${subject}، وإبداعه المستمر في ${achievement}، سائلين المولى له دوام التوفيق والتألق والنجاح في مسيرته التعليمية المباركة.`;
 
   return {
-    title: isFemale ? 'شهادة شكر وتقدير وتفوق' : 'شهادة شكر وتقدير وتفوق',
+    title: 'شهادة شكر وتقدير وتفوق',
     recipientIntro: isFemale
       ? 'تسر إدارة المدرسة ومعلموها أن تمنح هذه الشهادة للطالبة المتميزة:'
       : 'تسر إدارة المدرسة ومعلموها أن تمنح هذه الشهادة للطالب المتميز:',
     appreciationText: appreciation,
     poemOrQuote: poems[Math.floor(Math.random() * poems.length)],
-    badgeTitle: isFemale ? 'وسام التميز والتفوق' : 'وسام التميز والتفوق',
+    badgeTitle: 'وسام التميز والتفوق',
     primaryColorHex: '#854d0e',
     secondaryColorHex: '#d97706',
   };
