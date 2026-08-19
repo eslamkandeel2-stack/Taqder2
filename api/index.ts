@@ -28,7 +28,8 @@ function extractAiCredentials(req: VercelRequest) {
 
   const headerModel = req.headers['x-gemini-model'] as string | undefined;
   const bodyModel = bodyData?.model as string | undefined;
-  const model = (headerModel || bodyModel || 'gemini-2.5-flash').trim();
+  // تحديث النموذج الافتراضي إلى gemini-3.6-flash
+  const model = (headerModel || bodyModel || 'gemini-3.6-flash').trim();
 
   return { apiKey, model, bodyData };
 }
@@ -45,7 +46,8 @@ function parseJsonSafely(text: string) {
 
 // دالة الاتصال المباشر بـ REST API
 async function callGeminiDirectly(apiKey: string, model: string, prompt: string, isJson: boolean = false) {
-  const cleanModel = model.startsWith('gemini-') ? model : 'gemini-2.5-flash';
+  // استخدام gemini-3.6-flash تلقائياً
+  const cleanModel = model.startsWith('gemini-') ? model : 'gemini-3.6-flash';
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent?key=${apiKey}`;
 
   const payload: any = {
@@ -101,7 +103,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       return res.status(200).json({
         success: true,
-        modelUsed: model || 'gemini-2.5-flash',
+        modelUsed: model || 'gemini-3.6-flash',
         sampleResponse: resultText.trim(),
         message: `تم الاتصال بنموذج الذكاء الاصطناعي بنجاح! 🟢`,
       });
@@ -144,23 +146,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ success: true, result: parsed });
     }
 
-    // 4. تعديل ومواءمة النصوص بين المذكر والمؤنث (معالجة آمنة لخطأ 500)
+    // 4. تعديل ومواءمة النصوص بين المذكر والمؤنث
     if (pathname === '/adapt-gender-ai' || pathname === '/adapt-gender-ai/') {
       const { text, targetGender, gender } = bodyData || {};
-      const selectedGender = targetGender || gender || 'male';
+      const selectedGender = targetGender || gender;
       const isFemale = selectedGender === 'female' || selectedGender === 'female_student' || selectedGender === 'طالبة' || selectedGender === 'مؤنث';
 
-      // إذا لم يتوفر المفتاح، نُرجع رد نجاح مع النص الأصلي لمنع خطأ 500
-      if (!apiKey) {
-        return res.status(200).json({
-          success: true,
-          adaptedText: text || '',
-          result: text || '',
-          note: 'No API key provided, fallback applied'
-        });
-      }
-
-      const prompt = `أنت خبير لغة عربية وبلاغة. قم بتعديل النص التالي ليكون موجهاً بأسلوب صحيح ودقيق لغوياً لتكريم (${isFemale ? 'طالبة / أنثى' : 'طالب / مذكر'}).
+      const prompt = `أنت خبير لغة عربية وبلاغة. قم بتعديل النص التالي ليكون موجهاً بأسلوب صحيح ودقيق لغوياً لتكريم (${isFemale ? 'طالبة (أنثى/مؤنث)' : 'طالب (ذكر/مذكر)'}).
 قم بتعديل كافة الأفعال، الضمائر، والأسماء لتناسب الجنس المطلوب بدقة بدون تغيير المعنى الأساسي للنص.
 أرجع JSON فقط بالتنسيق التالي:
 {
@@ -173,21 +165,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       try {
         const resultText = await callGeminiDirectly(apiKey, model, prompt, true);
         const parsed = parseJsonSafely(resultText);
-        const finalAdaptedText = parsed?.adaptedText || parsed?.result || text;
+
+        const finalAdaptedText = parsed?.adaptedText || parsed?.result || resultText || text;
 
         return res.status(200).json({
           success: true,
           adaptedText: finalAdaptedText,
           result: finalAdaptedText
         });
-      } catch (aiError: any) {
-        console.error('Gemini Call Failed:', aiError);
-        // إرجاع النص الأصلي في حال فشل Gemini بدلاً من رمي 500
+      } catch (aiErr: any) {
+        console.error('Adapt Gender Processing Error:', aiErr);
         return res.status(200).json({
           success: true,
           adaptedText: text || '',
-          result: text || '',
-          warning: 'AI generation failed, returned original text'
+          result: text || ''
         });
       }
     }
+
+    if (pathname === '' || pathname === '/') {
+      return res.status(200).json({ status: 'ok', message: 'Vercel Serverless API is active' });
+    }
+
+    return res.status(404).json({ error: 'Endpoint Not Found', pathname });
+
+  } catch (error: any) {
+    console.error('API Error:', error);
+    return res.status(500).json({ success: false, error: error.message || 'حدث خطأ في الخادم' });
+  }
+}
