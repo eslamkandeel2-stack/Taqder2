@@ -793,7 +793,7 @@ export const EditorToolbar: React.FC<Props> = ({
     { key: 'badgeTitle', label: 'عنوان الوسام', icon: '🏅' },
   ];
 
-  const handleGenderChange = async (gender: RecipientGender) => {
+  
     // 1. Instant local rule-based conversion so UI updates immediately
    const handleGenderChange = async (newGender: 'male' | 'female') => {
     // 1. تحديث شاشة الشهادة فوراً بالمحول المحلي (0 ثانية)
