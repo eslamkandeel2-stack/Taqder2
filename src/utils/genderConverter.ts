@@ -234,7 +234,7 @@ export function convertArabicTextGender(text: string, targetGender: RecipientGen
       [/\bطالب\b/g, 'طالبة'],
       [/\bالمتميز\b/g, 'المتميزة'],
       [/\bالمتفوق\b/g, 'المتفوقة'],
-      [/\bالنجيب\b/g, 'النجيبة'],
+      [/\bالنجيبة\b/g, 'النجيب'],
     ];
 
     for (const [regex, replacement] of phraseMapMale) {
@@ -278,19 +278,20 @@ export async function convertArabicTextGenderAI(text: string, targetGender: Reci
 }
 
 /**
- * Transforms CertificateData object matching TypeScript types with AI first, then Instant Local Fallback
+ * Transforms CertificateData object matching TypeScript types with Instant UI Update + AI Enhancement
  */
 export async function adaptCertificateGender(
   data: CertificateData,
   newGender: RecipientGender,
   options?: { preserveCustomStudentName?: boolean; apiKey?: string }
 ): Promise<CertificateData> {
+  // 1. التعديل المحلي المباشر واللحظي (يُطبق فوراً لمنع تعليق الشاشة)
   let newStudentName = data.studentName;
   if (!options?.preserveCustomStudentName || !data.studentName) {
     newStudentName = convertArabicTextGender(data.studentName || '', newGender);
   }
 
-  const applyLocalFallback = (): CertificateData => ({
+  const localConvertedData: CertificateData = {
     ...data,
     recipientGender: newGender,
     studentName: newStudentName,
@@ -300,12 +301,13 @@ export async function adaptCertificateGender(
     title: convertArabicTextGender(data.title || '', newGender),
     subtitle: convertArabicTextGender(data.subtitle || '', newGender),
     grade: convertArabicTextGender(data.grade || '', newGender),
-  });
+  };
 
   if (!options?.apiKey) {
-    return applyLocalFallback();
+    return localConvertedData;
   }
 
+  // 2. محاولة تحسين البلاغة عبر الذكاء الاصطناعي مهلة قصيرة (3 ثوانٍ)
   try {
     const payloadObject = {
       recipientIntro: data.recipientIntro || '',
@@ -313,12 +315,16 @@ export async function adaptCertificateGender(
       badgeTitle: data.badgeTitle || ''
     };
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 ثوانٍ كحد أقصى لتفادي التعليق
+
     const response = await fetch('/api/adapt-gender-ai', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'x-gemini-api-key': options.apiKey,
       },
+      signal: controller.signal,
       body: JSON.stringify({
         text: JSON.stringify(payloadObject),
         targetGender: newGender,
@@ -326,6 +332,8 @@ export async function adaptCertificateGender(
         isBatch: true
       }),
     });
+
+    clearTimeout(timeoutId);
 
     if (response.ok) {
       const resData = await response.json();
@@ -344,24 +352,19 @@ export async function adaptCertificateGender(
 
         if (adaptedText && typeof adaptedText === 'object') {
           return {
-            ...data,
-            recipientGender: newGender,
-            studentName: newStudentName,
-            recipientIntro: adaptedText.recipientIntro || convertArabicTextGender(data.recipientIntro || '', newGender),
-            appreciationText: adaptedText.appreciationText || convertArabicTextGender(data.appreciationText || '', newGender),
-            badgeTitle: adaptedText.badgeTitle || convertArabicTextGender(data.badgeTitle || '', newGender),
-            title: convertArabicTextGender(data.title || '', newGender),
-            subtitle: convertArabicTextGender(data.subtitle || '', newGender),
-            grade: convertArabicTextGender(data.grade || '', newGender),
+            ...localConvertedData,
+            recipientIntro: adaptedText.recipientIntro || localConvertedData.recipientIntro,
+            appreciationText: adaptedText.appreciationText || localConvertedData.appreciationText,
+            badgeTitle: adaptedText.badgeTitle || localConvertedData.badgeTitle,
           };
         }
       }
     }
   } catch (err) {
-    console.warn('AI adaptation request failed, executing local fallback:', err);
+    console.warn('AI adaptation fallback to local conversion:', err);
   }
 
-  return applyLocalFallback();
+  return localConvertedData;
 }
 
 /**
