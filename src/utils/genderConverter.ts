@@ -124,7 +124,7 @@ export function convertArabicTextGender(text: string, targetGender: RecipientGen
       [/\bأبدى\b/g, 'أبدت'],
       [/\bاجتاز\b/g, 'اجتازت'],
       [/\bحصد\b/g, 'حصدت'],
-      [/\bسمع\b/g, 'سمعت'],
+      [/\bسمعت\b/g, 'سمع'],
       [/\bمنحه\b/g, 'منحها'],
       [/\bللطالب\b/g, 'للطالبة'],
       [/\bالطالب\b/g, 'الطالبة'],
@@ -220,7 +220,7 @@ export function convertArabicTextGender(text: string, targetGender: RecipientGen
       [/\bيزيدها\b/g, 'يزيده'],
       [/\bالتي تجسد\b/g, 'الذي يجسد'],
       [/\bالتي أبهرت\b/g, 'الذي أبهر'],
-      [/\bقد استوفت\b/g, 'قد استوفى'],
+      [/\bقد استوفى\b/g, 'قد استوفت'],
       [/\bقد أكملت\b/g, 'قد أكمل'],
       [/\bأظهرت التزاماً\b/g, 'أظهر التزاماً'],
       [/\bأظهرت التزاما\b/g, 'أظهر التزاماً'],
@@ -278,90 +278,21 @@ export async function convertArabicTextGenderAI(text: string, targetGender: Reci
 }
 
 /**
- * Transforms CertificateData object matching TypeScript types seamlessly
+ * Transforms CertificateData object instant locally to bypass AI Quota Limits
  */
-export async function adaptCertificateGender(
+export function adaptCertificateGender(
   data: CertificateData,
   newGender: RecipientGender,
   options?: { preserveCustomStudentName?: boolean; apiKey?: string }
-): Promise<CertificateData> {
-  const isFemale = newGender === 'female';
-
-  // 1. تحويل اسم الطالب فوراً
+): CertificateData {
   let newStudentName = data.studentName;
   if (!options?.preserveCustomStudentName || !data.studentName) {
     newStudentName = convertArabicTextGender(data.studentName || '', newGender);
+  } else {
+    newStudentName = convertArabicTextGender(data.studentName || '', newGender);
   }
 
-  // 2. إذا لم يمرر مفتاح، قم بالتحويل المحلي اللحظي
-  if (!options?.apiKey) {
-    return {
-      ...data,
-      recipientGender: newGender,
-      studentName: newStudentName,
-      recipientIntro: convertArabicTextGender(data.recipientIntro || '', newGender),
-      appreciationText: convertArabicTextGender(data.appreciationText || '', newGender),
-      badgeTitle: convertArabicTextGender(data.badgeTitle || '', newGender),
-      title: convertArabicTextGender(data.title || '', newGender),
-      subtitle: convertArabicTextGender(data.subtitle || '', newGender),
-      grade: convertArabicTextGender(data.grade || '', newGender),
-    };
-  }
-
-  try {
-    // 3. استدعاء الذكاء الاصطناعي للحقول الرئيسية بالشهادة
-    const payloadObject = {
-      recipientIntro: data.recipientIntro || '',
-      appreciationText: data.appreciationText || '',
-      badgeTitle: data.badgeTitle || ''
-    };
-
-    const response = await fetch('/api/adapt-gender-ai', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-gemini-api-key': options.apiKey,
-      },
-      body: JSON.stringify({
-        text: JSON.stringify(payloadObject),
-        targetGender: newGender,
-        apiKey: options.apiKey,
-        isBatch: true
-      }),
-    });
-
-    if (response.ok) {
-      const resData = await response.json();
-      let adaptedText = resData.adaptedText || resData.result;
-
-      if (typeof adaptedText === 'string') {
-        try {
-          const cleanJson = adaptedText.replace(/```json/g, '').replace(/```/g, '').trim();
-          adaptedText = JSON.parse(cleanJson);
-        } catch (e) {
-          adaptedText = null;
-        }
-      }
-
-      if (adaptedText && typeof adaptedText === 'object') {
-        return {
-          ...data,
-          recipientGender: newGender,
-          studentName: newStudentName,
-          recipientIntro: adaptedText.recipientIntro || convertArabicTextGender(data.recipientIntro || '', newGender),
-          appreciationText: adaptedText.appreciationText || convertArabicTextGender(data.appreciationText || '', newGender),
-          badgeTitle: adaptedText.badgeTitle || convertArabicTextGender(data.badgeTitle || '', newGender),
-          title: convertArabicTextGender(data.title || '', newGender),
-          subtitle: convertArabicTextGender(data.subtitle || '', newGender),
-          grade: convertArabicTextGender(data.grade || '', newGender),
-        };
-      }
-    }
-  } catch (err) {
-    console.warn('AI adaptation fallback triggered:', err);
-  }
-
-  // 4. Fallback محلي في حال وجود أي مشكلة
+  // تحويل مباشر وسريع لجميع حقول الشهادة بدون انتظار API لمنع التعليق
   return {
     ...data,
     recipientGender: newGender,
