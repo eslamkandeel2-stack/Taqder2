@@ -2577,13 +2577,13 @@ export const CertificateCanvas: React.FC<Props> = ({
       )}
 
       {/* Responsive Scaled Viewport Area - Full 2D Scrollability & Edge Visibility */}
-      <div className="w-full max-h-[82vh] overflow-auto rounded-2xl border border-slate-300/80 bg-slate-900/10 p-4 sm:p-6 shadow-inner flex relative transition-all dir-ltr">
+      <div className={isExporting ? "relative block overflow-visible" : "w-full max-h-[82vh] overflow-auto rounded-2xl border border-slate-300/80 bg-slate-900/10 p-4 sm:p-6 shadow-inner flex relative transition-all dir-ltr"}>
         <div
           style={{
             width: !isExporting ? `${scaledWidth}px` : `${aspectInfo.baseWidth}px`,
             height: !isExporting ? `${scaledHeight}px` : `${aspectInfo.baseHeight}px`,
           }}
-          className="relative shrink-0 m-auto transition-all duration-200"
+          className={isExporting ? "relative block overflow-visible" : "relative shrink-0 m-auto transition-all duration-200"}
         >
           <div
             style={{
@@ -2592,7 +2592,7 @@ export const CertificateCanvas: React.FC<Props> = ({
               transform: !isExporting && scale !== 1 ? `scale(${scale})` : undefined,
               transformOrigin: 'top left',
             }}
-            className="absolute top-0 left-0"
+            className={isExporting ? "relative block overflow-visible" : "absolute top-0 left-0"}
           >
             <div
               ref={actualCanvasRef}

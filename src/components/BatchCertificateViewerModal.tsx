@@ -9,6 +9,7 @@ import {
   findCertificateCanvasElement,
   getCertificateDimensions
 } from '../utils/exportUtils';
+import { printCertificateViaIframe } from '../utils/printUtils';
 import {
   googleSignIn,
   initDriveAuth,
@@ -47,7 +48,8 @@ import {
   Share2,
   ChevronLeft,
   ChevronRight,
-  Maximize2
+  Maximize2,
+  Image as ImageIcon
 } from 'lucide-react';
 
 interface Props {
@@ -131,12 +133,12 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
 
   const selectedCertificate = certificates.find(c => c.id === selectedCertId) || certificates[0];
 
-  // Helper to render certificate to DOM for headless capture
+  // Helper to render certificate to DOM for headless capture with high fidelity
   const renderCertificateToDom = async (cert: CertificateData): Promise<HTMLElement> => {
     setRenderCertTarget(cert);
-    // Allow state to propagate and DOM to render
-    for (let attempt = 0; attempt < 20; attempt++) {
-      await new Promise((resolve) => setTimeout(resolve, 35));
+    // Allow state to propagate and DOM/fonts to settle
+    for (let attempt = 0; attempt < 25; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 40));
       const container = hiddenRenderRef.current;
       if (container) {
         const el = (container.querySelector('#certificate-print-area') || container.querySelector('[data-certificate-canvas="true"]')) as HTMLElement;
@@ -204,6 +206,19 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
     } catch (e) {
       console.error(e);
       onShowToast('فشل حفظ صورة الشهادة.');
+    } finally {
+      setTimeout(() => setRenderCertTarget(null), 150);
+    }
+  };
+
+  const handlePrintSingleCert = async (cert: CertificateData) => {
+    try {
+      onShowToast(`جاري فتح نافذة الطباعة لشهادة ${cert.studentName}...`);
+      const el = await renderCertificateToDom(cert);
+      printCertificateViaIframe(el, cert);
+    } catch (e) {
+      console.error(e);
+      onShowToast('فشل فتح نافذة الطباعة.');
     } finally {
       setTimeout(() => setRenderCertTarget(null), 150);
     }
@@ -695,14 +710,14 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
                             setSelectedCertId(cert.id);
                             setViewMode('preview');
                           }}
-                          className="px-2.5 py-1 bg-slate-700 hover:bg-slate-600 text-slate-200 font-bold rounded-lg transition flex items-center gap-1"
+                          className="px-2.5 py-1 bg-slate-700 hover:bg-slate-600 text-slate-200 font-bold rounded-lg transition flex items-center gap-1 cursor-pointer"
                           title="معاينة حية"
                         >
                           <Eye className="w-3 h-3" /> معاينة
                         </button>
                         <button
                           onClick={() => setEditingCert(cert)}
-                          className="px-2 py-1 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg transition"
+                          className="px-2 py-1 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg transition cursor-pointer"
                           title="تعديل البيانات"
                         >
                           <Edit3 className="w-3 h-3" />
@@ -711,15 +726,22 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
 
                       <div className="flex items-center gap-1">
                         <button
+                          onClick={() => handlePrintSingleCert(cert)}
+                          className="p-1.5 bg-indigo-600/30 hover:bg-indigo-600 text-indigo-300 hover:text-white rounded-lg transition cursor-pointer"
+                          title="طباعة الشهادة مباشرة"
+                        >
+                          <Printer className="w-3.5 h-3.5" />
+                        </button>
+                        <button
                           onClick={() => handleExportSinglePdf(cert)}
-                          className="p-1.5 bg-emerald-600/30 hover:bg-emerald-600 text-emerald-300 hover:text-white rounded-lg transition"
+                          className="p-1.5 bg-emerald-600/30 hover:bg-emerald-600 text-emerald-300 hover:text-white rounded-lg transition cursor-pointer"
                           title="تصدير PDF فردي"
                         >
                           <FileText className="w-3.5 h-3.5" />
                         </button>
                         <button
                           onClick={() => handleExportSinglePng(cert)}
-                          className="p-1.5 bg-sky-600/30 hover:bg-sky-600 text-sky-300 hover:text-white rounded-lg transition"
+                          className="p-1.5 bg-sky-600/30 hover:bg-sky-600 text-sky-300 hover:text-white rounded-lg transition cursor-pointer"
                           title="تصدير صورة PNG"
                         >
                           <Download className="w-3.5 h-3.5" />
@@ -729,7 +751,7 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
                             onApplySingleToEditor(cert);
                             onClose();
                           }}
-                          className="p-1.5 bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-slate-950 rounded-lg transition"
+                          className="p-1.5 bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-slate-950 rounded-lg transition cursor-pointer"
                           title="فتح في المحرر الرئيسي"
                         >
                           <Sparkles className="w-3.5 h-3.5" />
@@ -908,10 +930,25 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
 
                   <div className="flex items-center gap-2">
                     <button
+                      onClick={() => handlePrintSingleCert(selectedCertificate)}
+                      className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow transition flex items-center gap-1 cursor-pointer"
+                      title="طباعة الشهادة الحالية مباشرة"
+                    >
+                      <Printer className="w-3.5 h-3.5" /> طباعة
+                    </button>
+                    <button
                       onClick={() => handleExportSinglePdf(selectedCertificate)}
-                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow transition flex items-center gap-1"
+                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow transition flex items-center gap-1 cursor-pointer"
+                      title="تحميل كملف PDF"
                     >
                       <Download className="w-3.5 h-3.5" /> PDF
+                    </button>
+                    <button
+                      onClick={() => handleExportSinglePng(selectedCertificate)}
+                      className="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs rounded-xl shadow transition flex items-center gap-1 cursor-pointer"
+                      title="تحميل كصورة PNG"
+                    >
+                      <ImageIcon className="w-3.5 h-3.5" /> PNG
                     </button>
                     <button
                       onClick={() => {
@@ -1265,21 +1302,22 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
             ref={hiddenRenderRef}
             style={{
               position: 'fixed',
-              left: '-9999px',
-              top: '-9999px',
+              left: '-10000px',
+              top: '0px',
               width: `${dims.baseWidth}px`,
               height: `${dims.baseHeight}px`,
               minWidth: `${dims.baseWidth}px`,
               minHeight: `${dims.baseHeight}px`,
               maxWidth: `${dims.baseWidth}px`,
               maxHeight: `${dims.baseHeight}px`,
-              overflow: 'visible',
+              overflow: 'hidden',
               visibility: 'visible',
-              zIndex: -999,
+              opacity: 1,
+              zIndex: -9999,
               pointerEvents: 'none'
             }}
           >
-            <CertificateCanvas data={targetCert} isExporting={true} />
+            <CertificateCanvas key={targetCert.id || targetCert.studentName} data={targetCert} isExporting={true} />
           </div>
         );
       })()}

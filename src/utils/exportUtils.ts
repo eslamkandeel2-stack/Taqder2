@@ -753,101 +753,14 @@ export async function captureCertificateCanvas(
   const targetHeight = options.customHeight || dims.baseHeight;
   const scale = options.scale ?? 3.0;
 
-  // 1. Primary Engine: Isolated clean iframe rendering
-  // This completely eliminates interference from parent modal styling, zoom transform scales,
-  // viewport coordinate offsets, or DOM element ID collisions.
-  if (typeof document !== 'undefined') {
-    let captureIframe: HTMLIFrameElement | null = null;
-    try {
-      await waitForImagesToLoad(targetElement);
-
-      const html = generateCertificatePrintHtml(targetElement, certificateData, {
-        paperSize: certificateData.aspectRatio === 'square' ? 'Square' : 'A4',
-        orientation: dims.orientation,
-        marginTop: 0,
-        marginRight: 0,
-        marginBottom: 0,
-        marginLeft: 0,
-        printBackgrounds: true
-      });
-
-      captureIframe = document.createElement('iframe');
-      captureIframe.style.position = 'fixed';
-      captureIframe.style.left = '-10000px';
-      captureIframe.style.top = '0';
-      captureIframe.style.width = `${targetWidth + 50}px`;
-      captureIframe.style.height = `${targetHeight + 50}px`;
-      captureIframe.style.border = 'none';
-      captureIframe.style.zIndex = '-9999';
-      captureIframe.style.opacity = '1';
-      captureIframe.style.visibility = 'visible';
-
-      document.body.appendChild(captureIframe);
-
-      const iframeDoc = captureIframe.contentDocument || captureIframe.contentWindow?.document;
-      if (!iframeDoc) {
-        throw new Error('Iframe document not available');
-      }
-
-      iframeDoc.open();
-      iframeDoc.write(html);
-      iframeDoc.close();
-
-      if (iframeDoc.fonts) {
-        await iframeDoc.fonts.ready;
-      }
-      await waitForImagesToLoad(iframeDoc.body);
-      // Short delay to allow browser font rendering and layout settling
-      await new Promise(r => setTimeout(r, 120));
-
-      const certElInsideIframe = iframeDoc.getElementById('certificate-print-area')
-        || (iframeDoc.querySelector('[data-certificate-canvas="true"]') as HTMLElement)
-        || iframeDoc.querySelector('.printable-cert-scaler') as HTMLElement
-        || (iframeDoc.body.firstElementChild as HTMLElement);
-
-      if (certElInsideIframe) {
-        certElInsideIframe.style.width = `${targetWidth}px`;
-        certElInsideIframe.style.height = `${targetHeight}px`;
-        certElInsideIframe.style.transform = 'none';
-        certElInsideIframe.style.margin = '0';
-        certElInsideIframe.style.position = 'relative';
-
-        const canvas = await html2canvas(certElInsideIframe, {
-          scale,
-          useCORS: true,
-          allowTaint: true,
-          backgroundColor: options.backgroundColor || certificateData.backgroundColor || '#ffffff',
-          logging: false,
-          width: targetWidth,
-          height: targetHeight,
-          windowWidth: targetWidth,
-          windowHeight: targetHeight,
-          scrollX: 0,
-          scrollY: 0,
-          x: 0,
-          y: 0,
-          onclone: (clonedDoc) => {
-            sanitizeOklchInDoc(clonedDoc, certificateData, certElInsideIframe);
-          }
-        });
-
-        return canvas;
-      }
-    } catch (err) {
-      console.warn('Isolated iframe canvas capture encountered issue, falling back to direct capture:', err);
-    } finally {
-      if (captureIframe && captureIframe.parentNode) {
-        captureIframe.parentNode.removeChild(captureIframe);
-      }
-    }
-  }
-
-  // 2. Fallback Engine: Direct html2canvas on targetElement
   if (typeof document !== 'undefined' && document.fonts) {
-    await document.fonts.ready;
+    try {
+      await document.fonts.ready;
+    } catch (e) {}
   }
   await waitForImagesToLoad(targetElement);
 
+  // Direct precision html2canvas capture with exact coordinate isolation
   const canvas = await html2canvas(targetElement, {
     scale,
     useCORS: true,
@@ -856,16 +769,35 @@ export async function captureCertificateCanvas(
     logging: false,
     width: targetWidth,
     height: targetHeight,
-    windowWidth: Math.max(1280, targetWidth + 100),
-    windowHeight: Math.max(960, targetHeight + 100),
-    onclone: (clonedDoc) => {
+    windowWidth: targetWidth,
+    windowHeight: targetHeight,
+    scrollX: 0,
+    scrollY: 0,
+    x: 0,
+    y: 0,
+    onclone: (clonedDoc, clonedEl) => {
       sanitizeOklchInDoc(clonedDoc, certificateData, targetElement);
-      const clonedCert = clonedDoc.getElementById('certificate-print-area') || (clonedDoc.querySelector('[data-certificate-canvas="true"]') as HTMLElement);
+      const clonedCert = (clonedEl || clonedDoc.getElementById('certificate-print-area') || clonedDoc.querySelector('[data-certificate-canvas="true"]')) as HTMLElement;
       if (clonedCert) {
         clonedCert.style.transform = 'none';
         clonedCert.style.margin = '0';
         clonedCert.style.position = 'relative';
         clonedCert.style.boxShadow = 'none';
+        clonedCert.style.width = `${targetWidth}px`;
+        clonedCert.style.height = `${targetHeight}px`;
+        clonedCert.style.minWidth = `${targetWidth}px`;
+        clonedCert.style.minHeight = `${targetHeight}px`;
+        clonedCert.style.maxWidth = `${targetWidth}px`;
+        clonedCert.style.maxHeight = `${targetHeight}px`;
+        clonedCert.style.overflow = 'hidden';
+      }
+      // Ensure all parents of clonedCert in clonedDoc do not introduce offsets or scaling
+      let parent = clonedCert ? clonedCert.parentElement : null;
+      while (parent && parent !== clonedDoc.body) {
+        parent.style.transform = 'none';
+        parent.style.margin = '0';
+        parent.style.padding = '0';
+        parent = parent.parentElement;
       }
     }
   });

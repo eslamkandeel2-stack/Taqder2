@@ -43,10 +43,12 @@ import {
 
 interface Props {
   currentCertificate: CertificateData;
-  onOpenInEditor: (cert: CertificateData) => void;
+  onOpenInEditor?: (cert: CertificateData) => void;
   onOpenGoogleDriveModal?: (cert: CertificateData) => void;
   onShowToast?: (msg: string) => void;
   initialCode?: string;
+  isStandalone?: boolean;
+  onBackToApp?: () => void;
 }
 
 export const VerificationPortal: React.FC<Props> = ({
@@ -54,7 +56,9 @@ export const VerificationPortal: React.FC<Props> = ({
   onOpenInEditor,
   onOpenGoogleDriveModal,
   onShowToast,
-  initialCode
+  initialCode,
+  isStandalone = false,
+  onBackToApp
 }) => {
   const [searchQuery, setSearchQuery] = useState(initialCode || '');
   const [activeTab, setActiveTab] = useState<'details' | 'canvas' | 'statement'>('details');
@@ -141,11 +145,30 @@ export const VerificationPortal: React.FC<Props> = ({
     }
   };
 
-  // Load all known certificates for quick sample badges
+  // Load all known certificates for quick sample badges only if not in standalone mode
   useEffect(() => {
-    const list = getAllVerifiableCertificates(currentCertificate);
-    setAllCertsList(list);
-  }, [currentCertificate]);
+    if (!isStandalone) {
+      const list = getAllVerifiableCertificates(currentCertificate);
+      setAllCertsList(list);
+    }
+  }, [currentCertificate, isStandalone]);
+
+  const getStandalonePortalUrl = (code?: string) => {
+    const targetCode = code || result?.verificationCode || searchQuery || initialCode || currentCertificate.verificationCode || '';
+    return `${window.location.origin}${window.location.pathname}?tab=verify&portal=true${targetCode ? `&code=${encodeURIComponent(targetCode)}` : ''}`;
+  };
+
+  const handleOpenStandaloneWindow = () => {
+    const url = getStandalonePortalUrl();
+    window.open(url, '_blank', 'noopener,noreferrer');
+    showToast('تم فتح بوابة التحقق والتوثيق الإلكتروني في نافذة مستقلة برابط منفصل! 🌐✨');
+  };
+
+  const handleCopyDirectPortalUrl = () => {
+    const url = getStandalonePortalUrl();
+    navigator.clipboard.writeText(url);
+    showToast('تم نسخ الرابط المباشر لبوابة التحقق والتوثيق إلى الحافظة! 🔗');
+  };
 
   // Execute verification query
   const runVerification = (query: string) => {
@@ -248,24 +271,63 @@ export const VerificationPortal: React.FC<Props> = ({
     <div className="max-w-7xl mx-auto space-y-6 text-right font-['Cairo',sans-serif]">
       
       {/* 1. HERO PORTAL BANNER */}
-      <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 text-white p-6 sm:p-8 rounded-3xl shadow-xl border border-slate-800 relative overflow-hidden">
+      <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 text-white p-6 sm:p-8 rounded-3xl shadow-xl border border-slate-800 relative overflow-hidden flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="relative z-10 space-y-2">
           <div className="flex items-center gap-3">
-            <div className="p-3 bg-emerald-500/20 border border-emerald-500/30 rounded-2xl">
+            <div className="p-3 bg-emerald-500/20 border border-emerald-500/30 rounded-2xl shrink-0">
               <ShieldCheck className="w-8 h-8 text-emerald-400" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-xl sm:text-2xl font-black text-white">بوابة التحقق والتوثيق الإلكتروني المعتمدة</h2>
                 <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2.5 py-0.5 rounded-full font-bold">
-                  نظام التوثيق الأكاديمي
+                  {isStandalone ? 'البوابة الرسمية المستقلة' : 'نظام التوثيق الأكاديمي'}
                 </span>
               </div>
-              <p className="text-xs sm:text-sm text-slate-300 mt-1 max-w-2xl">
-                منصة فحص صحة شهادات التقدير والشكر والجوائز الأكاديمية. أدخل رمز التوثيق (Verification Code) للتحقق من سلامة الشهادة وسجل إصدارها الرسمي.
+              <p className="text-xs sm:text-sm text-slate-300 mt-1 max-w-2xl leading-relaxed">
+                {isStandalone
+                  ? 'البوابة المعتمدة للتحقق الفوري من صحة وموثوقية شهادات التقدير والتكريم الصادرة رسمياً. أدخل رقم التوثيق أدناه لعرض بيانات وسجل الشهادة.'
+                  : 'منصة فحص صحة شهادات التقدير والشكر والجوائز الأكاديمية. أدخل رمز التوثيق (Verification Code) للتحقق من سلامة الشهادة وسجل إصدارها الرسمي.'}
               </p>
             </div>
           </div>
+        </div>
+
+        {/* Portal Standalone Window & Direct Link Buttons */}
+        <div className="relative z-10 flex flex-wrap items-center gap-2 shrink-0">
+          {!isStandalone && (
+            <button
+              type="button"
+              onClick={handleOpenStandaloneWindow}
+              className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black rounded-xl shadow-lg transition flex items-center gap-2 border border-indigo-400/30 cursor-pointer"
+              title="فتح بوابة التحقق في نافذة متصفح جديدة مستقلة برابط مباشر"
+            >
+              <ExternalLink className="w-4 h-4 text-amber-300" />
+              <span>فتح في نافذة مستقلة</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={handleCopyDirectPortalUrl}
+            className="px-3.5 py-2.5 bg-slate-800/90 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-xl border border-slate-700 transition flex items-center gap-1.5 cursor-pointer"
+            title="نسخ الرابط المباشر للبوابة للمشاركة"
+          >
+            <Copy className="w-4 h-4 text-slate-400" />
+            <span>نسخ رابط البوابة</span>
+          </button>
+
+          {isStandalone && onBackToApp && (
+            <button
+              type="button"
+              onClick={onBackToApp}
+              className="px-3.5 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black rounded-xl shadow transition flex items-center gap-1.5 cursor-pointer"
+              title="الدخول إلى المنصة الكاملة لصناعة وتصميم الشهادات"
+            >
+              <Award className="w-4 h-4" />
+              <span>دخول النظام الرئيسي</span>
+            </button>
+          )}
         </div>
 
         {/* Decorative Watermark Seal Background */}
@@ -324,8 +386,8 @@ export const VerificationPortal: React.FC<Props> = ({
           </div>
         </form>
 
-        {/* Sample / Quick Inspect Pills from stored certificates */}
-        {allCertsList.length > 0 && (
+        {/* Sample / Quick Inspect Pills from stored certificates - ONLY in internal app view, NOT in standalone portal */}
+        {!isStandalone && allCertsList.length > 0 && (
           <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center gap-2 text-xs">
             <span className="text-slate-500 font-bold text-[11px] flex items-center gap-1">
               <Sparkles className="w-3.5 h-3.5 text-amber-500" />
@@ -822,13 +884,30 @@ export const VerificationPortal: React.FC<Props> = ({
                 <span>مشاركة WhatsApp</span>
               </button>
 
-              <button
-                onClick={() => onOpenInEditor(result.cert!)}
-                className="px-3.5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl flex items-center gap-1.5 cursor-pointer shadow-xs transition"
-              >
-                <Edit3 className="w-4 h-4" />
-                <span>فتح بالمحرر</span>
-              </button>
+              {!isStandalone && onOpenInEditor && (
+                <button
+                  onClick={() => onOpenInEditor(result.cert!)}
+                  className="px-3.5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl flex items-center gap-1.5 cursor-pointer shadow-xs transition"
+                  title="فتح الشهادة في المحرر للتعديل"
+                >
+                  <Edit3 className="w-4 h-4" />
+                  <span>فتح بالمحرر</span>
+                </button>
+              )}
+
+              {isStandalone && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchQuery('');
+                    setResult(null);
+                  }}
+                  className="px-3.5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-pointer shadow-xs transition"
+                >
+                  <Search className="w-4 h-4 text-slate-600" />
+                  <span>فحص شهادة أخرى</span>
+                </button>
+              )}
             </div>
 
             <div className="flex flex-wrap items-center gap-2">

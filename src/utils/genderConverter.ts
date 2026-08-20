@@ -278,20 +278,19 @@ export async function convertArabicTextGenderAI(text: string, targetGender: Reci
 }
 
 /**
- * Transforms CertificateData object matching TypeScript types with Instant UI Update + AI Enhancement
+ * Synchronously transforms CertificateData object locally with instant phrase conversion
  */
-export async function adaptCertificateGender(
+export function adaptCertificateGenderSync(
   data: CertificateData,
   newGender: RecipientGender,
-  options?: { preserveCustomStudentName?: boolean; apiKey?: string }
-): Promise<CertificateData> {
-  // 1. التعديل المحلي المباشر واللحظي (يُطبق فوراً لمنع تعليق الشاشة)
+  options?: { preserveCustomStudentName?: boolean }
+): CertificateData {
   let newStudentName = data.studentName;
   if (!options?.preserveCustomStudentName || !data.studentName) {
     newStudentName = convertArabicTextGender(data.studentName || '', newGender);
   }
 
-  const localConvertedData: CertificateData = {
+  return {
     ...data,
     recipientGender: newGender,
     studentName: newStudentName,
@@ -302,6 +301,18 @@ export async function adaptCertificateGender(
     subtitle: convertArabicTextGender(data.subtitle || '', newGender),
     grade: convertArabicTextGender(data.grade || '', newGender),
   };
+}
+
+/**
+ * Transforms CertificateData object matching TypeScript types with Instant UI Update + AI Enhancement
+ */
+export async function adaptCertificateGender(
+  data: CertificateData,
+  newGender: RecipientGender,
+  options?: { preserveCustomStudentName?: boolean; apiKey?: string }
+): Promise<CertificateData> {
+  // 1. التعديل المحلي المباشر واللحظي (يُطبق فوراً لمنع تعليق الشاشة)
+  const localConvertedData = adaptCertificateGenderSync(data, newGender, options);
 
   if (!options?.apiKey) {
     return localConvertedData;

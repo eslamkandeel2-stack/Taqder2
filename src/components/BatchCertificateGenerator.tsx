@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { CertificateData, BatchRecord, TemplatePreset } from '../types';
+import { CertificateData, BatchRecord, TemplatePreset, StudentGroup, StudentGroupMember } from '../types';
 import { TEMPLATE_PRESETS } from '../data/templates';
 import { applyDefaultsToCertificate, getSavedDefaultSettings } from '../utils/defaultSettings';
 import { generateVerificationCode } from '../utils/qrUtils';
-import { adaptCertificateGender, detectGenderFromName } from '../utils/genderConverter';
+import { adaptCertificateGenderSync, detectGenderFromName } from '../utils/genderConverter';
 import { getSavedDrafts, DraftCertificateItem } from '../utils/draftsManager';
 import {
   getSavedBatches,
@@ -11,7 +11,13 @@ import {
   deleteBatchRecord,
   subscribeToBatches
 } from '../utils/batchManager';
+import {
+  getSavedStudentGroups,
+  subscribeToStudentGroups
+} from '../utils/studentGroupsManager';
+import { useDragScroll } from '../utils/useDragScroll';
 import { BatchCertificateViewerModal } from './BatchCertificateViewerModal';
+import { StudentGroupsManager } from './StudentGroupsManager';
 import {
   Users,
   Sparkles,
@@ -33,7 +39,11 @@ import {
   Clock,
   ExternalLink,
   Copy,
-  BookOpen
+  BookOpen,
+  FolderPlus,
+  UserCheck,
+  Search,
+  X
 } from 'lucide-react';
 
 interface Props {
@@ -48,8 +58,8 @@ export const BatchCertificateGenerator: React.FC<Props> = ({
 }) => {
   const savedDefaults = getSavedDefaultSettings();
 
-  // Active top sub-tab
-  const [activeTab, setActiveTab] = useState<'create' | 'history'>('create');
+  // Active top sub-tab: 'create' | 'groups' | 'history'
+  const [activeTab, setActiveTab] = useState<'create' | 'groups' | 'history'>('create');
 
   // Input states
   const [batchTitle, setBatchTitle] = useState<string>('دفعة تكريم المتفوقين - الفصل الأول');
@@ -68,12 +78,24 @@ export const BatchCertificateGenerator: React.FC<Props> = ({
   const [selectedSavedDraftId, setSelectedSavedDraftId] = useState<string>('');
   const [savedTemplatesList, setSavedTemplatesList] = useState<DraftCertificateItem[]>([]);
 
-  // Saved batches list
+  // Saved batches & student groups lists
   const [savedBatches, setSavedBatches] = useState<BatchRecord[]>([]);
+  const [savedGroups, setSavedGroups] = useState<StudentGroup[]>([]);
+
+  // Quick Group Student Picker Modal state
+  const [pickerGroup, setPickerGroup] = useState<StudentGroup | null>(null);
+  const [selectedStudentIdsInPicker, setSelectedStudentIdsInPicker] = useState<string[]>([]);
+  const [pickerSearchQuery, setPickerSearchQuery] = useState('');
+
+  // Loaded Group Members Tracking for Gender Precision
+  const [loadedGroupMembers, setLoadedGroupMembers] = useState<StudentGroupMember[]>([]);
+  const [sourceGroupName, setSourceGroupName] = useState<string | null>(null);
 
   // Active Batch Viewer Modal state
   const [viewerBatch, setViewerBatch] = useState<BatchRecord | null>(null);
   const [isViewerOpen, setIsViewerOpen] = useState(false);
+  const batchTabsDrag = useDragScroll();
+  const quickGroupsDrag = useDragScroll();
 
   // Toast notification
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -93,14 +115,26 @@ export const BatchCertificateGenerator: React.FC<Props> = ({
 
     // Load saved batches
     setSavedBatches(getSavedBatches());
-    const unsub = subscribeToBatches(() => {
+    const unsubBatches = subscribeToBatches(() => {
       setSavedBatches(getSavedBatches());
     });
-    return () => unsub();
+
+    // Load saved student groups
+    setSavedGroups(getSavedStudentGroups());
+    const unsubGroups = subscribeToStudentGroups(() => {
+      setSavedGroups(getSavedStudentGroups());
+    });
+
+    return () => {
+      unsubBatches();
+      unsubGroups();
+    };
   }, [selectedSavedDraftId]);
 
   // Sample student list quick paste
   const handleInsertSample = (type: 'boys' | 'girls' | 'mixed') => {
+    setLoadedGroupMembers([]);
+    setSourceGroupName(null);
     if (type === 'boys') {
       setStudentInput('عبدالله بن فهد المطيري\nخالد بن محمد السالم\nسلطان بن عبدالعزيز الدوسري\nفيصل بن نواف الشمري\nسعود بن إبراهيم القحطاني');
     } else if (type === 'girls') {
@@ -108,6 +142,72 @@ export const BatchCertificateGenerator: React.FC<Props> = ({
     } else {
       setStudentInput('أحمد بن محمد العتيبي\nسارة بنت خالد الغامدي\nعمر بن فيصل الشمري\nريما بنت ناصر الدوسري\nياسر بن عبد الله الشهري');
     }
+  };
+
+  // Open interactive student picker for a saved group
+  const handleOpenGroupPicker = (group: StudentGroup) => {
+    setPickerGroup(group);
+    setSelectedStudentIdsInPicker(group.students.map(s => s.id));
+    setPickerSearchQuery('');
+  };
+
+  // Apply selected students from group picker modal
+  const handleApplyPickedStudents = () => {
+    if (!pickerGroup) return;
+    const chosen = pickerGroup.students.filter(s => selectedStudentIdsInPicker.includes(s.id));
+    if (chosen.length === 0) {
+      showToast('يرجى اختيار طالب واحد على الأقل من المجموعة');
+      return;
+    }
+
+    setLoadedGroupMembers(chosen);
+    setSourceGroupName(pickerGroup.name);
+    const namesText = chosen.map(s => s.name).join('\n');
+    setStudentInput(namesText);
+    if (pickerGroup.grade) setGrade(pickerGroup.grade);
+    if (pickerGroup.subject) setSubject(pickerGroup.subject);
+    setBatchTitle(`دفعة تكريم ${pickerGroup.name} - ${new Date().toLocaleDateString('ar-SA')}`);
+
+    setPickerGroup(null);
+    setActiveTab('create');
+    const femaleCount = chosen.filter(s => s.gender === 'female').length;
+    const maleCount = chosen.length - femaleCount;
+    showToast(`تم استيراد (${chosen.length}) طالب بنجاح (${maleCount} بنين • ${femaleCount} بنات) من مجموعة "${pickerGroup.name}"! 🎓✨`);
+  };
+
+  // Handle single group batch setup from Groups Manager Tab
+  const handleSelectGroupFromManager = (group: StudentGroup, selectedStudentIds?: string[]) => {
+    const studentsToUse = selectedStudentIds && selectedStudentIds.length > 0
+      ? group.students.filter(s => selectedStudentIds.includes(s.id))
+      : group.students;
+
+    setLoadedGroupMembers(studentsToUse);
+    setSourceGroupName(group.name);
+    const names = studentsToUse.map(s => s.name).join('\n');
+    setStudentInput(names);
+    if (group.grade) setGrade(group.grade);
+    if (group.subject) setSubject(group.subject);
+    setBatchTitle(`دفعة تكريم ${group.name} - ${new Date().toLocaleDateString('ar-SA')}`);
+    setActiveTab('create');
+    const femaleCount = studentsToUse.filter(s => s.gender === 'female').length;
+    const maleCount = studentsToUse.length - femaleCount;
+    showToast(`تم تحميل (${studentsToUse.length}) طالب (${maleCount} بنين • ${femaleCount} بنات) من مجموعة "${group.name}"! 🎓`);
+  };
+
+  // Handle multiple groups batch setup
+  const handleSelectMultipleGroupsFromManager = (groups: StudentGroup[]) => {
+    const allMembers: StudentGroupMember[] = [];
+    groups.forEach(g => {
+      g.students.forEach(s => allMembers.push(s));
+    });
+    setLoadedGroupMembers(allMembers);
+    setSourceGroupName(groups.map(g => g.name).join(' + '));
+    setStudentInput(allMembers.map(s => s.name).join('\n'));
+    setBatchTitle(`دفعة مجمعة (${groups.map(g => g.name).join(' + ')})`);
+    setActiveTab('create');
+    const femaleCount = allMembers.filter(s => s.gender === 'female').length;
+    const maleCount = allMembers.length - femaleCount;
+    showToast(`تم استيراد ${allMembers.length} طالب (${maleCount} بنين • ${femaleCount} بنات) من (${groups.length}) مجموعات! ✨`);
   };
 
   // Determine base certificate structure according to template choice
@@ -129,14 +229,14 @@ export const BatchCertificateGenerator: React.FC<Props> = ({
     return { ...baseCertificate };
   };
 
-  // Generate batch certificates and save
+  // Generate batch certificates and save with exact gender matching
   const handleGenerateAndSaveBatch = () => {
-    const names = studentInput
+    const rawLines = studentInput
       .split('\n')
       .map(s => s.trim())
       .filter(s => s.length > 0);
 
-    if (names.length === 0) {
+    if (rawLines.length === 0) {
       showToast('يرجى كتابة اسم طالب واحد على الأقل لتوليد الشهادات');
       return;
     }
@@ -149,16 +249,58 @@ export const BatchCertificateGenerator: React.FC<Props> = ({
         ? TEMPLATE_PRESETS.find(p => p.id === selectedPresetId)?.name || 'قالب جاهز'
         : savedTemplatesList.find(d => d.id === selectedSavedDraftId)?.name || 'قالب مخصص';
 
-    const generatedCertificates: CertificateData[] = names.map((name, idx) => {
-      const detectedGender = detectGenderFromName(name);
+    const generatedCertificates: CertificateData[] = rawLines.map((rawLine, idx) => {
+      // 1. Clean name and detect any in-line gender tags e.g. "نورة القحطاني (طالبة)"
+      let cleanName = rawLine;
+      let explicitGender: 'male' | 'female' | null = null;
+
+      if (/\((?:طالبة|بنات|أنثى|female)\)/i.test(rawLine) || /,(?:طالبة|بنات|أنثى|female)/i.test(rawLine) || /\[(?:طالبة|بنات|أنثى|female)\]/i.test(rawLine)) {
+        explicitGender = 'female';
+        cleanName = rawLine.replace(/\((?:طالبة|بنات|أنثى|female)\)/gi, '').replace(/,(?:طالبة|بنات|أنثى|female)/gi, '').replace(/\[(?:طالبة|بنات|أنثى|female)\]/gi, '').trim();
+      } else if (/\((?:طالب|بنين|ذكر|male)\)/i.test(rawLine) || /,(?:طالب|بنين|ذكر|male)/i.test(rawLine) || /\[(?:طالب|بنين|ذكر|male)\]/i.test(rawLine)) {
+        explicitGender = 'male';
+        cleanName = rawLine.replace(/\((?:طالب|بنين|ذكر|male)\)/gi, '').replace(/,(?:طالب|بنين|ذكر|male)/gi, '').replace(/\[(?:طالب|بنين|ذكر|male)\]/gi, '').trim();
+      }
+
+      // 2. Check if student matches loaded group members
+      let matchedMember: StudentGroupMember | undefined = undefined;
+      if (loadedGroupMembers && loadedGroupMembers.length > 0) {
+        matchedMember = loadedGroupMembers.find(
+          m => m.name.trim().toLowerCase() === cleanName.trim().toLowerCase() ||
+               m.name.trim().toLowerCase() === rawLine.trim().toLowerCase()
+        );
+        // Fallback by sequential index if name is same
+        if (!matchedMember && loadedGroupMembers[idx] && loadedGroupMembers[idx].name.trim() === cleanName.trim()) {
+          matchedMember = loadedGroupMembers[idx];
+        }
+      }
+
+      // 3. If still not matched, check in all savedGroups
+      if (!matchedMember) {
+        for (const g of savedGroups) {
+          const found = g.students.find(s => s.name.trim().toLowerCase() === cleanName.trim().toLowerCase());
+          if (found) {
+            matchedMember = found;
+            break;
+          }
+        }
+      }
+
+      // 4. Resolve the definitive gender (Member gender > Explicit tag > Algorithmic detection)
+      const finalGender: 'male' | 'female' = 
+        explicitGender ||
+        matchedMember?.gender ||
+        detectGenderFromName(cleanName);
+
       const vCode = generateVerificationCode();
 
       let cert: CertificateData = {
         ...templateBase,
         id: `batch-cert-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
-        studentName: name,
-        grade: grade || templateBase.grade || 'الصف الدراسي',
-        subject: subject || templateBase.subject || 'التفوق والتميز',
+        studentName: cleanName,
+        recipientGender: finalGender,
+        grade: matchedMember?.grade || grade || templateBase.grade || 'الصف الدراسي',
+        subject: matchedMember?.subject || subject || templateBase.subject || 'التفوق والتميز',
         schoolName: schoolName || templateBase.schoolName || 'المدرسة',
         verificationCode: vCode,
         qrCodeData: `${window.location.origin}/verify?code=${vCode}`,
@@ -167,11 +309,12 @@ export const BatchCertificateGenerator: React.FC<Props> = ({
       };
 
       if (customAppreciation.trim()) {
-        cert.appreciationText = customAppreciation.replace(/{الاسم}/g, name);
+        cert.appreciationText = customAppreciation.replace(/{الاسم}/g, cleanName);
       }
 
       if (autoGenderAdapt) {
-        cert = adaptCertificateGender(cert, detectedGender, { preserveCustomStudentName: true });
+        cert = adaptCertificateGenderSync(cert, finalGender, { preserveCustomStudentName: true });
+        cert.recipientGender = finalGender;
       }
 
       return applyDefaultsToCertificate(cert, savedDefaults);
@@ -200,7 +343,9 @@ export const BatchCertificateGenerator: React.FC<Props> = ({
     setViewerBatch(newBatchRecord);
     setIsViewerOpen(true);
 
-    showToast(`تم بنجاح توليد وحفظ دفعة ${generatedCertificates.length} شهادة! 🎓✨`);
+    const girlsCount = generatedCertificates.filter(c => c.recipientGender === 'female').length;
+    const boysCount = generatedCertificates.length - girlsCount;
+    showToast(`تم بنجاح توليد (${generatedCertificates.length}) شهادة مخصصة (${boysCount} بنين • ${girlsCount} بنات)! 🎓✨`);
   };
 
   const handleOpenExistingBatch = (batch: BatchRecord) => {
@@ -231,51 +376,88 @@ export const BatchCertificateGenerator: React.FC<Props> = ({
       )}
 
       {/* Main Top Header Banner */}
-      <div className="bg-gradient-to-r from-slate-900 via-amber-950 to-slate-900 text-white p-6 rounded-3xl shadow-xl border border-amber-500/20 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        <div>
+      <div className="bg-gradient-to-r from-slate-900 via-amber-950 to-slate-900 text-white p-4 sm:p-6 rounded-3xl shadow-xl border border-amber-500/20 flex flex-col xl:flex-row items-start xl:items-center justify-between gap-4">
+        <div className="min-w-0">
           <div className="flex items-center gap-3">
-            <span className="p-2.5 bg-amber-500/20 text-amber-300 rounded-2xl border border-amber-500/30">
-              <Users className="w-7 h-7" />
+            <span className="p-2.5 bg-amber-500/20 text-amber-300 rounded-2xl border border-amber-500/30 shrink-0">
+              <Users className="w-6 h-6 sm:w-7 sm:h-7" />
             </span>
             <div>
-              <h2 className="text-xl sm:text-2xl font-black tracking-tight">مولد الشهادات الجماعية للدفعة بالفصل</h2>
-              <p className="text-xs text-amber-200/80 mt-1">
+              <h2 className="text-lg sm:text-2xl font-black tracking-tight">مولد الشهادات الجماعية للدفعة بالفصل</h2>
+              <p className="text-xs text-amber-200/80 mt-0.5 leading-relaxed">
                 توليد فوري لدفعات الشهادات، اختيار القالب المعتمد، تجميع الشهادات في ملف PDF واحد للطباعة، وتوثيق جماعي على Google Drive مع باركود مستقل لكل طالب.
               </p>
             </div>
           </div>
         </div>
 
-        {/* Tab Navigation */}
-        <div className="flex items-center bg-slate-900/90 p-1.5 rounded-2xl border border-slate-700/80 shrink-0">
-          <button
-            onClick={() => setActiveTab('create')}
-            className={`px-4 py-2 rounded-xl text-xs font-black transition flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'create'
-                ? 'bg-amber-500 text-slate-950 shadow-md'
-                : 'text-slate-300 hover:text-white'
-            }`}
+        {/* Tab Navigation - Single Row with Horizontal Drag Scroll */}
+        <div className="w-full xl:w-auto overflow-hidden">
+          <div
+            ref={batchTabsDrag.scrollRef}
+            onMouseDown={batchTabsDrag.onMouseDown}
+            onMouseLeave={batchTabsDrag.onMouseLeave}
+            onMouseUp={batchTabsDrag.onMouseUp}
+            onMouseMove={batchTabsDrag.onMouseMove}
+            className="flex flex-nowrap items-center bg-slate-900/95 p-1.5 rounded-2xl border border-slate-700/90 gap-1.5 overflow-x-auto no-scrollbar touch-pan-x cursor-grab active:cursor-grabbing select-none max-w-full"
           >
-            <Plus className="w-4 h-4" />
-            <span>توليد دفعة جديدة</span>
-          </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('create')}
+              className={`px-4 py-2.5 rounded-xl text-xs font-black transition flex items-center gap-2 cursor-pointer shrink-0 whitespace-nowrap ${
+                activeTab === 'create'
+                  ? 'bg-amber-500 text-slate-950 shadow-md ring-2 ring-amber-400/40'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800/90'
+              }`}
+            >
+              <Plus className="w-4 h-4 shrink-0" />
+              <span>توليد دفعة جديدة</span>
+            </button>
 
-          <button
-            onClick={() => setActiveTab('history')}
-            className={`px-4 py-2 rounded-xl text-xs font-black transition flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'history'
-                ? 'bg-amber-500 text-slate-950 shadow-md'
-                : 'text-slate-300 hover:text-white'
-            }`}
-          >
-            <Clock className="w-4 h-4" />
-            <span>سجل الدفعات المحفوظة</span>
-            {savedBatches.length > 0 && (
-              <span className="text-[10px] bg-amber-950/80 text-amber-300 px-2 py-0.5 rounded-full font-bold border border-amber-500/30">
-                {savedBatches.length}
-              </span>
-            )}
-          </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('groups')}
+              className={`px-4 py-2.5 rounded-xl text-xs font-black transition flex items-center gap-2 cursor-pointer shrink-0 whitespace-nowrap ${
+                activeTab === 'groups'
+                  ? 'bg-amber-500 text-slate-950 shadow-md ring-2 ring-amber-400/40'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800/90'
+              }`}
+            >
+              <Users className="w-4 h-4 text-sky-400 shrink-0" />
+              <span>سجل مجموعات الطلاب</span>
+              {savedGroups.length > 0 && (
+                <span className={`text-[11px] px-2 py-0.5 rounded-full font-bold border font-mono ${
+                  activeTab === 'groups'
+                    ? 'bg-slate-950 text-amber-300 border-amber-400/40'
+                    : 'bg-sky-950 text-sky-300 border-sky-500/30'
+                }`}>
+                  {savedGroups.length}
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('history')}
+              className={`px-4 py-2.5 rounded-xl text-xs font-black transition flex items-center gap-2 cursor-pointer shrink-0 whitespace-nowrap ${
+                activeTab === 'history'
+                  ? 'bg-amber-500 text-slate-950 shadow-md ring-2 ring-amber-400/40'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800/90'
+              }`}
+            >
+              <Clock className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>سجل الدفعات المحفوظة</span>
+              {savedBatches.length > 0 && (
+                <span className={`text-[11px] px-2 py-0.5 rounded-full font-bold border font-mono ${
+                  activeTab === 'history'
+                    ? 'bg-slate-950 text-amber-300 border-amber-400/40'
+                    : 'bg-amber-950/80 text-amber-300 border-amber-500/30'
+                }`}>
+                  {savedBatches.length}
+                </span>
+              )}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -286,16 +468,73 @@ export const BatchCertificateGenerator: React.FC<Props> = ({
           {/* Right Input Form Column (7 Cols) */}
           <div className="lg:col-span-7 bg-white p-5 sm:p-6 rounded-3xl shadow-sm border border-slate-200 space-y-5">
             
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            {/* Quick Saved Groups Selector Banner */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 space-y-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs font-black text-white flex items-center gap-1.5">
+                  <FolderPlus className="w-4 h-4 text-amber-400" />
+                  اختيار سريع من سجل المجموعات والصفوف المحفوظة:
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('groups')}
+                  className="text-[11px] text-amber-300 hover:text-amber-200 font-bold hover:underline cursor-pointer"
+                >
+                  إدارة المجموعات 👥
+                </button>
+              </div>
+
+              {savedGroups.length === 0 ? (
+                <div className="bg-slate-950/80 p-2.5 rounded-xl border border-slate-800 text-[11px] text-slate-400 flex items-center justify-between">
+                  <span>لا توجد مجموعات صفوف محفوظة بعد. أنشئ مجموعة لحفظ فصولك.</span>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('groups')}
+                    className="px-2.5 py-1 bg-amber-500 text-slate-950 text-[10px] font-black rounded-lg cursor-pointer"
+                  >
+                    + إنشاء مجموعة
+                  </button>
+                </div>
+              ) : (
+                <div
+                  ref={quickGroupsDrag.scrollRef}
+                  onMouseDown={quickGroupsDrag.onMouseDown}
+                  onMouseLeave={quickGroupsDrag.onMouseLeave}
+                  onMouseUp={quickGroupsDrag.onMouseUp}
+                  onMouseMove={quickGroupsDrag.onMouseMove}
+                  className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar touch-pan-x cursor-grab active:cursor-grabbing select-none"
+                >
+                  {savedGroups.map((g) => (
+                    <button
+                      key={g.id}
+                      type="button"
+                      onClick={() => handleOpenGroupPicker(g)}
+                      className="px-3 py-1.5 bg-slate-950 hover:bg-slate-800 border border-slate-700 hover:border-amber-400 rounded-xl text-xs text-slate-200 font-bold flex items-center gap-2 shrink-0 transition group cursor-pointer"
+                    >
+                      <span
+                        className="w-2.5 h-2.5 rounded-full shrink-0"
+                        style={{ backgroundColor: g.color || '#3b82f6' }}
+                      />
+                      <span>{g.name}</span>
+                      <span className="text-[10px] bg-slate-800 text-amber-300 px-1.5 py-0.2 rounded font-mono">
+                        {g.students.length}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
               <h3 className="font-black text-sm text-slate-900 flex items-center gap-2">
                 <FileSpreadsheet className="w-4 h-4 text-amber-600" />
                 بيانات الدفعة وقائمة الطلاب
               </h3>
-              <div className="flex items-center gap-1 text-[11px] font-bold text-slate-500">
-                <span>نماذج سريعة:</span>
-                <button onClick={() => handleInsertSample('boys')} className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md">طلاب</button>
-                <button onClick={() => handleInsertSample('girls')} className="px-2 py-0.5 bg-pink-50 hover:bg-pink-100 text-pink-700 rounded-md">طالبات</button>
-                <button onClick={() => handleInsertSample('mixed')} className="px-2 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-md">مختلط</button>
+              <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-bold text-slate-500">
+                <span className="shrink-0">نماذج سريعة:</span>
+                <button onClick={() => handleInsertSample('boys')} className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md transition cursor-pointer">طلاب</button>
+                <button onClick={() => handleInsertSample('girls')} className="px-2 py-0.5 bg-pink-50 hover:bg-pink-100 text-pink-700 rounded-md transition cursor-pointer">طالبات</button>
+                <button onClick={() => handleInsertSample('mixed')} className="px-2 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-md transition cursor-pointer">مختلط</button>
               </div>
             </div>
 
@@ -321,6 +560,30 @@ export const BatchCertificateGenerator: React.FC<Props> = ({
                   العدد: {studentInput.split('\n').filter(s => s.trim().length > 0).length} طالب
                 </span>
               </div>
+
+              {sourceGroupName && loadedGroupMembers.length > 0 && (
+                <div className="mb-2 bg-emerald-50 border border-emerald-200 rounded-xl p-2.5 flex items-center justify-between gap-2 text-xs text-emerald-950">
+                  <div className="flex items-center gap-2">
+                    <UserCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>
+                      تم ربط مجموعة <strong>"{sourceGroupName}"</strong> — سيتم توليد وتأنيث/تذكير كل شهادة تلقائياً حسب نوع كل طالب المحفوظ:{' '}
+                      <span className="font-bold text-sky-800">({loadedGroupMembers.filter(m => m.gender === 'male').length} بنين 👦</span> •{' '}
+                      <span className="font-bold text-pink-700">{loadedGroupMembers.filter(m => m.gender === 'female').length} بنات 👧)</span>
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSourceGroupName(null);
+                      setLoadedGroupMembers([]);
+                    }}
+                    className="text-emerald-700 hover:text-emerald-900 text-[10px] font-bold underline shrink-0 cursor-pointer"
+                  >
+                    إلغاء الربط
+                  </button>
+                </div>
+              )}
+
               <textarea
                 rows={7}
                 value={studentInput}
@@ -562,7 +825,15 @@ export const BatchCertificateGenerator: React.FC<Props> = ({
         </div>
       )}
 
-      {/* TAB 2: SAVED BATCHES HISTORY */}
+      {/* TAB 2: STUDENT GROUPS & CLASSES MANAGER */}
+      {activeTab === 'groups' && (
+        <StudentGroupsManager
+          onSelectGroupForBatch={handleSelectGroupFromManager}
+          onSelectMultipleGroupsForBatch={handleSelectMultipleGroupsFromManager}
+        />
+      )}
+
+      {/* TAB 3: SAVED BATCHES HISTORY */}
       {activeTab === 'history' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between bg-white p-4 rounded-2xl border border-slate-200">
@@ -645,6 +916,132 @@ export const BatchCertificateGenerator: React.FC<Props> = ({
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* QUICK STUDENT PICKER MODAL FOR GROUP SELECTION */}
+      {pickerGroup && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl max-w-xl w-full text-right shadow-2xl flex flex-col max-h-[85vh] overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-200">
+            
+            {/* Header */}
+            <div className="p-4 sm:p-5 bg-slate-950 border-b border-slate-800 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div
+                  className="w-3.5 h-8 rounded-full"
+                  style={{ backgroundColor: pickerGroup.color || '#3b82f6' }}
+                />
+                <div>
+                  <h3 className="text-base font-black text-white">
+                    اختيار طلاب مجموعة: {pickerGroup.name}
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    حدد الطلاب المطلوب توليد شهادات لهم من هذه المجموعة.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setPickerGroup(null)}
+                className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Quick Actions & Search Bar */}
+            <div className="p-3 bg-slate-950/90 border-b border-slate-800 flex items-center justify-between gap-3 shrink-0">
+              <div className="relative flex-1">
+                <Search className="w-3.5 h-3.5 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  value={pickerSearchQuery}
+                  onChange={(e) => setPickerSearchQuery(e.target.value)}
+                  placeholder="ابحث باسم الطالب..."
+                  className="w-full pl-3 pr-8 py-1.5 bg-slate-900 border border-slate-700 text-xs rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setSelectedStudentIdsInPicker(pickerGroup.students.map(s => s.id))}
+                  className="px-2.5 py-1 text-[11px] font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg cursor-pointer"
+                >
+                  تحديد الكل
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedStudentIdsInPicker([])}
+                  className="px-2.5 py-1 text-[11px] font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg cursor-pointer"
+                >
+                  إلغاء التحديد
+                </button>
+              </div>
+            </div>
+
+            {/* Students Checklist */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+              {pickerGroup.students.length === 0 ? (
+                <p className="text-xs text-slate-400 text-center py-6">لا يوجد طلاب مسجلون في هذه المجموعة.</p>
+              ) : (
+                pickerGroup.students
+                  .filter(s => !pickerSearchQuery.trim() || s.name.toLowerCase().includes(pickerSearchQuery.toLowerCase().trim()))
+                  .map((st) => {
+                    const isChecked = selectedStudentIdsInPicker.includes(st.id);
+                    return (
+                      <div
+                        key={st.id}
+                        onClick={() => {
+                          setSelectedStudentIdsInPicker(prev =>
+                            prev.includes(st.id) ? prev.filter(id => id !== st.id) : [...prev, st.id]
+                          );
+                        }}
+                        className={`p-2.5 rounded-xl border transition flex items-center justify-between cursor-pointer ${
+                          isChecked
+                            ? 'bg-slate-800 border-amber-400/80 text-white'
+                            : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => {}}
+                            className="w-4 h-4 rounded text-amber-500 focus:ring-amber-500 bg-slate-900 border-slate-700 cursor-pointer"
+                          />
+                          <span className="text-xs font-bold">{st.name}</span>
+                        </div>
+
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
+                          st.gender === 'female' ? 'bg-pink-950 text-pink-300' : 'bg-sky-950 text-sky-300'
+                        }`}>
+                          {st.gender === 'female' ? 'طالبة' : 'طالب'}
+                        </span>
+                      </div>
+                    );
+                  })
+              )}
+            </div>
+
+            {/* Modal Bottom Footer */}
+            <div className="p-4 bg-slate-950 border-t border-slate-800 flex items-center justify-between gap-3 shrink-0">
+              <span className="text-xs text-slate-400 font-bold">
+                المحدد: <span className="text-amber-300 font-black">{selectedStudentIdsInPicker.length}</span> من {pickerGroup.students.length} طالب
+              </span>
+
+              <button
+                type="button"
+                onClick={handleApplyPickedStudents}
+                disabled={selectedStudentIdsInPicker.length === 0}
+                className="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 disabled:opacity-40 text-slate-950 font-black text-xs rounded-xl shadow-lg transition flex items-center gap-2 cursor-pointer"
+              >
+                <Sparkles className="w-4 h-4" />
+                <span>استيراد الطلاب المحددين ({selectedStudentIdsInPicker.length})</span>
+              </button>
+            </div>
+
+          </div>
         </div>
       )}
 

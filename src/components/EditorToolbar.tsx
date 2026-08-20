@@ -5,7 +5,7 @@ import { BACKGROUND_TEXTURES } from '../data/backgrounds';
 import { getFormattedTodayDate, getTodayHijriDate, getTodayGregorianDate, normalizeDateDigits, getSavedDefaultSettings, saveDefaultSettingsToStorage } from '../utils/defaultSettings';
 import { GRADIENT_PRESETS, GRADIENT_COLOR_SWATCHES } from '../utils/gradientUtils';
 import { generateVerificationCode, sanitizeVerificationCode } from '../utils/qrUtils';
-import { adaptCertificateGender, RecipientGender } from '../utils/genderConverter';
+import { adaptCertificateGender, adaptCertificateGenderSync, RecipientGender } from '../utils/genderConverter';
 import {
   calculateSafeMargins,
   optimizeMarginsWithAi,
@@ -888,7 +888,7 @@ export const EditorToolbar: React.FC<Props> = ({
     };
 
     // Adapt preset phrasing automatically to user's selected gender (male or female)
-    mergedData = adaptCertificateGender(mergedData, currentGender, { preserveCustomStudentName: true });
+    mergedData = adaptCertificateGenderSync(mergedData, currentGender, { preserveCustomStudentName: true });
 
     onChange(mergedData);
   };

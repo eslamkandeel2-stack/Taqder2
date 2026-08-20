@@ -76,7 +76,8 @@
   height: 100%;
   width: 100%;
   box-sizing: border-box;
-  gap: 12px;
+  /* Flexible percentage-based breathing room depending on certificate width */
+  gap: clamp(14px, 1.75%, 26px);
   padding: 32px 40px 30px 40px;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -93,7 +94,7 @@
     "stamps"
     "signatures";
   align-content: space-between;
-  gap: 12px;
+  gap: clamp(14px, 1.75%, 26px);
 }
 
 /* 2. Modern Split Layout (العصري المدمج) */
@@ -107,7 +108,7 @@
     "body body"
     "stamps signatures";
   align-content: space-between;
-  gap: 16px;
+  gap: clamp(16px, 2.0%, 28px);
 }
 
 /* 3. Sidebar Right Layout (الإطار الجانبي الأيمن) */
@@ -121,7 +122,7 @@
     "stamps body"
     "stamps signatures";
   align-content: space-between;
-  gap: 18px;
+  gap: clamp(16px, 2.1%, 30px);
 }
 
 /* 4. Sidebar Left Layout (الإطار الجانبي الأيسر) */
@@ -134,7 +135,7 @@
     "body stamps"
     "signatures stamps";
   align-content: space-between;
-  gap: 18px;
+  gap: clamp(16px, 2.1%, 30px);
 }
 
 /* 5. Minimal Centered Layout (الملكي المتمركز) */
@@ -150,7 +151,7 @@
     "signatures";
   align-content: space-around;
   justify-items: center;
-  gap: 16px;
+  gap: clamp(16px, 2.2%, 30px);
 }
 
 /* 6. Executive Horizontal Layout (التنفيذي الأكاديمي) */
@@ -164,7 +165,7 @@
     "body stamps"
     "signatures signatures";
   align-content: space-between;
-  gap: 16px;
+  gap: clamp(16px, 2.0%, 28px);
 }
 
 /* 7. Diploma Grand Layout (دبلوم التخرج الرفيع) */
@@ -178,7 +179,7 @@
     "signatures"
     "stamps";
   align-content: space-between;
-  gap: 14px;
+  gap: clamp(15px, 1.85%, 26px);
 }
 
 /* Common Grid Areas */

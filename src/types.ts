@@ -487,3 +487,27 @@ export interface BatchVerificationReportItem {
   error?: string;
 }
 
+export interface StudentGroupMember {
+  id: string;
+  name: string;
+  gender?: 'male' | 'female';
+  grade?: string;
+  subject?: string;
+  notes?: string;
+  customText?: string;
+}
+
+export interface StudentGroup {
+  id: string;
+  name: string; // e.g. "صف رابع - أ", "المتميزون في الرياضيات"
+  description?: string;
+  grade?: string; // e.g. "الصف الرابع الابتدائي"
+  subject?: string; // e.g. "التفوق والتميز الأكاديمي"
+  defaultGender?: 'male' | 'female' | 'mixed';
+  students: StudentGroupMember[];
+  createdAt: string;
+  updatedAt: string;
+  color?: string; // Hex color tag e.g. '#f59e0b', '#3b82f6', '#10b981'
+}
+
+

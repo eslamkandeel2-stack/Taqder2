@@ -220,21 +220,38 @@ export const VerificationModal: React.FC<Props> = ({
             <X className="w-5 h-5" />
           </button>
 
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center text-slate-950 shadow-md shrink-0">
-              <ShieldCheck className="w-7 h-7" />
-            </div>
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h3 className="text-lg sm:text-xl font-black">منصة التحقق والتوثيق الرقمي</h3>
-                <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2 py-0.5 rounded-full font-bold">
-                  سجل التوثيق الرسمي
-                </span>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pr-2">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center text-slate-950 shadow-md shrink-0">
+                <ShieldCheck className="w-7 h-7" />
               </div>
-              <p className="text-xs text-slate-300 mt-0.5">
-                تأكد من صحة الشهادة والاعتماد الرسمي ومطابقة الرمز التسلسلي والبصمة الرقمية
-              </p>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-lg sm:text-xl font-black">منصة التحقق والتوثيق الرقمي</h3>
+                  <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2 py-0.5 rounded-full font-bold">
+                    سجل التوثيق الرسمي
+                  </span>
+                </div>
+                <p className="text-xs text-slate-300 mt-0.5">
+                  تأكد من صحة الشهادة والاعتماد الرسمي ومطابقة الرمز التسلسلي والبصمة الرقمية
+                </p>
+              </div>
             </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                const code = result?.verificationCode || searchCode || initialCode || '';
+                const url = `${window.location.origin}${window.location.pathname}?tab=verify${code ? `&code=${encodeURIComponent(code)}` : ''}`;
+                window.open(url, '_blank', 'noopener,noreferrer');
+                showToast('تم فتح بوابة التحقق والتوثيق في نافذة مستقلة برابط منفصل! 🌐✨');
+              }}
+              className="px-3 py-1.5 bg-indigo-600/80 hover:bg-indigo-600 text-white text-xs font-bold rounded-xl border border-indigo-400/40 transition flex items-center gap-1.5 self-start sm:self-auto cursor-pointer"
+              title="فتح بوابة التحقق في نافذة مستقلة برابط منفصل"
+            >
+              <ExternalLink className="w-3.5 h-3.5 text-amber-300" />
+              <span>فتح بنافذة مستقلة</span>
+            </button>
           </div>
         </div>
 

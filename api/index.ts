@@ -1,7 +1,5 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
-
 // إعداد خيارات CORS
-function setCorsHeaders(res: VercelResponse) {
+function setCorsHeaders(res: any) {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
@@ -12,7 +10,7 @@ function setCorsHeaders(res: VercelResponse) {
 }
 
 // استخراج بيانات الطلب والمفاتيح
-function extractAiCredentials(req: VercelRequest) {
+function extractAiCredentials(req: any) {
   let bodyData = req.body;
   if (typeof req.body === 'string' && req.body.trim() !== '') {
     try {
@@ -76,7 +74,7 @@ async function callGeminiDirectly(apiKey: string, model: string, prompt: string,
   return outputText;
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: any, res: any) {
   setCorsHeaders(res);
 
   if (req.method === 'OPTIONS') {
@@ -196,3 +194,10 @@ ${text}`;
         });
       }
     }
+
+    return res.status(404).json({ success: false, error: 'المسار المطلوب غير موجود' });
+  } catch (error: any) {
+    console.error('Server error:', error);
+    return res.status(500).json({ success: false, error: error?.message || 'حدث خطأ في الخادم' });
+  }
+}

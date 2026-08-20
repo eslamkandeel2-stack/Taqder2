@@ -38,7 +38,9 @@ import {
   HelpCircle,
   Undo2,
   Redo2,
-  Cloud
+  Cloud,
+  ShieldCheck,
+  Award
 } from 'lucide-react';
 
 const RAW_INITIAL_CERTIFICATE_DATA: CertificateData = {
@@ -142,19 +144,31 @@ const getAutosavedInitialData = (): CertificateData => {
 export default function App() {
   const [activeTab, setActiveTab] = useState<'editor' | 'batch' | 'dashboard' | 'cloud' | 'verify' | 'ai' | 'settings'>('editor');
   const [urlVerifyCode, setUrlVerifyCode] = useState<string>('');
+  const [isStandalonePortal, setIsStandalonePortal] = useState<boolean>(false);
   
   // History State for Undo / Redo - initialized with LocalStorage autosaved draft if present
   const [history, setHistory] = useState<CertificateData[]>(() => [getAutosavedInitialData()]);
   const [historyIndex, setHistoryIndex] = useState<number>(0);
   const [lastAutosavedTime, setLastAutosavedTime] = useState<string | null>(null);
 
-  // Check URL query parameters for direct verification link
+  // Check URL query parameters for direct verification link or standalone portal mode
   useEffect(() => {
     try {
       const params = new URLSearchParams(window.location.search);
       const code = params.get('code') || params.get('verify') || params.get('id');
-      if (code) {
-        setUrlVerifyCode(code);
+      const tab = params.get('tab');
+      const isPortal = params.get('portal') === 'true' || params.get('standalone') === 'true';
+
+      if (isPortal) {
+        setIsStandalonePortal(true);
+        setActiveTab('verify');
+        if (code) {
+          setUrlVerifyCode(code);
+        }
+      } else if (tab === 'verify' || code) {
+        if (code) {
+          setUrlVerifyCode(code);
+        }
         setActiveTab('verify');
       }
     } catch (e) {
@@ -432,6 +446,86 @@ export default function App() {
       showToast('حدث خطأ أثناء الحفظ بالسحابة.');
     }
   };
+
+  if (isStandalonePortal) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 font-['Cairo',sans-serif] flex flex-col">
+        {/* Toast Notification Bar */}
+        {toastMessage && (
+          <div className="fixed bottom-5 right-5 z-50 bg-slate-900 text-amber-300 border border-amber-500/40 px-4 py-2.5 rounded-xl shadow-2xl font-bold text-xs flex items-center gap-2 animate-bounce">
+            <Sparkles className="w-4 h-4 text-amber-400" />
+            {toastMessage}
+          </div>
+        )}
+
+        {/* Dedicated Standalone Public Header */}
+        <header className="bg-slate-900/90 backdrop-blur-md border-b border-slate-800 sticky top-0 z-40 px-4 sm:px-8 py-3.5 flex items-center justify-between text-right">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center text-slate-950 font-black shadow-lg shrink-0">
+              <ShieldCheck className="w-6 h-6 text-slate-950" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-base sm:text-lg font-black text-white">بوابة التحقق والتوثيق الإلكتروني المعتمدة</h1>
+                <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold">
+                  منظومة تَقْدِير
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 hidden sm:block">
+                المنصة الرقمية للتحقق الفوري من صحة ومطابقة الشهادات والوثائق الأكاديمية
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                const url = `${window.location.origin}${window.location.pathname}?tab=verify&portal=true${urlVerifyCode ? `&code=${encodeURIComponent(urlVerifyCode)}` : ''}`;
+                navigator.clipboard.writeText(url);
+                showToast('تم نسخ الرابط المباشر لبوابة التحقق 🔗');
+              }}
+              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-xl border border-slate-700 transition flex items-center gap-1.5 cursor-pointer"
+            >
+              <Share2 className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden sm:inline">نسخ الرابط</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setIsStandalonePortal(false);
+                setActiveTab('editor');
+                window.history.replaceState({}, '', window.location.pathname);
+              }}
+              className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl shadow transition flex items-center gap-1.5 cursor-pointer"
+            >
+              <Award className="w-4 h-4" />
+              <span>دخول النظام الرئيسي</span>
+            </button>
+          </div>
+        </header>
+
+        {/* Main Standalone Body */}
+        <main className="flex-1 max-w-[1400px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+          <VerificationPortal
+            currentCertificate={certificateData}
+            initialCode={urlVerifyCode}
+            isStandalone={true}
+            onBackToApp={() => {
+              setIsStandalonePortal(false);
+              setActiveTab('editor');
+              window.history.replaceState({}, '', window.location.pathname);
+            }}
+            onShowToast={showToast}
+          />
+        </main>
+
+        {/* Dedicated Standalone Footer */}
+        <footer className="bg-slate-900 border-t border-slate-800 py-6 text-center text-xs text-slate-400">
+          <p>© {new Date().getFullYear()} منصة تَقْدِير - نظام التوثيق والمصادقة الأكاديمي الرقمي المعتمد. جميع الحقوق محفوظة.</p>
+        </footer>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-100/70 text-slate-900 font-['Cairo',sans-serif] flex flex-col pb-12">
