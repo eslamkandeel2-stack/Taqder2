@@ -8,7 +8,14 @@ import {
 import { generateQRCodeDataUrl } from '../utils/qrUtils';
 import { generateCode39Bars } from '../utils/barcodeUtils';
 import { exportCertificateAsPdf, exportCertificateAsPng, waitForImagesToLoad } from '../utils/exportUtils';
-import { openCertificateInBrowserWindow, printCertificateViaIframe } from '../utils/printUtils';
+import {
+  openCertificateInBrowserWindow,
+  printCertificateViaIframe,
+  openVerificationStatementInBrowserWindow,
+  printVerificationStatementViaIframe
+} from '../utils/printUtils';
+import { getSavedDefaultSettings } from '../utils/defaultSettings';
+import { DriveVerificationRequestModal } from './DriveVerificationRequestModal';
 import { CertificateCanvas } from './CertificateCanvas';
 import {
   ShieldCheck,
@@ -38,7 +45,8 @@ import {
   RefreshCw,
   Eye,
   EyeOff,
-  AlertCircle
+  AlertCircle,
+  Send
 } from 'lucide-react';
 
 interface Props {
@@ -67,6 +75,7 @@ export const VerificationPortal: React.FC<Props> = ({
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [allCertsList, setAllCertsList] = useState<Array<{ cert: CertificateData; source: string; batchTitle?: string }>>([]);
+  const [isDriveRequestModalOpen, setIsDriveRequestModalOpen] = useState(false);
 
   const statementRef = useRef<HTMLDivElement>(null);
   const verifiedCanvasRef = useRef<HTMLDivElement>(null);
@@ -227,8 +236,32 @@ export const VerificationPortal: React.FC<Props> = ({
     setTimeout(() => setCopiedKey(null), 2000);
   };
 
-  const handlePrintStatement = () => {
-    window.print();
+  const handlePrintStatement = async () => {
+    if (!statementRef.current || !result || !result.cert) {
+      window.print();
+      return;
+    }
+    showToast('جاري تجهيز وثيقة التحقق الرسمية للطباعة... 🖨️');
+    try {
+      const opened = await openVerificationStatementInBrowserWindow(
+        statementRef.current,
+        result.cert.studentName,
+        result.verificationCode
+      );
+      if (!opened) {
+        await printVerificationStatementViaIframe(
+          statementRef.current,
+          result.cert.studentName,
+          result.verificationCode
+        );
+        showToast('تم إرسال أمر طباعة الوثيقة بنجاح!');
+      } else {
+        showToast('تم فتح وثيقة التحقق في نافذة الطباعة بنجاح!');
+      }
+    } catch (e) {
+      console.error('Print statement error:', e);
+      window.print();
+    }
   };
 
   const handleShareWhatsApp = (cert: CertificateData, code: string) => {
@@ -620,20 +653,32 @@ export const VerificationPortal: React.FC<Props> = ({
                         </div>
                       </div>
                     ) : (
-                      <div className="flex items-center justify-between bg-white p-3 rounded-xl border border-slate-200">
+                      <div className="flex flex-wrap items-center justify-between gap-2 bg-white p-3 rounded-xl border border-slate-200">
                         <span className="text-xs text-slate-500 flex items-center gap-1">
                           <Cloud className="w-4 h-4 text-slate-400" />
                           <span>غير مرفوعة على Google Drive حتى الآن</span>
                         </span>
-                        {onOpenGoogleDriveModal && (
+                        <div className="flex items-center gap-1.5">
                           <button
-                            onClick={() => onOpenGoogleDriveModal(result.cert!)}
-                            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer"
+                            type="button"
+                            onClick={() => setIsDriveRequestModalOpen(true)}
+                            className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer transition shadow-xs"
+                            title="إرسال طلب توثيق وحفظ الشهادة على Google Drive السحابية"
                           >
-                            <Cloud className="w-3.5 h-3.5" />
-                            <span>رفع لـ Google Drive</span>
+                            <Send className="w-3.5 h-3.5" />
+                            <span>طلب التوثيق على Drive ☁️</span>
                           </button>
-                        )}
+                          {onOpenGoogleDriveModal && (
+                            <button
+                              type="button"
+                              onClick={() => onOpenGoogleDriveModal(result.cert!)}
+                              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer transition shadow-xs"
+                            >
+                              <Cloud className="w-3.5 h-3.5" />
+                              <span>رفع لـ Google Drive</span>
+                            </button>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -779,91 +824,148 @@ export const VerificationPortal: React.FC<Props> = ({
           )}
 
           {/* E. TAB 3: OFFICIAL STATEMENT OF VERIFICATION (PRINTABLE) */}
-          {activeTab === 'statement' && (
-            <div className="p-6 bg-slate-100 space-y-4">
-              <div className="flex justify-between items-center bg-white p-3 rounded-2xl border border-slate-200">
-                <span className="text-xs text-slate-600 font-bold">وثيقة التحقق الرسمية الجاهزة للطباعة:</span>
-                <button
-                  onClick={handlePrintStatement}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs rounded-xl shadow transition flex items-center gap-1.5 cursor-pointer"
+          {activeTab === 'statement' && (() => {
+            const docSettings = getSavedDefaultSettings();
+            const ministryH1 = docSettings.verificationDocMinistryHeader1 || 'المملكة العربية السعودية';
+            const ministryH2 = docSettings.verificationDocMinistryHeader2 || 'وزارة التعليم / منصة تَقْدِير';
+            const platformName = docSettings.verificationDocPlatformName || 'منصة تَقْدِير الوطنية لتوثيق الشهادات والجوائز التعليمية';
+            const docTitle = docSettings.verificationDocTitle || 'إفادة وتحقق إلكتروني رسمي من صحة شهادة تقدير';
+            const docSubtitle = docSettings.verificationDocSubtitle || 'Official Certificate Verification & Authentication Statement';
+            const declaration = docSettings.verificationDocDeclaration || 'تشهد منصة تَقْدِير ومطابقة السجلات الرقمية بأن شهادة التقدير والتفوق الصادرة بالبيانات أدناه هي شهادة أصلية، نظامية، وموثقة إلكترونياً بقواعد البيانات المركزية:';
+            const authority = docSettings.verificationDocAuthority || 'إدارة التوثيق والاعتماد الأكاديمي الرقمي';
+            const watermark = docSettings.verificationDocWatermark || 'معتمد رسمياً - VERIFIED';
+            const primaryCol = docSettings.verificationDocPrimaryColor || '#047857';
+            const borderCol = docSettings.verificationDocBorderColor || '#10b981';
+
+            return (
+              <div className="p-6 bg-slate-100 space-y-4">
+                <div className="flex flex-wrap justify-between items-center bg-white p-3 rounded-2xl border border-slate-200 gap-2">
+                  <div>
+                    <span className="text-xs text-slate-700 font-bold block">وثيقة التحقق الرسمية المعتمدة:</span>
+                    <span className="text-[10px] text-slate-500">جاهزة للطباعة المباشرة والتصدير والتضمين</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handlePrintStatement}
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs rounded-xl shadow transition flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Printer className="w-4 h-4" />
+                      <span>طباعة الوثيقة الرسمية</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Printable Statement Container */}
+                <div
+                  ref={statementRef}
+                  className="bg-white p-8 rounded-3xl border-2 shadow-xl max-w-3xl mx-auto text-right space-y-6 print:p-0 print:border-none print:shadow-none font-['Cairo',sans-serif] relative overflow-hidden"
+                  style={{ borderColor: borderCol }}
                 >
-                  <Printer className="w-4 h-4" />
-                  <span>طباعة الوثيقة الرسمية</span>
-                </button>
+                  {/* Decorative Watermark */}
+                  {watermark && (
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.03] select-none z-0">
+                      <span className="text-6xl font-black rotate-[-25deg] text-slate-900 whitespace-nowrap">
+                        {watermark}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Statement Header */}
+                  <div className="border-b-2 pb-4 flex items-center justify-between relative z-10" style={{ borderColor: primaryCol }}>
+                    <div className="space-y-1">
+                      <h3 className="text-lg font-black text-slate-900">{ministryH1}</h3>
+                      <h4 className="text-xs font-bold text-slate-700">{ministryH2}</h4>
+                      <p className="text-[11px] text-slate-500">{platformName}</p>
+                    </div>
+                    <div className="text-center space-y-1">
+                      <div
+                        className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto border-2 shadow-xs"
+                        style={{ backgroundColor: `${primaryCol}15`, borderColor: primaryCol, color: primaryCol }}
+                      >
+                        <ShieldCheck className="w-10 h-10" />
+                      </div>
+                      <span className="text-[10px] font-black block" style={{ color: primaryCol }}>
+                        وثيقة رسمية معتمدة
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Statement Title */}
+                  <div className="text-center py-2 relative z-10">
+                    <h2 className="text-xl font-black text-slate-950 underline decoration-amber-500 underline-offset-8">
+                      {docTitle}
+                    </h2>
+                    <p className="text-xs text-slate-500 mt-2 font-mono">
+                      {docSubtitle}
+                    </p>
+                  </div>
+
+                  {/* Statement Body Text */}
+                  <div className="p-5 bg-slate-50 rounded-2xl border border-slate-200 text-xs leading-relaxed text-slate-800 space-y-3 relative z-10">
+                    <p className="font-semibold text-slate-900">
+                      {declaration}
+                    </p>
+                    <div className="text-center py-2">
+                      <span className="text-xl font-black text-indigo-950 bg-indigo-50 px-8 py-2 rounded-xl border border-indigo-200 inline-block shadow-xs">
+                        {result.cert.studentName}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] bg-white p-3.5 rounded-xl border border-slate-200">
+                      <div><span className="text-slate-500">نوع المكرّم: </span><strong>{result.cert.recipientGender === 'female' ? 'طالبة' : 'طالب'}</strong></div>
+                      <div><span className="text-slate-500">الصف / الشعبة: </span><strong>{result.cert.grade || '—'}</strong></div>
+                      <div><span className="text-slate-500">المؤسسة / المدرسة: </span><strong>{result.cert.schoolName || 'جهة معتمدة'}</strong></div>
+                      <div><span className="text-slate-500">المادة / المجال: </span><strong>{result.cert.subject || 'عام'}</strong></div>
+                      <div><span className="text-slate-500">تاريخ الإصدار (هجري): </span><strong>{result.cert.issueDateHijri || '—'}</strong></div>
+                      <div><span className="text-slate-500">تاريخ الإصدار (ميلادي): </span><strong>{result.cert.issueDate || '—'}</strong></div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-center gap-3 py-2 font-mono">
+                      <div className="bg-slate-900 text-amber-400 font-black text-sm px-4 py-1.5 rounded-xl border border-slate-800 shadow-xs">
+                        كود التوثيق: {result.verificationCode}
+                      </div>
+                      {docSettings.verificationDocShowChecksum !== false && (
+                        <div className="bg-slate-100 text-slate-800 font-bold text-xs px-3 py-1.5 rounded-xl border border-slate-300">
+                          بصمة الأمان: {result.checksum}
+                        </div>
+                      )}
+                    </div>
+
+                    <p className="text-[11px] text-slate-500 text-center pt-1">
+                      صدرت هذه الإفادة بناءً على الاستعلام المباشر من قاعدة البيانات السحابية بتاريخ: {new Date().toLocaleDateString('ar-SA')} م | {new Date().toLocaleTimeString('ar-SA')}
+                    </p>
+                  </div>
+
+                  {/* Footer Signatures in Statement */}
+                  <div className="pt-4 border-t border-slate-200 flex flex-wrap items-center justify-between text-xs gap-4 relative z-10">
+                    {docSettings.verificationDocShowSecurityStamp !== false && (
+                      <div className="text-center">
+                        <span className="text-[10px] text-slate-400 block mb-1">الختم والاعتماد الرقمي:</span>
+                        <div
+                          className="w-24 h-24 rounded-full border-2 border-dashed flex flex-col items-center justify-center text-[10px] font-black mx-auto p-1 text-center"
+                          style={{ borderColor: primaryCol, color: primaryCol }}
+                        >
+                          <ShieldCheck className="w-5 h-5 mb-0.5" />
+                          <span>{authority}</span>
+                          <span className="text-[8px] font-bold text-slate-500">معتمد رسمياً</span>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-3 mr-auto">
+                      {docSettings.verificationDocShowQr !== false && qrDataUrl && (
+                        <div className="text-center">
+                          <img src={qrDataUrl} alt="QR" className="w-20 h-20 border border-slate-300 p-1 rounded-xl mx-auto bg-white shadow-xs" />
+                          <span className="text-[9px] text-slate-500 block mt-1 font-bold">مسح للتحقق المباشر</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
-
-              {/* Printable Statement Container */}
-              <div
-                ref={statementRef}
-                className="bg-white p-8 rounded-3xl border-2 border-slate-300 shadow-xl max-w-3xl mx-auto text-right space-y-6 print:p-0 print:border-none print:shadow-none font-['Cairo',sans-serif]"
-              >
-                {/* Statement Header */}
-                <div className="border-b-2 border-slate-800 pb-4 flex items-center justify-between">
-                  <div className="space-y-1">
-                    <h3 className="text-lg font-black text-slate-900">المملكة العربية السعودية</h3>
-                    <h4 className="text-xs font-bold text-slate-700">وزارة التعليم / الجهة المانحة للشهادة</h4>
-                    <p className="text-[11px] text-slate-500">منصة تَقْدِير الوطنية لتوثيق الشهادات</p>
-                  </div>
-                  <div className="text-center space-y-1">
-                    <div className="w-16 h-16 bg-emerald-500/10 border-2 border-emerald-600 rounded-2xl flex items-center justify-center text-emerald-700 mx-auto">
-                      <ShieldCheck className="w-10 h-10" />
-                    </div>
-                    <span className="text-[10px] font-black text-emerald-800 block">وثيقة رسمية معتمدة</span>
-                  </div>
-                </div>
-
-                {/* Statement Title */}
-                <div className="text-center py-2">
-                  <h2 className="text-xl font-black text-slate-950 underline decoration-amber-500 underline-offset-8">
-                    إفادة وتحقق إلكتروني من صحة شهادة تقدير
-                  </h2>
-                  <p className="text-xs text-slate-500 mt-2">
-                    Official Certificate Verification & Authentication Statement
-                  </p>
-                </div>
-
-                {/* Statement Body Text */}
-                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 text-xs leading-relaxed text-slate-800 space-y-3">
-                  <p>
-                    تشهد <strong>منصة تَقْدِير</strong> ومطابقة السجلات الرقمية بأن شهادة التقدير والتفوق الصادرة باسم الطالب/ـة:
-                  </p>
-                  <div className="text-center py-2">
-                    <span className="text-lg font-black text-indigo-950 bg-indigo-50 px-6 py-1.5 rounded-xl border border-indigo-200 inline-block">
-                      {result.cert.studentName}
-                    </span>
-                  </div>
-                  <p>
-                    والمسجلة بالصف: <strong>{result.cert.grade || '—'}</strong>، بالمؤسسة التعليمية: <strong>{result.cert.schoolName || 'جهة معتمدة'}</strong>، في مادة/مجال: <strong>{result.cert.subject || 'عام'}</strong>، هي شهادة نظامية، صادرة وموثقة إلكترونياً برقم تسلسلي معتمد:
-                  </p>
-                  <div className="flex items-center justify-center gap-4 py-2 font-mono">
-                    <div className="bg-slate-900 text-amber-400 font-black text-sm px-4 py-1.5 rounded-xl border border-slate-800">
-                      {result.verificationCode}
-                    </div>
-                    <div className="bg-slate-100 text-slate-800 font-bold text-xs px-3 py-1.5 rounded-xl border border-slate-300">
-                      بصمة الأمان: {result.checksum}
-                    </div>
-                  </div>
-                  <p className="text-[11px] text-slate-600 text-center">
-                    صدرت هذه الإفادة بناءً على الاستعلام المباشر من قاعدة البيانات السحابية بتاريخ: {new Date().toLocaleDateString('ar-SA')}
-                  </p>
-                </div>
-
-                {/* Footer Signatures in Statement */}
-                <div className="pt-4 border-t border-slate-200 flex items-center justify-between text-xs">
-                  <div className="text-center">
-                    <span className="text-[10px] text-slate-400 block">الختم الرسمي للمنصة:</span>
-                    <div className="w-20 h-20 rounded-full border-2 border-dashed border-emerald-600 flex items-center justify-center text-emerald-800 text-[10px] font-black mx-auto mt-1">
-                      معتمد رسمياً
-                    </div>
-                  </div>
-                  <div className="text-center">
-                    {qrDataUrl && <img src={qrDataUrl} alt="QR" className="w-20 h-20 border p-1 rounded-xl mx-auto" />}
-                    <span className="text-[9px] text-slate-400 block mt-1">مسح للتحقق المباشر</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* F. BOTTOM ACTION TOOLBAR */}
           <div className="bg-slate-50 p-4 sm:p-5 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3">
@@ -984,6 +1086,15 @@ export const VerificationPortal: React.FC<Props> = ({
           </div>
         </div>
       ) : null}
+
+      {isDriveRequestModalOpen && result && result.cert && (
+        <DriveVerificationRequestModal
+          certificate={result.cert}
+          verificationCode={result.verificationCode}
+          onClose={() => setIsDriveRequestModalOpen(false)}
+          onShowToast={showToast}
+        />
+      )}
 
     </div>
   );

@@ -27,25 +27,49 @@ import {
   AlertCircle,
   Check,
   Zap,
-  Code2
+  Code2,
+  Layout,
+  Type as TypeIcon,
+  Award,
+  QrCode,
+  Printer,
+  Download,
+  Upload,
+  RefreshCw,
+  ExternalLink,
+  ChevronDown,
+  Layers,
+  FileCheck2,
+  Database,
+  Cloud
 } from 'lucide-react';
-import { CertificateData } from '../types';
+import { CertificateData, FontOption, FrameStyle, LayoutPreset, AspectRatioOption, BadgeIconType, BadgeBgShape, VerificationBoxPattern, VerificationCodePattern } from '../types';
 import {
   DefaultCertificateSettings,
   getSavedDefaultSettings,
   saveDefaultSettingsToStorage,
   FALLBACK_DEFAULT_SETTINGS,
-  applyDefaultsToCertificate,
-  getFormattedTodayDate
+  applyDefaultsToCertificate
 } from '../utils/defaultSettings';
 import {
+  getDriveVerificationRequests,
+  saveDriveVerificationRequests,
+  approveDriveVerificationRequest,
+  rejectDriveVerificationRequest,
+  deleteDriveVerificationRequest,
+  DriveVerificationRequest
+} from '../utils/driveVerificationRequests';
+import {
   AISettings,
+  AIProvider,
+  AI_PROVIDERS,
   SUPPORTED_AI_MODELS,
   DEFAULT_AI_SETTINGS,
   getSavedAISettings,
   saveAISettings,
   resetAISettings,
-  testAIConnection
+  testAIConnection,
+  AITone
 } from '../utils/aiConfig';
 
 interface Props {
@@ -54,12 +78,78 @@ interface Props {
   onShowToast?: (msg: string) => void;
 }
 
+type DefaultSubTab = 
+  | 'basic-info'
+  | 'text-format'
+  | 'template-layout'
+  | 'colors-fonts'
+  | 'signatures'
+  | 'frame-logo'
+  | 'stamps-badges'
+  | 'verification-box'
+  | 'export-print'
+  | 'verification-document';
+
+const FONT_OPTIONS: FontOption[] = [
+  'Cairo', 'Amiri', 'Tajawal', 'Almarai', 'Aref Ruqaa', 'Reem Kufi',
+  'Changa', 'El Messiri', 'Lalezar', 'Kufam', 'Scheherazade New',
+  'Vazirmatn', 'Harmattan', 'Marhey'
+];
+
+const FRAME_OPTIONS: { id: FrameStyle; label: string }[] = [
+  { id: 'double-gold', label: 'إطار ذهبي مزدوج فاخر' },
+  { id: 'classic-ornate', label: 'إطار كلاسيكي مزخرف' },
+  { id: 'modern-geometric', label: 'إطار هندسي عصري' },
+  { id: 'emerald-border', label: 'إطار زمردي ملكي' },
+  { id: 'royal-ribbon', label: 'إطار أشرطة ملكية' },
+  { id: 'clean-minimal', label: 'إطار بسيط ناعم' },
+  { id: 'islamic-arch', label: 'إطار القوس الإسلامي' },
+  { id: 'guilloche-royal', label: 'إطار الجليوش الأمني' },
+  { id: 'golden-vines', label: 'إطار الأغصان الذهبية' },
+  { id: 'andalusian-star', label: 'إطار النجمة الأندلسية' },
+  { id: 'floral-corners', label: 'إطار الزوايا المزهرة' },
+  { id: 'victorian-crest', label: 'إطار التاج الفيكتوري' },
+];
+
+const LAYOUT_PRESETS: { id: LayoutPreset; label: string; desc: string }[] = [
+  { id: 'classic-standard', label: 'تقليدي متوازن', desc: 'ترويسة كاملة، عنوان بارز، متن مركزي وتواقيع سفلية' },
+  { id: 'modern-split', label: 'عصري مقسم', desc: 'توزيع عصري بارز لعناصر التكريم مع شارة مميزة' },
+  { id: 'sidebar-right', label: 'إطار جانبي أيمن', desc: 'شريط زخرفي عمودي على اليمين مع نصوص فسيحة' },
+  { id: 'sidebar-left', label: 'إطار جانبي أيسر', desc: 'شريط زخرفي عمودي على اليسار' },
+  { id: 'minimal-centered', label: 'مركز ومبسط', desc: 'تركيز فائق على اسم المكرم ونص الشكر' },
+  { id: 'executive-horizontal', label: 'تنفيذي أفقي', desc: 'تصميم رسمي للشهادات المهنية العليا' },
+  { id: 'diploma-grand', label: 'دبلوم أكاديمي', desc: 'نمط الشهادات الجامعية والدبلومات الرفيعة' },
+];
+
+const VERIFICATION_PATTERNS: { id: VerificationBoxPattern; label: string }[] = [
+  { id: 'classic', label: 'البطاقة الكلاسيكية المعتمدة' },
+  { id: 'modern-card', label: 'كارت عصري فاخر' },
+  { id: 'seal-stamp', label: 'ختم التوثيق الذهبي' },
+  { id: 'barcode-focus', label: 'تركيز الباركود الأفقي' },
+  { id: 'minimal-pill', label: 'كبسولة مصغرة دائرية' },
+  { id: 'glass-card', label: 'بطاقة زجاجية شفافة' },
+  { id: 'certificate-tag', label: 'بطاقة تعريفية معلقة' },
+];
+
+const BADGE_ICONS: { id: BadgeIconType; label: string }[] = [
+  { id: 'award', label: 'وسام الشرف' },
+  { id: 'star', label: 'نجمة التفوق' },
+  { id: 'trophy', label: 'كأس الإنجاز' },
+  { id: 'crown', label: 'التاج الملكي' },
+  { id: 'shield', label: 'درع التميز' },
+  { id: 'sparkles', label: 'بريق الإبداع' },
+  { id: 'medal', label: 'الميدالية الذهبية' },
+  { id: 'book', label: 'كتاب المعرفة' },
+  { id: 'target', label: 'شعار الهدف والريادة' },
+];
+
 export const AppSettingsModal: React.FC<Props> = ({
   currentCertificate,
   onUpdateCurrentCertificate,
   onShowToast
 }) => {
   const [activeTab, setActiveTab] = useState<'default-cert' | 'ai-settings' | 'app-system'>('default-cert');
+  const [activeSubTab, setActiveSubTab] = useState<DefaultSubTab>('basic-info');
   const [defaultSettings, setDefaultSettings] = useState<DefaultCertificateSettings>(getSavedDefaultSettings());
   const [aiSettings, setAiSettings] = useState<AISettings>(getSavedAISettings());
   const [showApiKey, setShowApiKey] = useState(false);
@@ -74,6 +164,7 @@ export const AppSettingsModal: React.FC<Props> = ({
     message: string;
     latencyMs?: number;
     modelUsed?: string;
+    providerUsed?: string;
     details?: string;
   } | null>(null);
 
@@ -85,17 +176,51 @@ export const AppSettingsModal: React.FC<Props> = ({
   const [autoSync, setAutoSync] = useState(true);
   const [highQualityPdf, setHighQualityPdf] = useState(true);
   const [activeFaq, setActiveFaq] = useState<number | null>(0);
+  const [driveRequests, setDriveRequests] = useState<DriveVerificationRequest[]>([]);
 
   useEffect(() => {
     setDefaultSettings(getSavedDefaultSettings());
     setAiSettings(getSavedAISettings());
+    setDriveRequests(getDriveVerificationRequests());
+
+    const handleReqChange = () => {
+      setDriveRequests(getDriveVerificationRequests());
+    };
+    window.addEventListener('taqdeer_drive_requests_changed', handleReqChange);
+    return () => window.removeEventListener('taqdeer_drive_requests_changed', handleReqChange);
   }, []);
+
+  const handleUpdateReqStatus = (id: string, status: 'pending' | 'approved' | 'rejected') => {
+    if (status === 'approved') {
+      approveDriveVerificationRequest(id, {
+        driveFileUrl: `https://drive.google.com/file/d/${id}/view`,
+        driveFileWebViewLink: `https://drive.google.com/file/d/${id}/preview`,
+        adminNotes: 'تمت المصادقة والاعتماد السحابي بنجاح'
+      });
+    } else if (status === 'rejected') {
+      rejectDriveVerificationRequest(id, 'تم رفض الطلب');
+    }
+    setDriveRequests(getDriveVerificationRequests());
+    if (onShowToast) {
+      onShowToast(status === 'approved' ? 'تمت الموافقة على طلب التوثيق السحابي بنجاح! ☁️✅' : 'تم تحديث حالة طلب التوثيق');
+    }
+  };
+
+  const handleDeleteReq = (id: string) => {
+    if (window.confirm('هل أنت متأكد من حذف هذا الطلب؟')) {
+      deleteDriveVerificationRequest(id);
+      setDriveRequests(getDriveVerificationRequests());
+      if (onShowToast) {
+        onShowToast('تم حذف الطلب بنجاح');
+      }
+    }
+  };
 
   const handleSaveDefaults = () => {
     saveDefaultSettingsToStorage(defaultSettings);
     setSaveSuccessMsg(true);
     if (onShowToast) {
-      onShowToast('تم حفظ الإعدادات الافتراضية للشهادات بنجاح! 💾');
+      onShowToast('تم حفظ الإعدادات الافتراضية لجميع حقول الشهادات بنجاح! 💾');
     }
     setTimeout(() => setSaveSuccessMsg(false), 3000);
   };
@@ -104,7 +229,7 @@ export const AppSettingsModal: React.FC<Props> = ({
     saveAISettings(aiSettings);
     setAiSaveSuccessMsg(true);
     if (onShowToast) {
-      onShowToast('تم حفظ إعدادات مساعد الذكاء الاصطناعي والـ API بنجاح! 🤖✨');
+      onShowToast(`تم حفظ إعدادات مزود (${aiSettings.provider}) ونموذج الذكاء الاصطناعي بنجاح! 🤖✨`);
     }
     setTimeout(() => setAiSaveSuccessMsg(false), 3000);
   };
@@ -131,6 +256,7 @@ export const AppSettingsModal: React.FC<Props> = ({
         message: res.message,
         latencyMs: res.latencyMs,
         modelUsed: res.modelUsed,
+        providerUsed: res.providerUsed,
         details: res.details,
       });
       if (onShowToast) {
@@ -140,7 +266,7 @@ export const AppSettingsModal: React.FC<Props> = ({
       setAiTestResult({
         tested: true,
         success: false,
-        message: 'تعذر الاتصال بالخادم',
+        message: 'تعذر الاتصال بخادم الذكاء الاصطناعي',
         details: err?.message || String(err),
       });
     } finally {
@@ -153,68 +279,137 @@ export const AppSettingsModal: React.FC<Props> = ({
     const updated = applyDefaultsToCertificate(currentCertificate, defaultSettings);
     onUpdateCurrentCertificate(updated);
     if (onShowToast) {
-      onShowToast('تم تطبيق الإعدادات الافتراضية على الشهادة الحالية بنجاح! ✨');
+      onShowToast('تم تطبيق الإعدادات الافتراضية الشاملة على الشهادة الحالية بنجاح! ✨');
     }
   };
 
   const handleResetToFactory = () => {
-    if (window.confirm('هل أنت متأكد من إعادة تعيين الإعدادات الافتراضية للقيم الأولية؟')) {
+    if (window.confirm('هل أنت متأكد من إعادة تعيين كافة الإعدادات الافتراضية للقيم الأولية؟')) {
       setDefaultSettings(FALLBACK_DEFAULT_SETTINGS);
       saveDefaultSettingsToStorage(FALLBACK_DEFAULT_SETTINGS);
       if (onShowToast) {
-        onShowToast('تم إعادة تعيين الإعدادات الافتراضية للقيم المصنع الأولية');
+        onShowToast('تم إعادة تعيين كافة الإعدادات الافتراضية للقيم المصنع الأولية');
       }
     }
   };
 
+  const handleExportBackup = () => {
+    const backupData = {
+      version: '2026.1',
+      date: new Date().toISOString(),
+      defaultSettings,
+      aiSettings: {
+        ...aiSettings,
+        apiKey: aiSettings.apiKey ? '***HIDDEN***' : '',
+      },
+    };
+    const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `taqdeer-settings-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    if (onShowToast) {
+      onShowToast('تم تصدير ملف النسخة الاحتياطية للإعدادات بنجاح! 📦');
+    }
+  };
+
+  const handleImportBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const parsed = JSON.parse(ev.target?.result as string);
+        if (parsed.defaultSettings) {
+          setDefaultSettings(parsed.defaultSettings);
+          saveDefaultSettingsToStorage(parsed.defaultSettings);
+        }
+        if (parsed.aiSettings) {
+          const mergedAi = { ...aiSettings, ...parsed.aiSettings };
+          if (mergedAi.apiKey === '***HIDDEN***') {
+            mergedAi.apiKey = aiSettings.apiKey;
+          }
+          setAiSettings(mergedAi);
+          saveAISettings(mergedAi);
+        }
+        if (onShowToast) {
+          onShowToast('تم استيراد وتطبيق النسخة الاحتياطية للإعدادات بنجاح! 📥');
+        }
+      } catch (err) {
+        alert('الملف المحدد غير صالح أو تالف.');
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleClearCache = () => {
+    if (window.confirm('هل ترغب في تنظيف الذاكرة المؤقتة لتسريع التطبيق وحل أي تداخل في التخزين المؤقت؟')) {
+      const keysToKeep = ['taqdeer_default_settings', 'taqdeer_ai_settings_v1', 'taqdeer_certificate_history_v2'];
+      const preserved: Record<string, string> = {};
+      keysToKeep.forEach((k) => {
+        const val = localStorage.getItem(k);
+        if (val) preserved[k] = val;
+      });
+      localStorage.clear();
+      Object.entries(preserved).forEach(([k, v]) => localStorage.setItem(k, v));
+      if (onShowToast) {
+        onShowToast('تم تنظيف الذاكرة المؤقتة بنجاح مع الحفاظ على إعداداتك! 🧹');
+      }
+    }
+  };
+
+  const currentProviderInfo = AI_PROVIDERS.find((p) => p.id === aiSettings.provider) || AI_PROVIDERS[0];
+
   const faqs = [
     {
-      q: 'كيف تعمل الإعدادات الافتراضية للشهادات؟',
-      a: 'تتيح لك الإعدادات الافتراضية تسجيل اسم مدرستك/جهتك وتوقيع المدير والمشرف والتاريخ التلقائي. عند فتح التطبيق أو إنشاء شهادات جديدة أو دفعة طلاب، يتم تطبيق بياناتك الرسمية تلقائياً دون الحاجة لإعادتها كل مرة.'
+      q: 'كيف تعمل الإعدادات الافتراضية الشاملة للشهادات؟',
+      a: 'تتيح لك الإعدادات الافتراضية تخصيص كافة بيانات حقول النظام: الترويسة، النصوص وصيغ المذكر والمؤنث، القوالب، الهوامش، الخطوط، الألوان، التواقيع، الأختام، الشارات، مربع التوثيق والـ QR، وإعدادات الطباعة. تُطبق هذه الإعدادات تلقائياً عند إنشاء أي شهادة فردية أو دفعة جماعية.'
     },
     {
-      q: 'كيف أضمن عمل الذكاء الاصطناعي عند رفع التطبيق على سيرفر خارجي؟',
-      a: 'يمكنك وضع متغير GEMINI_API_KEY في ملف .env في السيرفر أو داخل إعدادات البيئة في الاستضافة (Vercel, Render, Cloud Run, Docker). كما يمكنك إدخال مفتاح الـ API الخاص بك مباشرة من تبويب "مساعد الذكاء الاصطناعي" هنا ليتم استخدامه في جميع العمليات.'
+      q: 'كيف أستخدم مزودي ذكاء اصطناعي آخرين مثل OpenAI أو Claude أو DeepSeek أو Groq؟',
+      a: 'من تبويب "مساعد الذكاء الاصطناعي والـ API"، اختر المزود المطلوب، ثم أدخل مفتاح الـ API الخاص به أو استخدم الخادم المخصص المحلي (مثل Ollama/LM Studio). يتولى التطبيق تحويل وتوجيه كافة الطلبات والتنسيقات تلقائياً.'
+    },
+    {
+      q: 'كيف أضمن عمل الذكاء الاصطناعي عند رفع التطبيق على سيرفر خارجي (VPS/Docker/Cloud)؟',
+      a: 'يمكنك وضع متغيرات البيئة مثل GEMINI_API_KEY أو OPENAI_API_KEY في ملف .env في السيرفر أو داخل إعدادات الاستضافة. كما يمكنك إدخال مفتاح الـ API مباشرة في الإعدادات ليتم تشغيله من السيرفر بأمان تام.'
     },
     {
       q: 'ماذا يحدث إذا انقطع الإنترنت أو نفدت حصة الـ API؟',
-      a: 'يحتوي نظام "تقدير" على مولد ذكي لغوي محلي فائق الفصاحة (Smart Local Fallback) يقوم بتوليد 3 خيارات بلاغية متنوعة فوراً حتى بدون اتصال بالإنترنت أو بدون مفتاح API.'
+      a: 'يحتوي نظام "تقدير" على مولد ذكي لغوي محلي فائق الفصاحة (Smart Local Fallback) يقوم بتوليد 3 خيارات بلاغية متنوعة وضبط التذكير والتأنيث فوراً حتى بدون اتصال بالإنترنت أو بدون مفتاح API.'
     },
     {
-      q: 'كيف أقوم بجعل تاريخ توليد الشهادة تلقائياً حسب يوم الإصدار؟',
-      a: 'تأكد من تفعيل خيار "تحديث تاريخ الإصدار تلقائياً لتاريخ اليوم" في قسم الإعدادات الافتراضية، وسيقوم النظام فوراً بحساب التاريخ التاريخي والمهجري/الميلادي ليوم الإصدار تلقائياً عند توليد أو طباعة أي شهادة.'
-    },
-    {
-      q: 'كيف يمكنني تصدير الشهادات بصيغة PDF عالية الدقة دون تشوه الجودة؟',
-      a: 'تطبيق تقدير يقدم نظام تصدير مباشر بالمتجهات مع مقاسات A4 القياسية الطباعية، انقر على زر "تصدير PDF" وسيتم تجهيز ملف جاهز للطباعة المباشرة بأعلى جودة.'
+      q: 'كيف أقوم بنقل وتصدير إعداداتي إلى أجهزة أو مدارس أخرى؟',
+      a: 'من تبويب "المزامنة والدعم الفني"، استخدم زر "تصدير نسخة احتياطية (JSON)". يمكنك حفظ الملف ونقله لأي جهاز آخر واستيراده بنقرة واحدة.'
     },
   ];
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6 text-right">
+    <div className="max-w-6xl mx-auto space-y-6 text-right pb-10">
       
       {/* Top Banner */}
-      <div className="bg-gradient-to-r from-slate-900 via-amber-950 to-slate-900 text-white p-6 rounded-2xl shadow-lg border border-amber-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div className="bg-gradient-to-r from-slate-900 via-amber-950 to-slate-900 text-white p-6 rounded-3xl shadow-xl border border-amber-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2">
-            <Settings className="w-6 h-6 text-amber-400" />
-            <h2 className="text-xl font-black">إعدادات النظام والذكاء الاصطناعي</h2>
+          <div className="flex items-center gap-2.5">
+            <Settings className="w-7 h-7 text-amber-400" />
+            <h2 className="text-xl font-black">إعدادات النظام والذكاء الاصطناعي الشاملة</h2>
           </div>
-          <p className="text-xs text-amber-200/80 mt-1">
-            تحكم في بيانات مدرستك، ونماذج ومفاتيح الذكاء الاصطناعي (Gemini AI)، وإعدادات النشر على السيرفر الخارجي.
+          <p className="text-xs text-amber-200/80 mt-1.5 leading-relaxed">
+            تخصيص البيانات الافتراضية لجميع حقول الشهادات، مزودي ونماذج الذكاء الاصطناعي (Gemini, OpenAI, Claude, DeepSeek, Groq)، وإدارة المزامنة والدعم الفني.
           </p>
         </div>
 
-        <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 text-amber-300 px-3.5 py-1.5 rounded-full text-xs font-bold">
-          <ShieldCheck className="w-4 h-4" /> النسخة المعتمدة والمحدثة 2026
+        <div className="flex items-center gap-2 bg-amber-500/15 border border-amber-500/30 text-amber-300 px-4 py-2 rounded-2xl text-xs font-bold shrink-0">
+          <ShieldCheck className="w-4 h-4" /> النسخة المؤسسية المعتمدة 2026
         </div>
       </div>
 
       {/* Main Tab Bar */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 bg-slate-200 p-1.5 rounded-2xl border border-slate-300">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-slate-200 p-1.5 rounded-2xl border border-slate-300">
         <button
           onClick={() => setActiveTab('default-cert')}
-          className={`py-2.5 px-3 rounded-xl font-extrabold text-xs transition flex items-center justify-center gap-2 ${
+          className={`py-3 px-4 rounded-xl font-extrabold text-xs transition flex items-center justify-center gap-2.5 ${
             activeTab === 'default-cert'
               ? 'bg-amber-500 text-slate-950 shadow-md'
               : 'text-slate-700 hover:bg-slate-300/60'
@@ -226,7 +421,7 @@ export const AppSettingsModal: React.FC<Props> = ({
 
         <button
           onClick={() => setActiveTab('ai-settings')}
-          className={`py-2.5 px-3 rounded-xl font-extrabold text-xs transition flex items-center justify-center gap-2 ${
+          className={`py-3 px-4 rounded-xl font-extrabold text-xs transition flex items-center justify-center gap-2.5 ${
             activeTab === 'ai-settings'
               ? 'bg-indigo-600 text-white shadow-md'
               : 'text-slate-700 hover:bg-slate-300/60'
@@ -238,32 +433,34 @@ export const AppSettingsModal: React.FC<Props> = ({
 
         <button
           onClick={() => setActiveTab('app-system')}
-          className={`py-2.5 px-3 rounded-xl font-extrabold text-xs transition flex items-center justify-center gap-2 ${
+          className={`py-3 px-4 rounded-xl font-extrabold text-xs transition flex items-center justify-center gap-2.5 ${
             activeTab === 'app-system'
               ? 'bg-slate-900 text-white shadow-md'
               : 'text-slate-700 hover:bg-slate-300/60'
           }`}
         >
-          <Wifi className="w-4 h-4 shrink-0" />
+          <Wifi className="w-4 h-4 shrink-0 text-emerald-400" />
           <span>المزامنة والدعم الفني</span>
         </button>
       </div>
 
-      {/* TAB 1: DEFAULT CERTIFICATE SETTINGS */}
+      {/* ========================================================================= */}
+      {/* TAB 1: DEFAULT CERTIFICATE SETTINGS (ALL 9 CORE CATEGORIES)              */}
+      {/* ========================================================================= */}
       {activeTab === 'default-cert' && (
         <div className="space-y-6">
           
           {/* Action Bar */}
           <div className="bg-amber-50 p-4 rounded-2xl border border-amber-200 flex flex-wrap items-center justify-between gap-3 shadow-xs">
             <div className="flex items-center gap-2 text-amber-900 text-xs font-bold">
-              <Sparkles className="w-5 h-5 text-amber-600" />
-              <span>هذه البيانات ستُطبق تلقائياً على أي شهادة جديدة أو دفعة شهادات تقوم بتوليدها.</span>
+              <Sparkles className="w-5 h-5 text-amber-600 shrink-0" />
+              <span>هذه الإعدادات ستُطبق تلقائياً على كل شهادة جديدة أو دفعة جماعية تنشئها في النظام.</span>
             </div>
 
             <div className="flex items-center gap-2">
               <button
                 onClick={handleResetToFactory}
-                className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs rounded-xl transition flex items-center gap-1"
+                className="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs rounded-xl transition flex items-center gap-1.5"
                 title="إعادة التعيين للقيم المصنعية"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
@@ -273,7 +470,7 @@ export const AppSettingsModal: React.FC<Props> = ({
               {currentCertificate && onUpdateCurrentCertificate && (
                 <button
                   onClick={handleApplyDefaultsToEditor}
-                  className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl transition shadow-xs flex items-center gap-1.5"
+                  className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl transition shadow-xs flex items-center gap-1.5"
                 >
                   <Sparkles className="w-3.5 h-3.5" />
                   <span>تطبيق على الشهادة الحالية</span>
@@ -282,7 +479,7 @@ export const AppSettingsModal: React.FC<Props> = ({
 
               <button
                 onClick={handleSaveDefaults}
-                className="px-5 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs rounded-xl transition shadow-xs flex items-center gap-1.5"
+                className="px-5 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs rounded-xl transition shadow-xs flex items-center gap-2"
               >
                 <Save className="w-4 h-4" />
                 <span>حفظ التغييرات الافتراضية</span>
@@ -293,19 +490,52 @@ export const AppSettingsModal: React.FC<Props> = ({
           {saveSuccessMsg && (
             <div className="p-3.5 bg-emerald-50 border border-emerald-300 text-emerald-900 rounded-xl text-xs font-bold flex items-center gap-2 animate-fadeIn">
               <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-              تم حفظ وتحديث الإعدادات الافتراضية بنجاح. ستُستخدم تلقائياً في كل الشهادات اللاحقة!
+              تم حفظ وتحديث الإعدادات الافتراضية بنجاح! ستُعتمد تلقائياً في كل الشهادات والدفعات اللاحقة.
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Card 1: Institution & Header Info */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-              <div className="flex items-center gap-2 text-slate-800 border-b pb-3">
-                <Building2 className="w-5 h-5 text-amber-600" />
-                <h3 className="font-extrabold text-sm">بيانات المدرسة والترويسة الافتراضية</h3>
-              </div>
+          {/* Sub-Tabs Grid for the 10 Categories */}
+          <div className="flex flex-wrap gap-1.5 p-1.5 bg-slate-100 rounded-2xl border border-slate-200 text-xs">
+            {[
+              { id: 'basic-info', label: '1. البيانات الأساسية', icon: Building2 },
+              { id: 'text-format', label: '2. تنسيق النصوص', icon: TypeIcon },
+              { id: 'template-layout', label: '3. القوالب والتخطيط', icon: Layout },
+              { id: 'colors-fonts', label: '4. الألوان والخطوط', icon: Palette },
+              { id: 'signatures', label: '5. التوقيعات', icon: PenTool },
+              { id: 'frame-logo', label: '6. الإطار والشعار', icon: Layers },
+              { id: 'stamps-badges', label: '7. الأختام والرموز', icon: Award },
+              { id: 'verification-box', label: '8. مربع التوثيق', icon: QrCode },
+              { id: 'export-print', label: '9. التصدير والطباعة', icon: Printer },
+              { id: 'verification-document', label: '10. وثيقة التحقق الرسمية', icon: FileCheck2 },
+            ].map((st) => {
+              const Icon = st.icon;
+              const isSel = activeSubTab === st.id;
+              return (
+                <button
+                  key={st.id}
+                  onClick={() => setActiveSubTab(st.id as DefaultSubTab)}
+                  className={`px-3 py-2 rounded-xl font-bold transition flex items-center gap-1.5 ${
+                    isSel
+                      ? 'bg-amber-500 text-slate-950 shadow-xs'
+                      : 'text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  <span>{st.label}</span>
+                </button>
+              );
+            })}
+          </div>
 
-              <div className="space-y-3">
+          {/* SUB-TAB 1: BASIC INFO & HEADERS */}
+          {activeSubTab === 'basic-info' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 text-slate-900 border-b pb-2.5">
+                  <Building2 className="w-5 h-5 text-amber-600" />
+                  <h4 className="font-extrabold text-sm">بيانات المؤسسة والترويسة</h4>
+                </div>
+
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">اسم المدرسة / الجهة الافتراضي</label>
                   <input
@@ -319,24 +549,135 @@ export const AppSettingsModal: React.FC<Props> = ({
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">السطر الأول في الترويسة</label>
-                  <input
-                    type="text"
-                    value={defaultSettings.headerLine1}
-                    onChange={(e) => setDefaultSettings({ ...defaultSettings, headerLine1: e.target.value })}
-                    className="w-full text-xs p-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-amber-500 outline-none"
-                    placeholder="مثال: المملكة العربية السعودية"
-                  />
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={defaultSettings.headerLine1}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, headerLine1: e.target.value })}
+                      className="w-full text-xs p-2.5 rounded-xl border border-slate-300 outline-none"
+                      placeholder="المملكة العربية السعودية"
+                    />
+                    <input
+                      type="checkbox"
+                      title="إظهار السطر الأول"
+                      checked={defaultSettings.showHeaderLine1}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, showHeaderLine1: e.target.checked })}
+                      className="w-4 h-4 accent-amber-500 rounded cursor-pointer"
+                    />
+                  </div>
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">السطر الثاني في الترويسة</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={defaultSettings.headerLine2}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, headerLine2: e.target.value })}
+                      className="w-full text-xs p-2.5 rounded-xl border border-slate-300 outline-none"
+                      placeholder="وزارة التعليم / الإدارة العامة"
+                    />
+                    <input
+                      type="checkbox"
+                      title="إظهار السطر الثاني"
+                      checked={defaultSettings.showHeaderLine2}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, showHeaderLine2: e.target.checked })}
+                      className="w-4 h-4 accent-amber-500 rounded cursor-pointer"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">السطر الثالث في الترويسة (إضافي)</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={defaultSettings.headerLine3}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, headerLine3: e.target.value })}
+                      className="w-full text-xs p-2.5 rounded-xl border border-slate-300 outline-none"
+                      placeholder="مكتب التعليم - قسم التميز"
+                    />
+                    <input
+                      type="checkbox"
+                      title="إظهار السطر الثالث"
+                      checked={defaultSettings.showHeaderLine3}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, showHeaderLine3: e.target.checked })}
+                      className="w-4 h-4 accent-amber-500 rounded cursor-pointer"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">نص الرؤية أو الشعار الترويسي</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={defaultSettings.headerVisionText}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, headerVisionText: e.target.value })}
+                      className="w-full text-xs p-2.5 rounded-xl border border-slate-300 outline-none"
+                      placeholder="رؤية 2030"
+                    />
+                    <input
+                      type="checkbox"
+                      title="إظهار نص الرؤية"
+                      checked={defaultSettings.showHeaderVisionText}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, showHeaderVisionText: e.target.checked })}
+                      className="w-4 h-4 accent-amber-500 rounded cursor-pointer"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Column 2: Titles & Dates Defaults */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 text-slate-900 border-b pb-2.5">
+                  <Calendar className="w-5 h-5 text-amber-600" />
+                  <h4 className="font-extrabold text-sm">العناوين وتواريخ الإصدار الافتراضية</h4>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">عنوان الشهادة الافتراضي</label>
                   <input
                     type="text"
-                    value={defaultSettings.headerLine2}
-                    onChange={(e) => setDefaultSettings({ ...defaultSettings, headerLine2: e.target.value })}
-                    className="w-full text-xs p-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-amber-500 outline-none"
-                    placeholder="مثال: وزارة التعليم / الجهة المعتمدة"
+                    value={defaultSettings.defaultTitle}
+                    onChange={(e) => setDefaultSettings({ ...defaultSettings, defaultTitle: e.target.value })}
+                    className="w-full text-xs p-2.5 rounded-xl border border-slate-300 outline-none"
+                    placeholder="شهادة شكر وتقدير وتفوق"
                   />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">العنوان الفرعي الافتراضي</label>
+                  <input
+                    type="text"
+                    value={defaultSettings.defaultSubtitle}
+                    onChange={(e) => setDefaultSettings({ ...defaultSettings, defaultSubtitle: e.target.value })}
+                    className="w-full text-xs p-2.5 rounded-xl border border-slate-300 outline-none"
+                    placeholder="وسام التميز الأكاديمي"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">المادة / المجال الافتراضي</label>
+                    <input
+                      type="text"
+                      value={defaultSettings.defaultSubject}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, defaultSubject: e.target.value })}
+                      className="w-full text-xs p-2.5 rounded-xl border border-slate-300 outline-none"
+                      placeholder="التفوق والتميز الدراسي"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">الصف / المرحلة الافتراضية</label>
+                    <input
+                      type="text"
+                      value={defaultSettings.defaultGrade}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, defaultGrade: e.target.value })}
+                      className="w-full text-xs p-2.5 rounded-xl border border-slate-300 outline-none"
+                      placeholder="المرحلة الدراسية"
+                    />
+                  </div>
                 </div>
 
                 <div>
@@ -345,126 +686,1310 @@ export const AppSettingsModal: React.FC<Props> = ({
                     type="text"
                     value={defaultSettings.issuePlace}
                     onChange={(e) => setDefaultSettings({ ...defaultSettings, issuePlace: e.target.value })}
-                    className="w-full text-xs p-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-amber-500 outline-none"
-                    placeholder="مثال: الرياض، المملكة العربية السعودية"
+                    className="w-full text-xs p-2.5 rounded-xl border border-slate-300 outline-none"
+                    placeholder="الرياض، المملكة العربية السعودية"
                   />
                 </div>
 
-                <div className="pt-2 border-t flex items-center justify-between">
-                  <div>
-                    <span className="text-xs font-bold text-slate-800 block">تحديث تاريخ الإصدار تلقائياً</span>
-                    <span className="text-[11px] text-slate-500 block">توليد تاريخ اليوم الحالي تلقائياً عند إنشاء أي شهادة</span>
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-800">تحديث تاريخ الإصدار تلقائياً لتاريخ اليوم</span>
+                    <input
+                      type="checkbox"
+                      checked={defaultSettings.autoTodayDate}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, autoTodayDate: e.target.checked })}
+                      className="w-4 h-4 accent-amber-500 rounded cursor-pointer"
+                    />
                   </div>
-                  <input
-                    type="checkbox"
-                    checked={defaultSettings.autoUpdateDateToToday}
-                    onChange={(e) => setDefaultSettings({ ...defaultSettings, autoUpdateDateToToday: e.target.checked })}
-                    className="w-4 h-4 accent-amber-500 rounded cursor-pointer"
-                  />
+                  <div className="grid grid-cols-3 gap-2 pt-1">
+                    <div>
+                      <label className="block text-[10px] text-slate-500 mb-0.5">نوع التاريخ</label>
+                      <select
+                        value={defaultSettings.dateFormatMode}
+                        onChange={(e) => setDefaultSettings({ ...defaultSettings, dateFormatMode: e.target.value as any })}
+                        className="w-full text-xs p-1.5 rounded-lg border border-slate-300 bg-white"
+                      >
+                        <option value="both">هجري وميلادي معاً</option>
+                        <option value="hijri">هجري فقط</option>
+                        <option value="gregorian">ميلادي فقط</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-slate-500 mb-0.5">صيغة الأرقام</label>
+                      <select
+                        value={defaultSettings.dateNumeralType}
+                        onChange={(e) => setDefaultSettings({ ...defaultSettings, dateNumeralType: e.target.value as any })}
+                        className="w-full text-xs p-1.5 rounded-lg border border-slate-300 bg-white"
+                      >
+                        <option value="latin">أرقام إنجليزية (123)</option>
+                        <option value="arabic">أرقام مشرقية (١٢٣)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-slate-500 mb-0.5">تخطيط العرض</label>
+                      <select
+                        value={defaultSettings.dateDisplayLayout}
+                        onChange={(e) => setDefaultSettings({ ...defaultSettings, dateDisplayLayout: e.target.value as any })}
+                        className="w-full text-xs p-1.5 rounded-lg border border-slate-300 bg-white"
+                      >
+                        <option value="single-line">سطر واحد</option>
+                        <option value="stacked">فوق بعض</option>
+                      </select>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
+          )}
 
-            {/* Card 2: Signatures & Seal */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-              <div className="flex items-center gap-2 text-slate-800 border-b pb-3">
-                <PenTool className="w-5 h-5 text-amber-600" />
-                <h3 className="font-extrabold text-sm">التوقيعات والختم الرسمي الافتراضي</h3>
+          {/* SUB-TAB 2: TEXT FORMATTING & GENDER PHRASES */}
+          {activeSubTab === 'text-format' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 text-slate-900 border-b pb-2.5">
+                  <TypeIcon className="w-5 h-5 text-amber-600" />
+                  <h4 className="font-extrabold text-sm">صيغ التقديم للمذكر والمؤنث</h4>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">عبارة تقديم الطالب (مذكر)</label>
+                  <textarea
+                    rows={2}
+                    value={defaultSettings.recipientIntroMale}
+                    onChange={(e) => setDefaultSettings({ ...defaultSettings, recipientIntroMale: e.target.value })}
+                    className="w-full text-xs p-2.5 rounded-xl border border-slate-300 outline-none leading-relaxed"
+                    placeholder="تسر إدارة المدرسة ومعلموها أن تمنح هذه الشهادة للطالب المتميز:"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">عبارة تقديم الطالبة (مؤنث)</label>
+                  <textarea
+                    rows={2}
+                    value={defaultSettings.recipientIntroFemale}
+                    onChange={(e) => setDefaultSettings({ ...defaultSettings, recipientIntroFemale: e.target.value })}
+                    className="w-full text-xs p-2.5 rounded-xl border border-slate-300 outline-none leading-relaxed"
+                    placeholder="تسر إدارة المدرسة ومعلماتها أن تمنح هذه الشهادة للطالبة المتميزة:"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">بيت الشعر / الحكمة الافتراضية</label>
+                  <textarea
+                    rows={2}
+                    value={defaultSettings.defaultPoemOrQuote}
+                    onChange={(e) => setDefaultSettings({ ...defaultSettings, defaultPoemOrQuote: e.target.value })}
+                    className="w-full text-xs p-2.5 rounded-xl border border-slate-300 outline-none leading-relaxed"
+                    placeholder="العِلْمُ يَرْفَعُ بَيْتًا لا عِمَادَ لَهُ ... وَالجَهْلُ يَهْدِمُ بَيْتَ العِزِّ وَالشَّرَفِ"
+                  />
+                  <div className="flex items-center gap-2 mt-1.5">
+                    <input
+                      type="checkbox"
+                      checked={defaultSettings.showPoemOrQuote}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, showPoemOrQuote: e.target.checked })}
+                      className="w-4 h-4 accent-amber-500 rounded cursor-pointer"
+                    />
+                    <span className="text-xs text-slate-600 font-bold">إظهار بيت الشعر افتراضياً</span>
+                  </div>
+                </div>
               </div>
 
+              {/* Column 2: Typography Scale & Alignment */}
               <div className="space-y-4">
+                <div className="flex items-center gap-2 text-slate-900 border-b pb-2.5">
+                  <Sliders className="w-5 h-5 text-amber-600" />
+                  <h4 className="font-extrabold text-sm">المحاذاة، التباعد ومربع المكرم</h4>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">المحاذاة الافتراضية للنصوص</label>
+                  <div className="grid grid-cols-4 gap-2">
+                    {(['center', 'right', 'justify', 'left'] as const).map((al) => (
+                      <button
+                        key={al}
+                        type="button"
+                        onClick={() => setDefaultSettings({ ...defaultSettings, textAlignment: al })}
+                        className={`p-2 rounded-xl text-xs font-bold border text-center transition ${
+                          defaultSettings.textAlignment === al
+                            ? 'bg-amber-500 text-slate-950 border-amber-500'
+                            : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        {al === 'center' ? 'توسيط' : al === 'right' ? 'يمين' : al === 'justify' ? 'محاذاة تامة' : 'يسار'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+                    <span>مقياس حجم الخطوط العام:</span>
+                    <span className="text-amber-700 font-mono">{defaultSettings.fontSizeScale}x</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.8"
+                    max="1.3"
+                    step="0.05"
+                    value={defaultSettings.fontSizeScale}
+                    onChange={(e) => setDefaultSettings({ ...defaultSettings, fontSizeScale: parseFloat(e.target.value) })}
+                    className="w-full accent-amber-500"
+                  />
+                </div>
+
+                <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-800">مربع إبراز اسم المكرم (Recipient Box)</span>
+                    <input
+                      type="checkbox"
+                      checked={defaultSettings.showRecipientBox}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, showRecipientBox: e.target.checked })}
+                      className="w-4 h-4 accent-amber-500 rounded cursor-pointer"
+                    />
+                  </div>
+                  {defaultSettings.showRecipientBox && (
+                    <div className="grid grid-cols-2 gap-3 pt-1">
+                      <div>
+                        <label className="block text-[11px] text-slate-600 mb-1">لون المربع</label>
+                        <input
+                          type="color"
+                          value={defaultSettings.recipientBoxColor}
+                          onChange={(e) => setDefaultSettings({ ...defaultSettings, recipientBoxColor: e.target.value })}
+                          className="w-full h-8 rounded-lg cursor-pointer border border-slate-300"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] text-slate-600 mb-1">الشفافية: {defaultSettings.recipientBoxOpacity}</label>
+                        <input
+                          type="range"
+                          min="0.05"
+                          max="1.0"
+                          step="0.05"
+                          value={defaultSettings.recipientBoxOpacity}
+                          onChange={(e) => setDefaultSettings({ ...defaultSettings, recipientBoxOpacity: parseFloat(e.target.value) })}
+                          className="w-full accent-amber-500"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* SUB-TAB 3: TEMPLATE & PAGE LAYOUT */}
+          {activeSubTab === 'template-layout' && (
+            <div className="space-y-6 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+              <div className="flex items-center justify-between border-b pb-2.5">
+                <div className="flex items-center gap-2 text-slate-900">
+                  <Layout className="w-5 h-5 text-amber-600" />
+                  <h4 className="font-extrabold text-sm">القالب الافتراضي والتخطيط والهوامش</h4>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-bold text-slate-700">نسبة الأبعاد:</label>
+                  <select
+                    value={defaultSettings.aspectRatio}
+                    onChange={(e) => setDefaultSettings({ ...defaultSettings, aspectRatio: e.target.value as AspectRatioOption })}
+                    className="text-xs font-bold p-1.5 rounded-lg border border-slate-300 bg-slate-50"
+                  >
+                    <option value="A4-landscape">A4 أفقي (Landscape)</option>
+                    <option value="A4-portrait">A4 رأسي (Portrait)</option>
+                    <option value="square">مربع (Square)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Presets Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                {LAYOUT_PRESETS.map((lp) => {
+                  const isSel = defaultSettings.layoutPreset === lp.id;
+                  return (
+                    <div
+                      key={lp.id}
+                      onClick={() => setDefaultSettings({ ...defaultSettings, layoutPreset: lp.id })}
+                      className={`p-3.5 rounded-xl border cursor-pointer transition ${
+                        isSel
+                          ? 'bg-amber-50/80 border-amber-500 ring-2 ring-amber-500/20 shadow-xs'
+                          : 'bg-slate-50/60 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-extrabold text-xs text-slate-900">{lp.label}</span>
+                        {isSel && <CheckCircle2 className="w-4 h-4 text-amber-600" />}
+                      </div>
+                      <p className="text-[11px] text-slate-500 leading-relaxed">{lp.desc}</p>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Margins Inputs */}
+              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                <span className="text-xs font-bold text-slate-800 block">الهوامش الآمنة الافتراضية لمنطقة العمل (بكسل px):</span>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div>
+                    <label className="block text-[11px] text-slate-600 mb-0.5">الهامش العلوي (Top)</label>
+                    <input
+                      type="number"
+                      value={defaultSettings.canvasMarginTop}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, canvasMarginTop: parseInt(e.target.value) || 0 })}
+                      className="w-full text-xs p-2 rounded-lg border border-slate-300 bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-slate-600 mb-0.5">الهامش السفلي (Bottom)</label>
+                    <input
+                      type="number"
+                      value={defaultSettings.canvasMarginBottom}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, canvasMarginBottom: parseInt(e.target.value) || 0 })}
+                      className="w-full text-xs p-2 rounded-lg border border-slate-300 bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-slate-600 mb-0.5">الهامش الأيمن (Right)</label>
+                    <input
+                      type="number"
+                      value={defaultSettings.canvasMarginRight}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, canvasMarginRight: parseInt(e.target.value) || 0 })}
+                      className="w-full text-xs p-2 rounded-lg border border-slate-300 bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-slate-600 mb-0.5">الهامش الأيسر (Left)</label>
+                    <input
+                      type="number"
+                      value={defaultSettings.canvasMarginLeft}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, canvasMarginLeft: parseInt(e.target.value) || 0 })}
+                      className="w-full text-xs p-2 rounded-lg border border-slate-300 bg-white"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* SUB-TAB 4: COLORS & TYPOGRAPHY */}
+          {activeSubTab === 'colors-fonts' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 text-slate-900 border-b pb-2.5">
+                  <Palette className="w-5 h-5 text-amber-600" />
+                  <h4 className="font-extrabold text-sm">لوحة الألوان الافتراضية</h4>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">اللون الرئيسي (العنوان والأوسمة)</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={defaultSettings.primaryColor}
+                        onChange={(e) => setDefaultSettings({ ...defaultSettings, primaryColor: e.target.value })}
+                        className="w-9 h-9 rounded-lg border border-slate-300 cursor-pointer"
+                      />
+                      <input
+                        type="text"
+                        value={defaultSettings.primaryColor}
+                        onChange={(e) => setDefaultSettings({ ...defaultSettings, primaryColor: e.target.value })}
+                        className="text-xs font-mono p-2 rounded-lg border border-slate-300 w-full"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">اللون الثانوي (الزخارف والتأثيرات)</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={defaultSettings.secondaryColor}
+                        onChange={(e) => setDefaultSettings({ ...defaultSettings, secondaryColor: e.target.value })}
+                        className="w-9 h-9 rounded-lg border border-slate-300 cursor-pointer"
+                      />
+                      <input
+                        type="text"
+                        value={defaultSettings.secondaryColor}
+                        onChange={(e) => setDefaultSettings({ ...defaultSettings, secondaryColor: e.target.value })}
+                        className="text-xs font-mono p-2 rounded-lg border border-slate-300 w-full"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">لون النصوص الأساسي</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={defaultSettings.textColor}
+                        onChange={(e) => setDefaultSettings({ ...defaultSettings, textColor: e.target.value })}
+                        className="w-9 h-9 rounded-lg border border-slate-300 cursor-pointer"
+                      />
+                      <input
+                        type="text"
+                        value={defaultSettings.textColor}
+                        onChange={(e) => setDefaultSettings({ ...defaultSettings, textColor: e.target.value })}
+                        className="text-xs font-mono p-2 rounded-lg border border-slate-300 w-full"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">لون خلفية الشهادة</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={defaultSettings.backgroundColor}
+                        onChange={(e) => setDefaultSettings({ ...defaultSettings, backgroundColor: e.target.value })}
+                        className="w-9 h-9 rounded-lg border border-slate-300 cursor-pointer"
+                      />
+                      <input
+                        type="text"
+                        value={defaultSettings.backgroundColor}
+                        onChange={(e) => setDefaultSettings({ ...defaultSettings, backgroundColor: e.target.value })}
+                        className="text-xs font-mono p-2 rounded-lg border border-slate-300 w-full"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Column 2: Typography Defaults */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 text-slate-900 border-b pb-2.5">
+                  <TypeIcon className="w-5 h-5 text-amber-600" />
+                  <h4 className="font-extrabold text-sm">أنواع الخطوط العربية الافتراضية</h4>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">خط العنوان الرئيسي (Title Font)</label>
+                  <select
+                    value={defaultSettings.titleFontFamily}
+                    onChange={(e) => setDefaultSettings({ ...defaultSettings, titleFontFamily: e.target.value as FontOption })}
+                    className="w-full text-xs font-bold p-2.5 rounded-xl border border-slate-300 bg-white"
+                  >
+                    {FONT_OPTIONS.map((f) => (
+                      <option key={f} value={f}>{f}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">خط اسم الطالب / المكرم (Student Name Font)</label>
+                  <select
+                    value={defaultSettings.studentNameFontFamily}
+                    onChange={(e) => setDefaultSettings({ ...defaultSettings, studentNameFontFamily: e.target.value as FontOption })}
+                    className="w-full text-xs font-bold p-2.5 rounded-xl border border-slate-300 bg-white"
+                  >
+                    {FONT_OPTIONS.map((f) => (
+                      <option key={f} value={f}>{f}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">خط المتن والنصوص العامة (Body Font)</label>
+                  <select
+                    value={defaultSettings.fontFamily}
+                    onChange={(e) => setDefaultSettings({ ...defaultSettings, fontFamily: e.target.value as FontOption })}
+                    className="w-full text-xs font-bold p-2.5 rounded-xl border border-slate-300 bg-white"
+                  >
+                    {FONT_OPTIONS.map((f) => (
+                      <option key={f} value={f}>{f}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* SUB-TAB 5: SIGNATURES */}
+          {activeSubTab === 'signatures' && (
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
+              <div className="flex items-center justify-between border-b pb-2.5">
+                <div className="flex items-center gap-2 text-slate-900">
+                  <PenTool className="w-5 h-5 text-amber-600" />
+                  <h4 className="font-extrabold text-sm">التوقيعات الرسمية الافتراضية</h4>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-bold text-slate-700">عدد التواقيع الافتراضي:</label>
+                  <div className="flex gap-1 bg-slate-100 p-1 rounded-lg">
+                    {([1, 2, 3] as const).map((cnt) => (
+                      <button
+                        key={cnt}
+                        type="button"
+                        onClick={() => setDefaultSettings({ ...defaultSettings, signatureCount: cnt })}
+                        className={`px-3 py-1 rounded-md text-xs font-bold transition ${
+                          defaultSettings.signatureCount === cnt
+                            ? 'bg-amber-500 text-slate-950 shadow-xs'
+                            : 'text-slate-600 hover:bg-slate-200'
+                        }`}
+                      >
+                        {cnt} {cnt === 1 ? 'توقيع' : 'تواقيع'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {/* Signature 1 */}
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
-                  <span className="text-xs font-bold text-slate-800 block">التوقيع الأول (معلم المادة / المشرف)</span>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-[11px] text-slate-500 mb-0.5">الصفة / المنصب</label>
-                      <input
-                        type="text"
-                        value={defaultSettings.signature1Title}
-                        onChange={(e) => setDefaultSettings({ ...defaultSettings, signature1Title: e.target.value })}
-                        className="w-full text-xs p-2 rounded-lg border border-slate-300 outline-none"
-                        placeholder="معلم المادة"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] text-slate-500 mb-0.5">الاسم المعتمد</label>
-                      <input
-                        type="text"
-                        value={defaultSettings.signature1Name}
-                        onChange={(e) => setDefaultSettings({ ...defaultSettings, signature1Name: e.target.value })}
-                        className="w-full text-xs p-2 rounded-lg border border-slate-300 outline-none"
-                        placeholder="أ. عبد الرحمن السعيد"
-                      />
-                    </div>
+                <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2.5">
+                  <span className="text-xs font-extrabold text-slate-900 block">التوقيع الأول (المعلم / المشرف)</span>
+                  <div>
+                    <label className="block text-[11px] text-slate-500 mb-0.5">الصفة / المنصب</label>
+                    <input
+                      type="text"
+                      value={defaultSettings.teacherTitle}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, teacherTitle: e.target.value })}
+                      className="w-full text-xs p-2 rounded-lg border border-slate-300 bg-white"
+                      placeholder="معلم المادة"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-slate-500 mb-0.5">الاسم المعتمد</label>
+                    <input
+                      type="text"
+                      value={defaultSettings.teacherName}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, teacherName: e.target.value })}
+                      className="w-full text-xs p-2 rounded-lg border border-slate-300 bg-white"
+                      placeholder="أ. عبد الرحمن السعيد"
+                    />
                   </div>
                 </div>
 
                 {/* Signature 2 */}
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
-                  <span className="text-xs font-bold text-slate-800 block">التوقيع الثاني (مدير المدرسة / الرئيس)</span>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-[11px] text-slate-500 mb-0.5">الصفة / المنصب</label>
+                <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2.5">
+                  <span className="text-xs font-extrabold text-slate-900 block">التوقيع الثاني (مدير المدرسة / الرئيس)</span>
+                  <div>
+                    <label className="block text-[11px] text-slate-500 mb-0.5">الصفة / المنصب</label>
+                    <input
+                      type="text"
+                      value={defaultSettings.principalTitle}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, principalTitle: e.target.value })}
+                      className="w-full text-xs p-2 rounded-lg border border-slate-300 bg-white"
+                      placeholder="مدير المدرسة"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-slate-500 mb-0.5">الاسم المعتمد</label>
+                    <input
+                      type="text"
+                      value={defaultSettings.principalName}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, principalName: e.target.value })}
+                      className="w-full text-xs p-2 rounded-lg border border-slate-300 bg-white"
+                      placeholder="د. خالد العصيمي"
+                    />
+                  </div>
+                </div>
+
+                {/* Signature 3 */}
+                <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2.5">
+                  <span className="text-xs font-extrabold text-slate-900 block">التوقيع الثالث (الوكيل / الموجه)</span>
+                  <div>
+                    <label className="block text-[11px] text-slate-500 mb-0.5">الصفة / المنصب</label>
+                    <input
+                      type="text"
+                      value={defaultSettings.signature3Title || ''}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, signature3Title: e.target.value })}
+                      className="w-full text-xs p-2 rounded-lg border border-slate-300 bg-white"
+                      placeholder="الموجه الطلابي"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-slate-500 mb-0.5">الاسم المعتمد</label>
+                    <input
+                      type="text"
+                      value={defaultSettings.signature3Name || ''}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, signature3Name: e.target.value })}
+                      className="w-full text-xs p-2 rounded-lg border border-slate-300 bg-white"
+                      placeholder="أ. فهد الشمري"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 pt-2 border-t">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">خط التوقيع اليدوي الافتراضي</label>
+                  <select
+                    value={defaultSettings.signatureFontFamily}
+                    onChange={(e) => setDefaultSettings({ ...defaultSettings, signatureFontFamily: e.target.value })}
+                    className="w-full text-xs p-2 rounded-xl border border-slate-300 bg-white"
+                  >
+                    <option value="Aref Ruqaa">خط الرقعة الفني (Aref Ruqaa)</option>
+                    <option value="Amiri">خط النسخ الأميري (Amiri)</option>
+                    <option value="Reem Kufi">خط كوفي فاخر (Reem Kufi)</option>
+                    <option value="Cairo">خط القاهرة الحديث (Cairo)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">لون حبر التوقيع</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={defaultSettings.signatureInkColor}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, signatureInkColor: e.target.value })}
+                      className="w-9 h-9 rounded-lg border border-slate-300 cursor-pointer"
+                    />
+                    <input
+                      type="text"
+                      value={defaultSettings.signatureInkColor}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, signatureInkColor: e.target.value })}
+                      className="text-xs font-mono p-2 rounded-lg border border-slate-300 w-full"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* SUB-TAB 6: FRAME & LOGO */}
+          {activeSubTab === 'frame-logo' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 text-slate-900 border-b pb-2.5">
+                  <Layers className="w-5 h-5 text-amber-600" />
+                  <h4 className="font-extrabold text-sm">الإطار والنقوش الزخرفية</h4>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">نمط الإطار الافتراضي</label>
+                  <select
+                    value={defaultSettings.frameStyle}
+                    onChange={(e) => setDefaultSettings({ ...defaultSettings, frameStyle: e.target.value as FrameStyle })}
+                    className="w-full text-xs font-bold p-2.5 rounded-xl border border-slate-300 bg-white"
+                  >
+                    {FRAME_OPTIONS.map((fr) => (
+                      <option key={fr.id} value={fr.id}>{fr.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">سمك الإطار (Border Width)</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="10"
+                      value={defaultSettings.borderWidth}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, borderWidth: parseInt(e.target.value) || 2 })}
+                      className="w-full text-xs p-2 rounded-lg border border-slate-300"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">المسافة الداخلية (Padding px)</label>
+                    <input
+                      type="number"
+                      min="4"
+                      max="40"
+                      value={defaultSettings.borderPadding}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, borderPadding: parseInt(e.target.value) || 12 })}
+                      className="w-full text-xs p-2 rounded-lg border border-slate-300"
+                    />
+                  </div>
+                </div>
+
+                <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-800">حاوية خلفية للنصوص لزيادة الوضوح فوق الزخارف</span>
+                    <input
+                      type="checkbox"
+                      checked={defaultSettings.bgCardBacking}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, bgCardBacking: e.target.checked })}
+                      className="w-4 h-4 accent-amber-500 rounded cursor-pointer"
+                    />
+                  </div>
+                  {defaultSettings.bgCardBacking && (
+                    <div className="pt-1">
+                      <div className="flex justify-between text-[11px] text-slate-600 mb-1">
+                        <span>شفافية الحاوية:</span>
+                        <span className="font-mono">{defaultSettings.bgCardOpacity}</span>
+                      </div>
                       <input
-                        type="text"
-                        value={defaultSettings.signature2Title}
-                        onChange={(e) => setDefaultSettings({ ...defaultSettings, signature2Title: e.target.value })}
-                        className="w-full text-xs p-2 rounded-lg border border-slate-300 outline-none"
-                        placeholder="مدير المدرسة"
+                        type="range"
+                        min="0.4"
+                        max="1.0"
+                        step="0.05"
+                        value={defaultSettings.bgCardOpacity}
+                        onChange={(e) => setDefaultSettings({ ...defaultSettings, bgCardOpacity: parseFloat(e.target.value) })}
+                        className="w-full accent-amber-500"
                       />
                     </div>
-                    <div>
-                      <label className="block text-[11px] text-slate-500 mb-0.5">الاسم المعتمد</label>
+                  )}
+                </div>
+              </div>
+
+              {/* Column 2: Logo Defaults */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 text-slate-900 border-b pb-2.5">
+                  <Award className="w-5 h-5 text-amber-600" />
+                  <h4 className="font-extrabold text-sm">شعار المؤسسة الافتراضي</h4>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">رابط أو صورة الشعار الافتراضي (URL)</label>
+                  <input
+                    type="text"
+                    value={defaultSettings.logoUrl || ''}
+                    onChange={(e) => setDefaultSettings({ ...defaultSettings, logoUrl: e.target.value })}
+                    className="w-full text-xs font-mono p-2.5 rounded-xl border border-slate-300 outline-none"
+                    placeholder="https://example.com/logo.png أو اترك فارغاً"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">موضع الشعار</label>
+                    <select
+                      value={defaultSettings.logoPosition}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, logoPosition: e.target.value as any })}
+                      className="w-full text-xs p-2 rounded-lg border border-slate-300 bg-white"
+                    >
+                      <option value="right">يمين الترويسة</option>
+                      <option value="center">وسط الشهادة</option>
+                      <option value="left">يسار الترويسة</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">حجم الشعار</label>
+                    <select
+                      value={defaultSettings.logoSize}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, logoSize: e.target.value as any })}
+                      className="w-full text-xs p-2 rounded-lg border border-slate-300 bg-white"
+                    >
+                      <option value="sm">صغير (Compact)</option>
+                      <option value="md">متوسط (Standard)</option>
+                      <option value="lg">كبير (Prominent)</option>
+                      <option value="xl">بارز جداً (Grand)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">شكل إطار الشعار</label>
+                    <select
+                      value={defaultSettings.logoShape}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, logoShape: e.target.value as any })}
+                      className="w-full text-xs p-2 rounded-lg border border-slate-300 bg-white"
+                    >
+                      <option value="circle">دائري</option>
+                      <option value="rounded">حواف مستديرة</option>
+                      <option value="square">مربع</option>
+                      <option value="none">حر بدون إطار</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">خلفية الشعار</label>
+                    <select
+                      value={defaultSettings.logoBgMode}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, logoBgMode: e.target.value as any })}
+                      className="w-full text-xs p-2 rounded-lg border border-slate-300 bg-white"
+                    >
+                      <option value="transparent">شفافة (Transparent)</option>
+                      <option value="white">بيضاء نقية</option>
+                      <option value="dark">داكنة فخمة</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* SUB-TAB 7: STAMPS & BADGES */}
+          {activeSubTab === 'stamps-badges' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 text-slate-900 border-b pb-2.5">
+                  <StampIcon className="w-5 h-5 text-amber-600" />
+                  <h4 className="font-extrabold text-sm">الختم الرسمي الافتراضي</h4>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">نص الختم الرئيسي</label>
+                  <input
+                    type="text"
+                    value={defaultSettings.stampTitle}
+                    onChange={(e) => setDefaultSettings({ ...defaultSettings, stampTitle: e.target.value })}
+                    className="w-full text-xs p-2 rounded-xl border border-slate-300"
+                    placeholder="الختم الرسمي"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">النص الفرعي للختم</label>
+                  <input
+                    type="text"
+                    value={defaultSettings.stampSubtext}
+                    onChange={(e) => setDefaultSettings({ ...defaultSettings, stampSubtext: e.target.value })}
+                    className="w-full text-xs p-2 rounded-xl border border-slate-300"
+                    placeholder="معتمد رسمياً"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">شكل الختم</label>
+                    <select
+                      value={defaultSettings.stampShape}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, stampShape: e.target.value as any })}
+                      className="w-full text-xs p-2 rounded-lg border border-slate-300 bg-white"
+                    >
+                      <option value="circle">دائري تقليدي</option>
+                      <option value="wax">شمعي ملكي فاخر</option>
+                      <option value="ribbon">شريطي مع وسام</option>
+                      <option value="square">مربع هندسي</option>
+                      <option value="rectangle">مستطيل اعتمادي</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">لون حبر الختم</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={defaultSettings.stampColor}
+                        onChange={(e) => setDefaultSettings({ ...defaultSettings, stampColor: e.target.value })}
+                        className="w-8 h-8 rounded-lg border border-slate-300 cursor-pointer"
+                      />
                       <input
                         type="text"
-                        value={defaultSettings.signature2Name}
-                        onChange={(e) => setDefaultSettings({ ...defaultSettings, signature2Name: e.target.value })}
-                        className="w-full text-xs p-2 rounded-lg border border-slate-300 outline-none"
-                        placeholder="د. خالد العصيمي"
+                        value={defaultSettings.stampColor}
+                        onChange={(e) => setDefaultSettings({ ...defaultSettings, stampColor: e.target.value })}
+                        className="text-xs font-mono p-1.5 rounded-lg border border-slate-300 w-full"
                       />
                     </div>
                   </div>
                 </div>
 
-                {/* Stamp */}
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
-                  <span className="text-xs font-bold text-slate-800 block flex items-center gap-1.5">
-                    <StampIcon className="w-3.5 h-3.5 text-amber-600" />
-                    الختم الرسمي الافتراضي
-                  </span>
-                  <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">نص العلامة المائية الشفافة (Watermark)</label>
+                  <input
+                    type="text"
+                    value={defaultSettings.watermarkText || ''}
+                    onChange={(e) => setDefaultSettings({ ...defaultSettings, watermarkText: e.target.value })}
+                    className="w-full text-xs p-2 rounded-xl border border-slate-300"
+                    placeholder="مثال: نسخة معتمدة أو شعار المدرسة"
+                  />
+                </div>
+              </div>
+
+              {/* Column 2: Badges Defaults */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 text-slate-900 border-b pb-2.5">
+                  <Award className="w-5 h-5 text-amber-600" />
+                  <h4 className="font-extrabold text-sm">الشارة والوسام الشرفي الافتراضي</h4>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">اسم الشارة / الوسام الافتراضي</label>
+                  <input
+                    type="text"
+                    value={defaultSettings.badgeTitle}
+                    onChange={(e) => setDefaultSettings({ ...defaultSettings, badgeTitle: e.target.value })}
+                    className="w-full text-xs p-2.5 rounded-xl border border-slate-300"
+                    placeholder="وسام التميز والتفوق"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">رمز الوسام (Icon)</label>
+                    <select
+                      value={defaultSettings.badgeIcon}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, badgeIcon: e.target.value as BadgeIconType })}
+                      className="w-full text-xs p-2 rounded-lg border border-slate-300 bg-white"
+                    >
+                      {BADGE_ICONS.map((bi) => (
+                        <option key={bi.id} value={bi.id}>{bi.label}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">شكل خلفية الشارة</label>
+                    <select
+                      value={defaultSettings.badgeBgShape}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, badgeBgShape: e.target.value as BadgeBgShape })}
+                      className="w-full text-xs p-2 rounded-lg border border-slate-300 bg-white"
+                    >
+                      <option value="pill">كبسولة دائرية</option>
+                      <option value="banner">شريط ملكي مع أطراف</option>
+                      <option value="rounded">مستطيل بحواف ناعمة</option>
+                      <option value="ornate">إطار زخرفي محدد</option>
+                      <option value="none">بدون خلفية</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">لون الشارة</label>
+                    <input
+                      type="color"
+                      value={defaultSettings.badgeBgColor}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, badgeBgColor: e.target.value })}
+                      className="w-full h-8 rounded-lg border border-slate-300 cursor-pointer"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">حجم الشارة</label>
+                    <select
+                      value={defaultSettings.badgeSize}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, badgeSize: e.target.value as any })}
+                      className="w-full text-xs p-2 rounded-lg border border-slate-300 bg-white"
+                    >
+                      <option value="sm">صغير (Compact)</option>
+                      <option value="md">متوسط (Standard)</option>
+                      <option value="lg">كبير وبارز (Large)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 pt-2">
+                  <input
+                    type="checkbox"
+                    checked={defaultSettings.badgeBgGradient}
+                    onChange={(e) => setDefaultSettings({ ...defaultSettings, badgeBgGradient: e.target.checked })}
+                    className="w-4 h-4 accent-amber-500 rounded cursor-pointer"
+                  />
+                  <span className="text-xs text-slate-700 font-bold">تطبيق تدرج لوني ملكي مذهب على الشارة</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* SUB-TAB 8: VERIFICATION BOX */}
+          {activeSubTab === 'verification-box' && (
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
+              <div className="flex items-center justify-between border-b pb-2.5">
+                <div className="flex items-center gap-2 text-slate-900">
+                  <QrCode className="w-5 h-5 text-amber-600" />
+                  <h4 className="font-extrabold text-sm">مربع التوثيق والـ QR والباركود الافتراضي</h4>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-bold text-slate-700">نمط صندوق التوثيق:</label>
+                  <select
+                    value={defaultSettings.verificationBoxPattern}
+                    onChange={(e) => setDefaultSettings({ ...defaultSettings, verificationBoxPattern: e.target.value as VerificationBoxPattern })}
+                    className="text-xs font-bold p-1.5 rounded-lg border border-slate-300 bg-slate-50"
+                  >
+                    {VERIFICATION_PATTERNS.map((vp) => (
+                      <option key={vp.id} value={vp.id}>{vp.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-800">
+                  <input
+                    type="checkbox"
+                    checked={defaultSettings.showVerificationQr}
+                    onChange={(e) => setDefaultSettings({ ...defaultSettings, showVerificationQr: e.target.checked })}
+                    className="w-4 h-4 accent-amber-500 rounded"
+                  />
+                  <span>رمز QR التفاعلي</span>
+                </label>
+
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-800">
+                  <input
+                    type="checkbox"
+                    checked={defaultSettings.showVerificationBarcode}
+                    onChange={(e) => setDefaultSettings({ ...defaultSettings, showVerificationBarcode: e.target.checked })}
+                    className="w-4 h-4 accent-amber-500 rounded"
+                  />
+                  <span>الباركود الشريطي</span>
+                </label>
+
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-800">
+                  <input
+                    type="checkbox"
+                    checked={defaultSettings.showVerificationSerialCode}
+                    onChange={(e) => setDefaultSettings({ ...defaultSettings, showVerificationSerialCode: e.target.checked })}
+                    className="w-4 h-4 accent-amber-500 rounded"
+                  />
+                  <span>الرقم التسلسلي</span>
+                </label>
+
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-800">
+                  <input
+                    type="checkbox"
+                    checked={defaultSettings.showVerificationStatusText}
+                    onChange={(e) => setDefaultSettings({ ...defaultSettings, showVerificationStatusText: e.target.checked })}
+                    className="w-4 h-4 accent-amber-500 rounded"
+                  />
+                  <span>شارة الاعتماد الرسمي</span>
+                </label>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">بادئة التوثيق (Prefix)</label>
+                  <input
+                    type="text"
+                    value={defaultSettings.verificationPrefix}
+                    onChange={(e) => setDefaultSettings({ ...defaultSettings, verificationPrefix: e.target.value })}
+                    className="w-full text-xs font-mono p-2.5 rounded-xl border border-slate-300"
+                    placeholder="CERT"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">نمط تشفير الكود</label>
+                  <select
+                    value={defaultSettings.verificationCodePattern}
+                    onChange={(e) => setDefaultSettings({ ...defaultSettings, verificationCodePattern: e.target.value as VerificationCodePattern })}
+                    className="w-full text-xs p-2.5 rounded-xl border border-slate-300 bg-white"
+                  >
+                    <option value="year-batch-serial">السنة + الدفعة + الرقم (CERT-2026-001)</option>
+                    <option value="hash-short">رمز أمني مشفر (CERT-A9X7-K2)</option>
+                    <option value="full-uuid">معرف كامل UUID</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">نص شارة الاعتماد</label>
+                  <input
+                    type="text"
+                    value={defaultSettings.verificationBadgeText}
+                    onChange={(e) => setDefaultSettings({ ...defaultSettings, verificationBadgeText: e.target.value })}
+                    className="w-full text-xs p-2.5 rounded-xl border border-slate-300"
+                    placeholder="وثيقة رسمية معتمدة ومؤمنة"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* SUB-TAB 9: EXPORT & PRINT */}
+          {activeSubTab === 'export-print' && (
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
+              <div className="flex items-center gap-2 text-slate-900 border-b pb-2.5">
+                <Printer className="w-5 h-5 text-amber-600" />
+                <h4 className="font-extrabold text-sm">إعدادات التصدير والطباعة الافتراضية</h4>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">صيغة التصدير الافتراضية</label>
+                  <select
+                    value={defaultSettings.exportFormat}
+                    onChange={(e) => setDefaultSettings({ ...defaultSettings, exportFormat: e.target.value as any })}
+                    className="w-full text-xs font-bold p-2.5 rounded-xl border border-slate-300 bg-white"
+                  >
+                    <option value="pdf">ملف مستند PDF (موصى به للطباعة)</option>
+                    <option value="png">صورة عالية الدقة PNG</option>
+                    <option value="svg">رسوم متجهة SVG</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">دقة التصدير (DPI)</label>
+                  <select
+                    value={defaultSettings.exportDpi}
+                    onChange={(e) => setDefaultSettings({ ...defaultSettings, exportDpi: parseInt(e.target.value) as any })}
+                    className="w-full text-xs font-bold p-2.5 rounded-xl border border-slate-300 bg-white"
+                  >
+                    <option value={300}>300 DPI (دقة طباعة قياسية فائقة)</option>
+                    <option value={600}>600 DPI (دقة احترافية فائقة للمطابع)</option>
+                    <option value={150}>150 DPI (مضغوط وخفيف للمشاركة السريعة)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">مقاس الورق الافتراضي</label>
+                  <select
+                    value={defaultSettings.printPaperSize}
+                    onChange={(e) => setDefaultSettings({ ...defaultSettings, printPaperSize: e.target.value as any })}
+                    className="w-full text-xs font-bold p-2.5 rounded-xl border border-slate-300 bg-white"
+                  >
+                    <option value="A4">A4 (210 × 297 mm)</option>
+                    <option value="A3">A3 (297 × 420 mm)</option>
+                    <option value="Letter">Letter (8.5 × 11 in)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-3 p-4 bg-slate-50 rounded-xl border border-slate-200">
+                <label className="flex items-center justify-between cursor-pointer">
+                  <div>
+                    <span className="text-xs font-bold text-slate-800 block">طباعة متجهة فائقة الدقة (Crisp Vector PDF)</span>
+                    <span className="text-[11px] text-slate-500 block">منع تشوه الخطوط والزخارف عند تكبير الشهادة</span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={defaultSettings.crispVectorPdf}
+                    onChange={(e) => setDefaultSettings({ ...defaultSettings, crispVectorPdf: e.target.checked })}
+                    className="w-4 h-4 accent-amber-500 rounded"
+                  />
+                </label>
+
+                <label className="flex items-center justify-between cursor-pointer pt-2 border-t">
+                  <div>
+                    <span className="text-xs font-bold text-slate-800 block">تضمين مربع التوثيق في التصدير تلقائياً</span>
+                    <span className="text-[11px] text-slate-500 block">إضافة الباركود والـ QR ورقم الشهادة في ملف التصدير النهائي</span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={defaultSettings.includeVerificationInExport}
+                    onChange={(e) => setDefaultSettings({ ...defaultSettings, includeVerificationInExport: e.target.checked })}
+                    className="w-4 h-4 accent-amber-500 rounded"
+                  />
+                </label>
+              </div>
+            </div>
+          )}
+
+          {/* SUB-TAB 10: OFFICIAL VERIFICATION DOCUMENT SETTINGS */}
+          {activeSubTab === 'verification-document' && (
+            <div className="space-y-6">
+              <div className="bg-emerald-50/80 p-4 rounded-2xl border border-emerald-200 flex items-start gap-3 shadow-xs">
+                <ShieldCheck className="w-6 h-6 text-emerald-700 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <h4 className="font-extrabold text-sm text-emerald-950">
+                    تخصيص وثيقة وإفادة التحقق الإلكتروني الرسمية المعتمدة
+                  </h4>
+                  <p className="text-xs text-emerald-800 leading-relaxed">
+                    هذه الوثيقة هي الإفادة الرسمية الصادرة من بوابة التوثيق عند فحص الكود أو قراءة رمز الـ QR وتتيح للطلاب والجهات الحكومية والأكاديمية طباعة وتصديق الشهادة بشكل مستقل.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                
+                {/* Column 1: Ministry Headers & Titles */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 text-slate-900 border-b pb-2.5">
+                    <Building2 className="w-5 h-5 text-emerald-600" />
+                    <h5 className="font-extrabold text-sm">ترويسة وعناوين الوثيقة</h5>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">الترويسة العليا (الجهة السيادية)</label>
+                    <input
+                      type="text"
+                      value={defaultSettings.verificationDocMinistryHeader1 || ''}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, verificationDocMinistryHeader1: e.target.value })}
+                      placeholder="المملكة العربية السعودية"
+                      className="w-full text-xs p-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">الترويسة الثانوية (الوزارة / الجهة)</label>
+                    <input
+                      type="text"
+                      value={defaultSettings.verificationDocMinistryHeader2 || ''}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, verificationDocMinistryHeader2: e.target.value })}
+                      placeholder="وزارة التعليم / منصة تَقْدِير"
+                      className="w-full text-xs p-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">اسم المنصة أو الجهة المشرفة</label>
+                    <input
+                      type="text"
+                      value={defaultSettings.verificationDocPlatformName || ''}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, verificationDocPlatformName: e.target.value })}
+                      placeholder="منصة تَقْدِير الوطنية لتوثيق الشهادات والجوائز التعليمية"
+                      className="w-full text-xs p-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">عنوان الوثيقة الرئيسي</label>
+                    <input
+                      type="text"
+                      value={defaultSettings.verificationDocTitle || ''}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, verificationDocTitle: e.target.value })}
+                      placeholder="إفادة وتحقق إلكتروني رسمي من صحة شهادة تقدير"
+                      className="w-full text-xs p-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none font-bold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">العنوان الفرعي الإنجليزي (Subtitle)</label>
+                    <input
+                      type="text"
+                      value={defaultSettings.verificationDocSubtitle || ''}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, verificationDocSubtitle: e.target.value })}
+                      placeholder="Official Certificate Verification & Authentication Statement"
+                      className="w-full text-xs p-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">نص إفادة ومطابقة السجلات الرقمية</label>
+                    <textarea
+                      rows={3}
+                      value={defaultSettings.verificationDocDeclaration || ''}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, verificationDocDeclaration: e.target.value })}
+                      placeholder="تشهد منصة تَقْدِير ومطابقة السجلات الرقمية بأن شهادة التقدير والتفوق الصادرة بالبيانات أدناه هي شهادة أصلية، نظامية، وموثقة إلكترونياً بقواعد البيانات المركزية:"
+                      className="w-full text-xs p-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none leading-relaxed"
+                    />
+                  </div>
+                </div>
+
+                {/* Column 2: Stamp, Colors, Watermark & Toggles */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 text-slate-900 border-b pb-2.5">
+                    <Palette className="w-5 h-5 text-indigo-600" />
+                    <h5 className="font-extrabold text-sm">الألوان والأختام والعلامة المائية</h5>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">إدارة الاعتماد والختم الرسمي</label>
+                    <input
+                      type="text"
+                      value={defaultSettings.verificationDocAuthority || ''}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, verificationDocAuthority: e.target.value })}
+                      placeholder="إدارة التوثيق والاعتماد الأكاديمي الرقمي"
+                      className="w-full text-xs p-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">نص العلامة المائية الشفافة (Watermark)</label>
+                    <input
+                      type="text"
+                      value={defaultSettings.verificationDocWatermark || ''}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, verificationDocWatermark: e.target.value })}
+                      placeholder="معتمد رسمياً - VERIFIED"
+                      className="w-full text-xs p-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none font-bold"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-[11px] text-slate-500 mb-0.5">نص الختم الرئيسي</label>
-                      <input
-                        type="text"
-                        value={defaultSettings.stampTitle}
-                        onChange={(e) => setDefaultSettings({ ...defaultSettings, stampTitle: e.target.value })}
-                        className="w-full text-xs p-2 rounded-lg border border-slate-300 outline-none"
-                        placeholder="الختم الرسمي"
-                      />
+                      <label className="block text-xs font-bold text-slate-700 mb-1">اللون الأساسي للأختام</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          value={defaultSettings.verificationDocPrimaryColor || '#047857'}
+                          onChange={(e) => setDefaultSettings({ ...defaultSettings, verificationDocPrimaryColor: e.target.value })}
+                          className="w-8 h-8 rounded-lg cursor-pointer border border-slate-300 p-0.5"
+                        />
+                        <input
+                          type="text"
+                          value={defaultSettings.verificationDocPrimaryColor || '#047857'}
+                          onChange={(e) => setDefaultSettings({ ...defaultSettings, verificationDocPrimaryColor: e.target.value })}
+                          className="w-full text-xs p-2 rounded-lg border border-slate-300 font-mono"
+                        />
+                      </div>
                     </div>
+
                     <div>
-                      <label className="block text-[11px] text-slate-500 mb-0.5">النص الفرعي للختم</label>
-                      <input
-                        type="text"
-                        value={defaultSettings.stampSubtext}
-                        onChange={(e) => setDefaultSettings({ ...defaultSettings, stampSubtext: e.target.value })}
-                        className="w-full text-xs p-2 rounded-lg border border-slate-300 outline-none"
-                        placeholder="معتمد رسمياً"
-                      />
+                      <label className="block text-xs font-bold text-slate-700 mb-1">لون إطار الوثيقة</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          value={defaultSettings.verificationDocBorderColor || '#10b981'}
+                          onChange={(e) => setDefaultSettings({ ...defaultSettings, verificationDocBorderColor: e.target.value })}
+                          className="w-8 h-8 rounded-lg cursor-pointer border border-slate-300 p-0.5"
+                        />
+                        <input
+                          type="text"
+                          value={defaultSettings.verificationDocBorderColor || '#10b981'}
+                          onChange={(e) => setDefaultSettings({ ...defaultSettings, verificationDocBorderColor: e.target.value })}
+                          className="w-full text-xs p-2 rounded-lg border border-slate-300 font-mono"
+                        />
+                      </div>
                     </div>
                   </div>
+
+                  {/* Toggles */}
+                  <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2.5 pt-3">
+                    <label className="flex items-center justify-between cursor-pointer">
+                      <span className="text-xs font-bold text-slate-800">إظهار الختم والاعتماد الرقمي الدائري</span>
+                      <input
+                        type="checkbox"
+                        checked={defaultSettings.verificationDocShowSecurityStamp !== false}
+                        onChange={(e) => setDefaultSettings({ ...defaultSettings, verificationDocShowSecurityStamp: e.target.checked })}
+                        className="w-4 h-4 accent-emerald-600 rounded cursor-pointer"
+                      />
+                    </label>
+
+                    <label className="flex items-center justify-between cursor-pointer pt-2 border-t">
+                      <span className="text-xs font-bold text-slate-800">إظهار رمز الـ QR للتحقق السريع</span>
+                      <input
+                        type="checkbox"
+                        checked={defaultSettings.verificationDocShowQr !== false}
+                        onChange={(e) => setDefaultSettings({ ...defaultSettings, verificationDocShowQr: e.target.checked })}
+                        className="w-4 h-4 accent-emerald-600 rounded cursor-pointer"
+                      />
+                    </label>
+
+                    <label className="flex items-center justify-between cursor-pointer pt-2 border-t">
+                      <span className="text-xs font-bold text-slate-800">إظهار بصمة الأمان الرقمية (Checksum)</span>
+                      <input
+                        type="checkbox"
+                        checked={defaultSettings.verificationDocShowChecksum !== false}
+                        onChange={(e) => setDefaultSettings({ ...defaultSettings, verificationDocShowChecksum: e.target.checked })}
+                        className="w-4 h-4 accent-emerald-600 rounded cursor-pointer"
+                      />
+                    </label>
+                  </div>
+
                 </div>
 
               </div>
+
+              {/* Live Mini Preview Box */}
+              <div className="bg-slate-900 text-white p-5 rounded-2xl border border-slate-800 space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                  <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                    <Eye className="w-4 h-4" />
+                    <span>معاينة حية لشكل وثيقة التحقق المعتمدة للطباعة</span>
+                  </span>
+                  <span className="text-[10px] text-slate-400">تحديث فوري مع تغيير الحقول أعلاه</span>
+                </div>
+                <div
+                  className="bg-white text-slate-900 p-6 rounded-2xl border-2 space-y-3 text-xs max-w-2xl mx-auto shadow-inner"
+                  style={{ borderColor: defaultSettings.verificationDocBorderColor || '#10b981' }}
+                >
+                  <div className="flex justify-between items-center border-b pb-2" style={{ borderColor: defaultSettings.verificationDocPrimaryColor || '#047857' }}>
+                    <div>
+                      <h6 className="font-black text-sm text-slate-900">{defaultSettings.verificationDocMinistryHeader1 || 'المملكة العربية السعودية'}</h6>
+                      <p className="text-[11px] font-bold text-slate-700">{defaultSettings.verificationDocMinistryHeader2 || 'وزارة التعليم / منصة تَقْدِير'}</p>
+                      <p className="text-[10px] text-slate-500">{defaultSettings.verificationDocPlatformName || 'منصة تَقْدِير الوطنية لتوثيق الشهادات والجوائز التعليمية'}</p>
+                    </div>
+                    <div
+                      className="w-12 h-12 rounded-xl flex items-center justify-center border shadow-xs"
+                      style={{
+                        backgroundColor: `${defaultSettings.verificationDocPrimaryColor || '#047857'}15`,
+                        borderColor: defaultSettings.verificationDocPrimaryColor || '#047857',
+                        color: defaultSettings.verificationDocPrimaryColor || '#047857'
+                      }}
+                    >
+                      <ShieldCheck className="w-6 h-6" />
+                    </div>
+                  </div>
+                  <div className="text-center py-1">
+                    <h5 className="font-black text-slate-950 text-sm">{defaultSettings.verificationDocTitle || 'إفادة وتحقق إلكتروني رسمي من صحة شهادة تقدير'}</h5>
+                    <p className="text-[10px] text-slate-500 font-mono">{defaultSettings.verificationDocSubtitle || 'Official Certificate Verification & Authentication Statement'}</p>
+                  </div>
+                  <div className="bg-slate-50 p-3 rounded-xl border text-center space-y-1 text-[11px]">
+                    <p className="text-slate-700 font-semibold">{defaultSettings.verificationDocDeclaration || 'تشهد منصة تَقْدِير ومطابقة السجلات الرقمية بأن شهادة التقدير...'}</p>
+                    <span className="font-black text-indigo-950 text-xs inline-block bg-indigo-50 px-4 py-1 rounded-lg border border-indigo-200">
+                      اسم الطالب / الطالبة (مثال تجريبي)
+                    </span>
+                  </div>
+                </div>
+              </div>
+
             </div>
-          </div>
+          )}
 
         </div>
       )}
 
-      {/* TAB 2: AI ASSISTANT & API SETTINGS */}
+      {/* ========================================================================= */}
+      {/* TAB 2: AI ASSISTANT & MULTI-PROVIDER API SETTINGS                         */}
+      {/* ========================================================================= */}
       {activeTab === 'ai-settings' && (
         <div className="space-y-6">
           
@@ -472,13 +1997,13 @@ export const AppSettingsModal: React.FC<Props> = ({
           <div className="bg-indigo-50 p-4 rounded-2xl border border-indigo-200 flex flex-wrap items-center justify-between gap-3 shadow-xs">
             <div className="flex items-center gap-2 text-indigo-950 text-xs font-bold">
               <Bot className="w-5 h-5 text-indigo-600 shrink-0" />
-              <span>تحكم كامل في محرك الذكاء الاصطناعي (Gemini AI)، اختيار النماذج، المفاتيح، وضمان عمل الـ API على السيرفر الخارجي.</span>
+              <span>تحكم في مزود ونماذج الذكاء الاصطناعي (Gemini, OpenAI, Claude, DeepSeek, Groq, Custom API).</span>
             </div>
 
             <div className="flex items-center gap-2">
               <button
                 onClick={handleResetAISettings}
-                className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs rounded-xl transition flex items-center gap-1"
+                className="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs rounded-xl transition flex items-center gap-1.5"
                 title="استعادة الإعدادات الافتراضية"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
@@ -488,15 +2013,15 @@ export const AppSettingsModal: React.FC<Props> = ({
               <button
                 onClick={handleTestConnection}
                 disabled={isTestingAi}
-                className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition shadow-xs flex items-center gap-1.5 disabled:opacity-50"
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition shadow-xs flex items-center gap-2 disabled:opacity-50"
               >
-                <Activity className={`w-3.5 h-3.5 ${isTestingAi ? 'animate-spin' : ''}`} />
+                <Activity className={`w-4 h-4 ${isTestingAi ? 'animate-spin' : ''}`} />
                 <span>{isTestingAi ? 'جاري فحص الاتصال...' : 'فحص اتصال الـ API ⚡'}</span>
               </button>
 
               <button
                 onClick={handleSaveAISettings}
-                className="px-5 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs rounded-xl transition shadow-xs flex items-center gap-1.5"
+                className="px-5 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs rounded-xl transition shadow-xs flex items-center gap-2"
               >
                 <Save className="w-4 h-4" />
                 <span>حفظ إعدادات الـ AI</span>
@@ -507,17 +2032,17 @@ export const AppSettingsModal: React.FC<Props> = ({
           {aiSaveSuccessMsg && (
             <div className="p-3.5 bg-emerald-50 border border-emerald-300 text-emerald-900 rounded-xl text-xs font-bold flex items-center gap-2 animate-fadeIn">
               <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-              تم حفظ إعدادات مساعد الذكاء الاصطناعي بنجاح! سيتم تطبيقها فوراً في كافة عمليات التوليد والتحسين.
+              تم حفظ إعدادات مساعد الذكاء الاصطناعي والمزود ({aiSettings.provider}) بنجاح!
             </div>
           )}
 
           {/* AI Connection Test Result Banner */}
           {aiTestResult && (
             <div
-              className={`p-4 rounded-2xl border text-xs leading-relaxed flex items-start gap-3 ${
+              className={`p-4 rounded-2xl border text-xs leading-relaxed flex items-start gap-3 shadow-xs ${
                 aiTestResult.success
-                  ? 'bg-emerald-50/90 border-emerald-300 text-emerald-900'
-                  : 'bg-rose-50/90 border-rose-300 text-rose-900'
+                  ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
+                  : 'bg-rose-50 border-rose-300 text-rose-900'
               }`}
             >
               <div className="mt-0.5">
@@ -527,23 +2052,65 @@ export const AppSettingsModal: React.FC<Props> = ({
                   <AlertCircle className="w-5 h-5 text-rose-600" />
                 )}
               </div>
-              <div className="flex-1 space-y-1">
+              <div className="flex-1 space-y-1.5">
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <span className="font-extrabold text-sm">{aiTestResult.message}</span>
                   {aiTestResult.latencyMs && (
-                    <span className="px-2 py-0.5 bg-white/80 rounded-full font-mono text-[11px] font-bold border">
-                      ⏱️ زمن الاستجابة: {aiTestResult.latencyMs}ms | النموذج: {aiTestResult.modelUsed}
+                    <span className="px-2.5 py-1 bg-white rounded-full font-mono text-[11px] font-bold border border-emerald-300 text-emerald-800 shadow-2xs">
+                      ⏱️ زمن الاستجابة: {aiTestResult.latencyMs}ms | المزود: {aiTestResult.providerUsed} | النموذج: {aiTestResult.modelUsed}
                     </span>
                   )}
                 </div>
                 {aiTestResult.details && (
-                  <p className="text-[11px] opacity-80 font-mono bg-white/50 p-2 rounded-lg mt-1 border">
+                  <p className="text-[11px] font-mono bg-white/70 p-2.5 rounded-lg border border-slate-200 mt-1 select-all">
                     {aiTestResult.details}
                   </p>
                 )}
               </div>
             </div>
           )}
+
+          {/* AI Providers Selector Grid */}
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+            <label className="block text-xs font-black text-slate-800">اختر مزود خدمة الذكاء الاصطناعي (AI Provider):</label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+              {AI_PROVIDERS.map((p) => {
+                const isSelected = aiSettings.provider === p.id;
+                return (
+                  <div
+                    key={p.id}
+                    onClick={() => {
+                      setAiSettings({
+                        ...aiSettings,
+                        provider: p.id,
+                        model: p.defaultModel,
+                        customApiUrl: p.id === 'custom' ? (aiSettings.customApiUrl || p.defaultBaseUrl) : undefined,
+                      });
+                    }}
+                    className={`p-3.5 rounded-2xl border cursor-pointer transition flex flex-col justify-between ${
+                      isSelected
+                        ? 'bg-indigo-50/90 border-indigo-500 ring-2 ring-indigo-500/20 shadow-xs'
+                        : 'bg-slate-50/80 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-black text-xs text-slate-900">{p.name}</span>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white border border-slate-200 text-indigo-700">
+                          {p.badge}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-600 leading-relaxed mt-1">{p.description}</p>
+                    </div>
+                    <div className="mt-3 pt-2 border-t border-slate-200/60 flex items-center justify-between text-[10px]">
+                      <span className="text-slate-500 font-mono">النموذج: {p.defaultModel}</span>
+                      {isSelected && <span className="text-indigo-600 font-bold flex items-center gap-0.5"><Check className="w-3 h-3" /> نشط</span>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             
@@ -552,16 +2119,22 @@ export const AppSettingsModal: React.FC<Props> = ({
               <div className="flex items-center justify-between border-b pb-3">
                 <div className="flex items-center gap-2 text-slate-800">
                   <Cpu className="w-5 h-5 text-indigo-600" />
-                  <h3 className="font-extrabold text-sm">اختيار نموذج الذكاء الاصطناعي (Model)</h3>
+                  <h3 className="font-extrabold text-sm">نماذج ({currentProviderInfo.name})</h3>
                 </div>
-                <span className="text-[11px] bg-indigo-50 text-indigo-700 px-2.5 py-0.5 rounded-full font-bold border border-indigo-200">
-                  Google Gemini SDK
-                </span>
+                <a
+                  href={currentProviderInfo.keyDocsUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[11px] text-indigo-600 hover:underline flex items-center gap-1 font-bold"
+                >
+                  <span>الحصول على المفتاح</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
               </div>
 
-              {/* Supported Models Radio Grid */}
+              {/* Supported Models for Current Provider */}
               <div className="space-y-2.5">
-                {SUPPORTED_AI_MODELS.map((m) => {
+                {currentProviderInfo.models.map((m) => {
                   const isSelected = aiSettings.model === m.id;
                   return (
                     <div
@@ -598,22 +2171,39 @@ export const AppSettingsModal: React.FC<Props> = ({
 
               {/* Custom Model Input */}
               <div className="pt-2 border-t">
-                <label className="block text-xs font-bold text-slate-700 mb-1">أو اسم نموذج مخصص (Custom Model)</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">اسم النموذج المعتمد (Model Identifier)</label>
                 <input
                   type="text"
                   value={aiSettings.model}
                   onChange={(e) => setAiSettings({ ...aiSettings, model: e.target.value })}
                   className="w-full text-xs font-mono p-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none"
-                  placeholder="gemini-3.7-flash"
+                  placeholder={currentProviderInfo.defaultModel}
                 />
               </div>
+
+              {/* Custom Endpoint URL (for custom / ollama / openrouter) */}
+              {aiSettings.provider === 'custom' && (
+                <div className="pt-2 border-t">
+                  <label className="block text-xs font-bold text-slate-700 mb-1">عنوان خادم الذكاء الاصطناعي (Base URL)</label>
+                  <input
+                    type="text"
+                    value={aiSettings.customApiUrl || ''}
+                    onChange={(e) => setAiSettings({ ...aiSettings, customApiUrl: e.target.value })}
+                    className="w-full text-xs font-mono p-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none"
+                    placeholder="http://localhost:11434/v1 أو https://openrouter.ai/api/v1"
+                  />
+                  <span className="text-[10px] text-slate-500 mt-1 block">
+                    يدعم أي سيرفر محلي أو سحابي يدعم بروتوكول OpenAI Chat Completions.
+                  </span>
+                </div>
+              )}
 
               {/* API Key Section */}
               <div className="pt-3 border-t space-y-2">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                     <Key className="w-4 h-4 text-amber-600" />
-                    مفتاح الـ API المخصص (Custom Gemini API Key)
+                    مفتاح الـ API المخصص ({currentProviderInfo.name} API Key)
                   </label>
                   <span className="text-[10px] text-slate-500 font-medium">(اختياري)</span>
                 </div>
@@ -624,7 +2214,7 @@ export const AppSettingsModal: React.FC<Props> = ({
                     value={aiSettings.apiKey || ''}
                     onChange={(e) => setAiSettings({ ...aiSettings, apiKey: e.target.value })}
                     className="w-full text-xs font-mono p-2.5 pl-10 rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none"
-                    placeholder="اتركه فارغاً لاستخدام المفتاح الافتراضي للسيرفر..."
+                    placeholder={currentProviderInfo.keyPlaceholder}
                   />
                   <button
                     type="button"
@@ -638,11 +2228,11 @@ export const AppSettingsModal: React.FC<Props> = ({
                 <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-[11px] text-slate-600 leading-relaxed">
                   {aiSettings.apiKey && aiSettings.apiKey.trim().length > 0 ? (
                     <span className="text-indigo-700 font-bold flex items-center gap-1">
-                      <Check className="w-3.5 h-3.5" /> يتم استخدام مفتاح API المخصص المُدخل أعلاه.
+                      <Check className="w-3.5 h-3.5" /> يتم استخدام مفتاح الـ API المخصص المُدخل أعلاه.
                     </span>
                   ) : (
                     <span className="text-slate-600">
-                      ℹ️ يتم الاعتماد حالياً على مفتاح السيرفر الافتراضي المسجل في متغير البيئة <code className="bg-slate-200 px-1 py-0.5 rounded text-slate-800 font-mono">GEMINI_API_KEY</code>.
+                      ℹ️ يتم الاعتماد حالياً على مفتاح السيرفر الافتراضي المسجل في متغيرات البيئة.
                     </span>
                   )}
                 </div>
@@ -661,11 +2251,11 @@ export const AppSettingsModal: React.FC<Props> = ({
               <div className="space-y-1.5">
                 <label className="block text-xs font-bold text-slate-700">النبرة والأسلوب البلاغي الافتراضي</label>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {(['رسمي وفخم', 'حماسي ومحفز', 'شاعري وبليغ', 'لطيف للأطفال', 'مسجوع وأدبي', 'موجز ومباشر'] as const).map((t) => (
+                  {(['رسمي وفخم', 'حماسي ومحفز', 'شاعري وبليغ', 'لطيف للأطفال', 'مسجوع وأدبي', 'موجز ومباشر', 'قرآني وإسلامي', 'أكاديمي رسمي'] as const).map((t) => (
                     <button
                       key={t}
                       type="button"
-                      onClick={() => setAiSettings({ ...aiSettings, tone: t })}
+                      onClick={() => setAiSettings({ ...aiSettings, tone: t as AITone })}
                       className={`p-2 rounded-xl text-xs font-bold transition border text-center ${
                         aiSettings.tone === t
                           ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
@@ -716,19 +2306,36 @@ export const AppSettingsModal: React.FC<Props> = ({
                 />
               </div>
 
-              {/* Smart Local Fallback Toggle */}
-              <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-xl space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <span className="text-xs font-bold text-amber-950 block">المولد الذكي اللغوي البديل (Smart Fallback)</span>
-                    <span className="text-[11px] text-amber-800 block">التبديل التلقائي لمولد العبارات الفصيحة محلياً إذا كان الـ API غير متاح</span>
+              {/* Smart Local Fallback & Gender Adaptation */}
+              <div className="space-y-2 pt-2 border-t">
+                <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-xl space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-bold text-amber-950 block">المولد الذكي اللغوي البديل (Smart Fallback)</span>
+                      <span className="text-[11px] text-amber-800 block">التبديل التلقائي لمولد العبارات الفصيحة محلياً إذا كان الـ API غير متاح</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={aiSettings.autoLocalFallback}
+                      onChange={(e) => setAiSettings({ ...aiSettings, autoLocalFallback: e.target.checked })}
+                      className="w-4 h-4 accent-amber-600 rounded cursor-pointer"
+                    />
                   </div>
-                  <input
-                    type="checkbox"
-                    checked={aiSettings.autoLocalFallback}
-                    onChange={(e) => setAiSettings({ ...aiSettings, autoLocalFallback: e.target.checked })}
-                    className="w-4 h-4 accent-amber-600 rounded cursor-pointer"
-                  />
+                </div>
+
+                <div className="p-3 bg-indigo-50/70 border border-indigo-200 rounded-xl space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-bold text-indigo-950 block">التكيف التلقائي للمذكر والمؤنث بالذكاء الاصطناعي</span>
+                      <span className="text-[11px] text-indigo-800 block">تحويل الضمائر والأفعال والصفات حسب جنس الطالب المختار</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={aiSettings.autoGenderAdaptation}
+                      onChange={(e) => setAiSettings({ ...aiSettings, autoGenderAdaptation: e.target.checked })}
+                      className="w-4 h-4 accent-indigo-600 rounded cursor-pointer"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -744,31 +2351,30 @@ export const AppSettingsModal: React.FC<Props> = ({
             >
               <div className="flex items-center gap-2">
                 <Server className="w-4 h-4 text-amber-400" />
-                <span>دليل تشغيل ورفع النظام على سيرفر خارجي (VPS, Docker, Cloud Run, Vercel) دون مشاكل في الـ API</span>
+                <span>دليل تشغيل ورفع النظام على سيرفر خارجي (VPS, Docker, Cloud Run, Vercel) لجميع المزودين</span>
               </div>
               <span className="text-amber-400 font-mono text-sm">{showDeployGuide ? '▲ إخفاء' : '▼ عرض الدليل'}</span>
             </button>
 
             {showDeployGuide && (
               <div className="p-5 space-y-4 text-xs text-slate-700 bg-slate-50 leading-relaxed border-t border-slate-200">
-                
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Item 1: .env configuration */}
                   <div className="p-4 bg-white rounded-xl border border-slate-200 space-y-2">
                     <h4 className="font-extrabold text-slate-900 flex items-center gap-1.5 text-xs">
                       <Code2 className="w-4 h-4 text-indigo-600" />
-                      1. إعداد ملف البيئة (.env) بالسيرفر:
+                      1. إعداد متغيرات البيئة في السيرفر (.env):
                     </h4>
                     <p className="text-[11px] text-slate-600">
-                      عند استضافة التطبيق على سيرفر Node.js أو VPS، قم بإنشاء ملف باسم <code className="bg-slate-100 text-indigo-800 px-1 py-0.5 rounded font-mono">.env</code> في المجلد الرئيسي وأضف المفتاح:
+                      أضف مفاتيح المزودين في ملف <code className="bg-slate-100 text-indigo-800 px-1 py-0.5 rounded font-mono">.env</code>:
                     </p>
                     <div className="bg-slate-900 text-amber-300 p-2.5 rounded-lg font-mono text-[11px] select-all dir-ltr text-left">
-                      GEMINI_API_KEY=AIzaSyYourGeminiApiKeyHere<br />
+                      GEMINI_API_KEY=AIzaSy...<br />
+                      OPENAI_API_KEY=sk-...<br />
+                      ANTHROPIC_API_KEY=sk-ant-...<br />
                       PORT=3000
                     </div>
                   </div>
 
-                  {/* Item 2: Docker command */}
                   <div className="p-4 bg-white rounded-xl border border-slate-200 space-y-2">
                     <h4 className="font-extrabold text-slate-900 flex items-center gap-1.5 text-xs">
                       <Zap className="w-4 h-4 text-amber-600" />
@@ -786,13 +2392,12 @@ export const AppSettingsModal: React.FC<Props> = ({
                 <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl space-y-1.5 text-amber-950">
                   <h5 className="font-bold text-xs flex items-center gap-1.5">
                     <ShieldCheck className="w-4 h-4 text-amber-600" />
-                    أمان وسرية المفاتيح:
+                    أمان وسرية مفاتيح الـ API:
                   </h5>
                   <p className="text-[11px] text-amber-900 leading-relaxed">
-                    كافة اتصالات ومفاتيح الـ API تُعالج على الخادم الخلفي (Server-side) عبر مسارات <code className="bg-amber-100 px-1 py-0.5 rounded font-mono">/api/*</code> لضمان عدم تسريب المفاتيح للمتصفح إطلاقاً وبأعلى معايير الحماية.
+                    كافة اتصالات ومفاتيح الـ API لجميع المزودين تُعالج حصراً على الخادم الخلفي (Server-side API routes) لضمان عدم تسريب المفاتيح للمتصفح إطلاقاً وبأعلى معايير الحماية.
                   </p>
                 </div>
-
               </div>
             )}
           </div>
@@ -800,127 +2405,276 @@ export const AppSettingsModal: React.FC<Props> = ({
         </div>
       )}
 
-      {/* TAB 3: APP SYSTEM & SUPPORT */}
+      {/* ========================================================================= */}
+      {/* TAB 3: APP SYSTEM, BACKUP & 24/7 SUPPORT                                  */}
+      {/* ========================================================================= */}
       {activeTab === 'app-system' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          
-          {/* Synchronization and Local Mode Column */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-            <div className="flex items-center justify-between border-b pb-3">
-              <h3 className="font-extrabold text-sm text-slate-800 flex items-center gap-2">
-                <Wifi className="w-4 h-4 text-amber-600" />
-                المزامنة والوضع المحلي
-              </h3>
-              <span className="text-[11px] text-amber-700 font-bold bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200">
-                مفعل تلقائياً
-              </span>
-            </div>
-
-            <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200">
-              <div>
-                <h5 className="font-bold text-xs text-slate-900">الوضع غير المتصل (Offline Mode)</h5>
-                <p className="text-[11px] text-slate-500 mt-0.5">العمل بالكامل بدون إنترنت والاعتماد على الذاكرة المحلية</p>
-              </div>
-              <button
-                onClick={() => setOfflineMode(!offlineMode)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${
-                  offlineMode ? 'bg-amber-500 text-slate-950' : 'bg-slate-200 text-slate-700'
-                }`}
-              >
-                {offlineMode ? <WifiOff className="w-4 h-4" /> : <Wifi className="w-4 h-4" />}
-                {offlineMode ? 'مفعل' : 'معطل'}
-              </button>
-            </div>
-
-            <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200">
-              <div>
-                <h5 className="font-bold text-xs text-slate-900">المزامنة السحابية التلقائية</h5>
-                <p className="text-[11px] text-slate-500 mt-0.5">مزامنة التغييرات تلقائياً عبر الأجهزة</p>
-              </div>
-              <input
-                type="checkbox"
-                checked={autoSync}
-                onChange={(e) => setAutoSync(e.target.checked)}
-                className="w-4 h-4 accent-amber-500 rounded cursor-pointer"
-              />
-            </div>
-
-            <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200">
-              <div>
-                <h5 className="font-bold text-xs text-slate-900">تصدير الطباعة فائق الدقة (Vector Print PDF)</h5>
-                <p className="text-[11px] text-slate-500 mt-0.5">ضمان عدم ضبابية النصوص أو الخطوط عند الطباعة</p>
-              </div>
-              <input
-                type="checkbox"
-                checked={highQualityPdf}
-                onChange={(e) => setHighQualityPdf(e.target.checked)}
-                className="w-4 h-4 accent-amber-500 rounded cursor-pointer"
-              />
-            </div>
-
-            {/* Training Videos Section */}
-            <div className="p-4 bg-amber-50/60 border border-amber-200 rounded-xl space-y-2">
-              <h4 className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
-                <BookOpen className="w-4 h-4 text-amber-700" />
-                الدورات والورش التدريبية لتطوير الكفاءة
-              </h4>
-              <p className="text-[11px] text-amber-800 leading-relaxed">
-                تعلم أسرار الصياغة التربوية المؤثرة والتصميم الرقمي لشهادات التكريم عبر مقاطع قصيرة ودليل الإرشادات.
-              </p>
-            </div>
-          </div>
-
-          {/* 24/7 Support & FAQ Column */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-            <div className="flex items-center justify-between border-b pb-3">
-              <h3 className="font-extrabold text-sm text-slate-800 flex items-center gap-2">
-                <Headset className="w-4 h-4 text-amber-600" />
-                الدعم الفني والتعليمات (24/7)
-              </h3>
-              <span className="text-[11px] text-emerald-700 font-bold bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
-                الدعم مباشر
-              </span>
-            </div>
-
-            <div className="space-y-2">
-              <span className="text-xs font-bold text-slate-700 block">الأسئلة الشائعة والإرشادات:</span>
-              {faqs.map((f, idx) => (
-                <div
-                  key={idx}
-                  className="border border-slate-200 rounded-xl overflow-hidden transition"
-                >
-                  <button
-                    onClick={() => setActiveFaq(activeFaq === idx ? null : idx)}
-                    className="w-full text-right p-3 text-xs font-bold text-slate-800 bg-slate-50 hover:bg-slate-100 flex items-center justify-between gap-2"
-                  >
-                    <span>{f.q}</span>
-                    <span className="text-amber-600">{activeFaq === idx ? '▲' : '▼'}</span>
-                  </button>
-                  {activeFaq === idx && (
-                    <div className="p-3 text-xs text-slate-600 bg-white border-t border-slate-100 leading-relaxed">
-                      {f.a}
-                    </div>
-                  )}
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            
+            {/* Column 1: Synchronization, Storage & Backup */}
+            <div className="space-y-5">
+              
+              {/* Synchronization Card */}
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <div className="flex items-center justify-between border-b pb-3">
+                  <h3 className="font-extrabold text-sm text-slate-800 flex items-center gap-2">
+                    <Wifi className="w-4 h-4 text-amber-600" />
+                    المزامنة والوضع المحلي
+                  </h3>
+                  <span className="text-[11px] text-amber-700 font-bold bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200">
+                    مفعل تلقائياً
+                  </span>
                 </div>
-              ))}
+
+                <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200">
+                  <div>
+                    <h5 className="font-bold text-xs text-slate-900">الوضع غير المتصل (Offline Mode)</h5>
+                    <p className="text-[11px] text-slate-500 mt-0.5">العمل بالكامل بدون إنترنت والاعتماد على الذاكرة المحلية</p>
+                  </div>
+                  <button
+                    onClick={() => setOfflineMode(!offlineMode)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${
+                      offlineMode ? 'bg-amber-500 text-slate-950' : 'bg-slate-200 text-slate-700'
+                    }`}
+                  >
+                    {offlineMode ? <WifiOff className="w-4 h-4" /> : <Wifi className="w-4 h-4" />}
+                    {offlineMode ? 'مفعل' : 'معطل'}
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200">
+                  <div>
+                    <h5 className="font-bold text-xs text-slate-900">المزامنة السحابية والحفظ التلقائي</h5>
+                    <p className="text-[11px] text-slate-500 mt-0.5">حفظ وتحديث التغييرات في مساحة التخزين تلقائياً</p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={autoSync}
+                    onChange={(e) => setAutoSync(e.target.checked)}
+                    className="w-4 h-4 accent-amber-500 rounded cursor-pointer"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200">
+                  <div>
+                    <h5 className="font-bold text-xs text-slate-900">تصدير الطباعة فائق الدقة (Vector PDF)</h5>
+                    <p className="text-[11px] text-slate-500 mt-0.5">ضمان عدم ضبابية النصوص أو الخطوط عند الطباعة</p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={highQualityPdf}
+                    onChange={(e) => setHighQualityPdf(e.target.checked)}
+                    className="w-4 h-4 accent-amber-500 rounded cursor-pointer"
+                  />
+                </div>
+              </div>
+
+              {/* Backup & Restore Card */}
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <div className="flex items-center justify-between border-b pb-3">
+                  <h3 className="font-extrabold text-sm text-slate-800 flex items-center gap-2">
+                    <Database className="w-4 h-4 text-indigo-600" />
+                    النسخ الاحتياطي ونقل الإعدادات
+                  </h3>
+                  <span className="text-[11px] text-indigo-700 font-bold bg-indigo-50 px-2.5 py-0.5 rounded-full border border-indigo-200">
+                    ملف JSON
+                  </span>
+                </div>
+
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  تصدير نسخة كاملة من إعدادات مدرستك وتواقيعك ونماذجك لنقلها لجهاز آخر أو استعادتها لاحقاً:
+                </p>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={handleExportBackup}
+                    className="p-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition shadow-xs"
+                  >
+                    <Download className="w-4 h-4 text-amber-400" />
+                    <span>تصدير نسخة احتياطية</span>
+                  </button>
+
+                  <label className="p-3 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition border border-slate-300 cursor-pointer shadow-xs">
+                    <Upload className="w-4 h-4 text-indigo-600" />
+                    <span>استيراد ملف إعدادات</span>
+                    <input
+                      type="file"
+                      accept=".json"
+                      onChange={handleImportBackup}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+
+                <div className="pt-3 border-t flex items-center justify-between">
+                  <span className="text-xs text-slate-600">تنظيف الذاكرة المؤقتة (Cache) مع الحفاظ على البيانات:</span>
+                  <button
+                    onClick={handleClearCache}
+                    className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-bold transition flex items-center gap-1.5"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>تنظيف الذاكرة</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Cloud Drive Verification Requests Center */}
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <div className="flex items-center justify-between border-b pb-3">
+                  <div className="flex items-center gap-2">
+                    <Cloud className="w-5 h-5 text-amber-600" />
+                    <h3 className="font-extrabold text-sm text-slate-800">
+                      طلبات التوثيق على Google Drive السحابية ({driveRequests.length})
+                    </h3>
+                  </div>
+                  <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200">
+                    {driveRequests.filter(r => r.status === 'pending').length} معلّق
+                  </span>
+                </div>
+
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  قائمة الطلبات الواردة من الطلاب أو أولياء الأمور أو الجهات لحفظ وتوثيق شهاداتهم على Google Drive:
+                </p>
+
+                {driveRequests.length === 0 ? (
+                  <div className="p-6 bg-slate-50 rounded-xl border border-dashed border-slate-300 text-center text-xs text-slate-500 space-y-1">
+                    <Cloud className="w-8 h-8 text-slate-400 mx-auto" />
+                    <p className="font-bold">لا توجد طلبات توثيق سحابية جديدة حالياً</p>
+                    <p className="text-[11px]">أي طلب يتم إرساله من نافذة فحص الشهادات سيظهر هنا مباشرة للمراجعة والاعتماد.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2.5 max-h-80 overflow-y-auto pr-1">
+                    {driveRequests.map((req) => (
+                      <div
+                        key={req.id}
+                        className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2 text-xs"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <strong className="text-slate-900 block text-xs">{req.studentName}</strong>
+                            <span className="text-[10px] text-slate-500 font-mono">كود الشهادة: {req.verificationCode}</span>
+                          </div>
+                          <span
+                            className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${
+                              req.status === 'approved'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : req.status === 'rejected'
+                                ? 'bg-rose-100 text-rose-800'
+                                : 'bg-amber-100 text-amber-800'
+                            }`}
+                          >
+                            {req.status === 'approved' ? 'تمت الموافقة ✅' : req.status === 'rejected' ? 'مرفوض ❌' : 'قيد الانتظار ⏳'}
+                          </span>
+                        </div>
+
+                        <div className="bg-white p-2 rounded-lg border border-slate-200 text-[11px] text-slate-700 space-y-1">
+                          <div><span className="text-slate-500">مقدم الطلب:</span> <strong>{req.requesterName}</strong> {req.requesterEmail && `(${req.requesterEmail})`} {req.requesterPhone && `| ${req.requesterPhone}`}</div>
+                          {req.notes && <div><span className="text-slate-500">ملاحظات:</span> <em>"{req.notes}"</em></div>}
+                          <div className="text-[10px] text-slate-400 font-mono">تاريخ الطلب: {new Date(req.createdAt).toLocaleString('ar-SA')}</div>
+                        </div>
+
+                        <div className="flex items-center justify-between pt-1">
+                          <div className="flex items-center gap-1.5">
+                            {req.status !== 'approved' && (
+                              <button
+                                onClick={() => handleUpdateReqStatus(req.id, 'approved')}
+                                className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-[10px] cursor-pointer"
+                              >
+                                موافقة واعتماد
+                              </button>
+                            )}
+                            {req.status !== 'rejected' && (
+                              <button
+                                onClick={() => handleUpdateReqStatus(req.id, 'rejected')}
+                                className="px-2.5 py-1 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-lg text-[10px] cursor-pointer"
+                              >
+                                رفض
+                              </button>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => handleDeleteReq(req.id)}
+                            className="text-[10px] text-slate-400 hover:text-rose-600 font-bold cursor-pointer"
+                          >
+                            حذف الطلب
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
             </div>
 
-            {/* Contact Support */}
-            <div className="p-3 bg-slate-900 text-white rounded-xl flex items-center justify-between">
-              <div className="space-y-0.5">
-                <span className="text-xs font-bold block">فريق الدعم الفني المباشر</span>
-                <span className="text-[11px] text-slate-400 block">نسعد بجميع استفساراتكم واقتراحاتكم 24/7</span>
+            {/* Column 2: 24/7 Support & FAQ */}
+            <div className="space-y-5">
+              
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <div className="flex items-center justify-between border-b pb-3">
+                  <h3 className="font-extrabold text-sm text-slate-800 flex items-center gap-2">
+                    <Headset className="w-4 h-4 text-amber-600" />
+                    الدعم الفني والتعليمات (24/7)
+                  </h3>
+                  <span className="text-[11px] text-emerald-700 font-bold bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                    متاح دائماً
+                  </span>
+                </div>
+
+                <div className="space-y-2.5">
+                  <span className="text-xs font-bold text-slate-700 block">الأسئلة الشائعة والإرشادات:</span>
+                  {faqs.map((f, idx) => (
+                    <div
+                      key={idx}
+                      className="border border-slate-200 rounded-xl overflow-hidden transition"
+                    >
+                      <button
+                        onClick={() => setActiveFaq(activeFaq === idx ? null : idx)}
+                        className="w-full text-right p-3 text-xs font-bold text-slate-800 bg-slate-50 hover:bg-slate-100 flex items-center justify-between gap-2"
+                      >
+                        <span>{f.q}</span>
+                        <ChevronDown className={`w-4 h-4 text-amber-600 transition-transform ${activeFaq === idx ? 'rotate-180' : ''}`} />
+                      </button>
+                      {activeFaq === idx && (
+                        <div className="p-3.5 text-xs text-slate-600 bg-white border-t border-slate-100 leading-relaxed">
+                          {f.a}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Training Videos and Docs */}
+                <div className="p-4 bg-amber-50/70 border border-amber-200 rounded-xl space-y-1.5 text-amber-950">
+                  <h4 className="text-xs font-bold flex items-center gap-1.5">
+                    <BookOpen className="w-4 h-4 text-amber-700" />
+                    الدليل الإرشادي والتطوير المهني
+                  </h4>
+                  <p className="text-[11px] text-amber-900 leading-relaxed">
+                    تعلم أسرار الصياغة البلاغية المؤثرة والتصميم الجرافيكي عالي الدقة لشهادات التكريم عبر الإرشادات والنماذج المعتمدة.
+                  </p>
+                </div>
+
+                {/* Contact Support */}
+                <div className="p-4 bg-slate-900 text-white rounded-2xl flex items-center justify-between gap-3 shadow-md">
+                  <div className="space-y-0.5">
+                    <span className="text-xs font-bold block text-amber-300">فريق الدعم الفني والتربوي المباشر</span>
+                    <span className="text-[11px] text-slate-400 block">نسعد بجميع استفساراتكم واقتراحاتكم لتطوير التطبيق</span>
+                  </div>
+                  <button
+                    onClick={() => alert('تم توجيه طلبك لفريق الدعم المباشر، سنتواصل معك فوراً!')}
+                    className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs rounded-xl transition shrink-0"
+                  >
+                    تواصل مع الدعم
+                  </button>
+                </div>
+
               </div>
-              <button
-                onClick={() => alert('تم توجيه طلبك لفريق الدعم المباشر، سنتواصل معك فوراً!')}
-                className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-lg transition"
-              >
-                تواصل مع الدعم
-              </button>
+
             </div>
 
           </div>
-
         </div>
       )}
 

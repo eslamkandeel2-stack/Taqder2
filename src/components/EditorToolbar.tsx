@@ -6,6 +6,7 @@ import { getFormattedTodayDate, getTodayHijriDate, getTodayGregorianDate, normal
 import { GRADIENT_PRESETS, GRADIENT_COLOR_SWATCHES } from '../utils/gradientUtils';
 import { generateVerificationCode, sanitizeVerificationCode } from '../utils/qrUtils';
 import { adaptCertificateGender, adaptCertificateGenderSync, RecipientGender } from '../utils/genderConverter';
+import { getSavedAISettings } from '../utils/aiConfig';
 import {
   calculateSafeMargins,
   optimizeMarginsWithAi,
@@ -794,19 +795,32 @@ export const EditorToolbar: React.FC<Props> = ({
   ];
 
   const handleGenderChange = async (gender: RecipientGender) => {
-    // 1. Instant local rule-based conversion so UI updates immediately
+    // 1. Instant local rule-based conversion so UI updates immediately with smart fallback
     const updated = adaptCertificateGender(certificateData, gender, { preserveCustomStudentName: true });
     onChange(updated);
 
-    // 2. Call AI API in background for ultra-refined AI Arabic phrasing adaptation
+    // 2. Call AI API in background with active AI settings & headers for ultra-refined AI Arabic phrasing adaptation
     try {
       setIsAdaptingGenderAi(true);
+      const aiCfg = getSavedAISettings();
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (aiCfg.provider) headers['x-ai-provider'] = aiCfg.provider;
+      if (aiCfg.apiKey) headers['x-ai-api-key'] = aiCfg.apiKey;
+      if (aiCfg.model) headers['x-ai-model'] = aiCfg.model;
+      if (aiCfg.customApiUrl) headers['x-ai-custom-url'] = aiCfg.customApiUrl;
+
       const response = await fetch('/api/adapt-gender-ai', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           certificateData: updated,
           targetGender: gender,
+          provider: aiCfg.provider,
+          apiKey: aiCfg.apiKey,
+          model: aiCfg.model,
+          customApiUrl: aiCfg.customApiUrl,
         }),
       });
 
@@ -825,6 +839,7 @@ export const EditorToolbar: React.FC<Props> = ({
           ...updated,
           ...json.result,
           recipientGender: gender,
+          updatedAt: new Date().toISOString(),
         });
       }
     } catch (err) {

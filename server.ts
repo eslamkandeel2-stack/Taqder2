@@ -12,16 +12,199 @@ const PORT = Number(process.env.PORT) || 3000;
 app.use(express.json({ limit: "10mb" }));
 
 // Extract credentials and configuration from request (Headers, Body, or Environment)
-function extractAiCredentials(req: express.Request) {
-  const headerKey = req.headers["x-gemini-api-key"] as string | undefined;
+interface RequestAiConfig {
+  provider: 'gemini' | 'openai' | 'anthropic' | 'deepseek' | 'groq' | 'custom';
+  apiKey: string;
+  model: string;
+  customApiUrl?: string;
+}
+
+function extractAiCredentials(req: express.Request): RequestAiConfig {
+  const rawProvider = (req.headers["x-ai-provider"] as string || req.body?.provider || "gemini").toLowerCase();
+  const provider = (['gemini', 'openai', 'anthropic', 'deepseek', 'groq', 'custom'].includes(rawProvider)
+    ? rawProvider
+    : 'gemini') as RequestAiConfig['provider'];
+
+  const headerKey = (req.headers["x-ai-api-key"] || req.headers["x-gemini-api-key"]) as string | undefined;
   const bodyKey = req.body?.apiKey as string | undefined;
-  const apiKey = (headerKey || bodyKey || process.env.GEMINI_API_KEY || "").trim();
 
-  const headerModel = req.headers["x-gemini-model"] as string | undefined;
+  let envKey = "";
+  if (provider === "gemini") {
+    envKey = process.env.GEMINI_API_KEY || "";
+  } else if (provider === "openai") {
+    envKey = process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY || "";
+  } else if (provider === "anthropic") {
+    envKey = process.env.ANTHROPIC_API_KEY || "";
+  } else if (provider === "deepseek") {
+    envKey = process.env.DEEPSEEK_API_KEY || "";
+  } else if (provider === "groq") {
+    envKey = process.env.GROQ_API_KEY || "";
+  }
+
+  const apiKey = (headerKey || bodyKey || envKey || "").trim();
+
+  const headerModel = (req.headers["x-ai-model"] || req.headers["x-gemini-model"]) as string | undefined;
   const bodyModel = req.body?.model as string | undefined;
-  const model = (headerModel || bodyModel || "gemini-3.7-flash").trim();
 
-  return { apiKey, model };
+  let defaultModel = "gemini-3.6-flash";
+  if (provider === "gemini") defaultModel = "gemini-3.6-flash";
+  else if (provider === "openai") defaultModel = "gpt-4o-mini";
+  else if (provider === "anthropic") defaultModel = "claude-3-5-sonnet-20241022";
+  else if (provider === "deepseek") defaultModel = "deepseek-chat";
+  else if (provider === "groq") defaultModel = "llama-3.3-70b-versatile";
+  else if (provider === "custom") defaultModel = "llama3";
+
+  const model = (headerModel || bodyModel || defaultModel).trim();
+  const customApiUrl = ((req.headers["x-ai-custom-url"] as string) || req.body?.customApiUrl || "").trim();
+
+  return { provider, apiKey, model, customApiUrl };
+}
+
+// Clean and safely parse JSON strings from any model response
+function cleanAndParseJson<T = any>(rawText: string, fallback: T): T {
+  if (!rawText || typeof rawText !== "string") return fallback;
+  try {
+    let clean = rawText.trim();
+    if (clean.startsWith("```")) {
+      clean = clean.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+    }
+    return JSON.parse(clean);
+  } catch (e) {
+    const match = rawText.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
+    if (match) {
+      try {
+        return JSON.parse(match[0]);
+      } catch (inner) {
+        // failed
+      }
+    }
+    return fallback;
+  }
+}
+
+// Universal AI Execution Helper across all supported providers
+interface UnifiedAiParams {
+  config: RequestAiConfig;
+  prompt: string;
+  systemInstruction?: string;
+  temperature?: number;
+  maxTokens?: number;
+  jsonOutput?: boolean;
+}
+
+async function callUnifiedAi(params: UnifiedAiParams): Promise<string> {
+  const { config, prompt, systemInstruction, temperature = 0.7, maxTokens = 2000, jsonOutput = true } = params;
+
+  // 1. Google Gemini Provider
+  if (config.provider === "gemini") {
+    const ai = getGenAI(config.apiKey);
+    const fullPrompt = systemInstruction ? `${systemInstruction}\n\n${prompt}` : prompt;
+    const response = await generateContentWithRetry(ai, {
+      primaryModel: config.model || "gemini-3.6-flash",
+      contents: fullPrompt,
+      config: {
+        responseMimeType: jsonOutput ? "application/json" : "text/plain",
+        temperature,
+        maxOutputTokens: maxTokens,
+      },
+    });
+    return response.text || "";
+  }
+
+  // 2. Anthropic Claude Provider
+  if (config.provider === "anthropic") {
+    const apiKey = config.apiKey || process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      throw new Error("لم يتم العثور على مفتاح Anthropic API Key. يرجى ضبطه في إعدادات النظام.");
+    }
+    const fullSystem =
+      (systemInstruction || "أنت خبير بلاغة ولغة عربية وصياغة شهادات تقديرية رسمية رفيعة.") +
+      (jsonOutput ? "\n\nCRITICAL: Respond ONLY with valid JSON with no markdown wrapping, codeblocks or explanations outside the JSON." : "");
+
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: config.model || "claude-3-5-sonnet-20241022",
+        max_tokens: maxTokens,
+        temperature,
+        system: fullSystem,
+        messages: [{ role: "user", content: prompt }],
+      }),
+    });
+
+    if (!res.ok) {
+      const errBody = await res.text();
+      throw new Error(`Anthropic API Error (${res.status}): ${errBody}`);
+    }
+
+    const data: any = await res.json();
+    return data?.content?.[0]?.text || "";
+  }
+
+  // 3. OpenAI, DeepSeek, Groq, and Custom OpenAI-Compatible Providers
+  let baseUrl = "https://api.openai.com/v1";
+  let defaultModel = "gpt-4o-mini";
+
+  if (config.provider === "deepseek") {
+    baseUrl = "https://api.deepseek.com/v1";
+    defaultModel = "deepseek-chat";
+  } else if (config.provider === "groq") {
+    baseUrl = "https://api.groq.com/openai/v1";
+    defaultModel = "llama-3.3-70b-versatile";
+  } else if (config.provider === "custom") {
+    baseUrl = config.customApiUrl || "http://localhost:11434/v1";
+    defaultModel = config.model || "llama3";
+  }
+
+  const endpoint = `${baseUrl.replace(/\/+$/, "")}/chat/completions`;
+  const apiKey = config.apiKey || process.env.OPENAI_API_KEY || "";
+  const modelToUse = config.model || defaultModel;
+
+  const messages: any[] = [];
+  const systemPrompt =
+    (systemInstruction || "أنت خبير بلاغة ولغة عربية وصياغة شهادات تقديرية رسمية رفيعة.") +
+    (jsonOutput ? "\n\nCRITICAL: Return valid raw JSON only. Do not include markdown codeblocks, notes or explanations outside the JSON." : "");
+
+  messages.push({ role: "system", content: systemPrompt });
+  messages.push({ role: "user", content: prompt });
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (apiKey) {
+    headers["Authorization"] = `Bearer ${apiKey}`;
+  }
+
+  const reqBody: any = {
+    model: modelToUse,
+    messages,
+    temperature,
+    max_tokens: maxTokens,
+  };
+
+  if (jsonOutput && config.provider !== "custom") {
+    reqBody.response_format = { type: "json_object" };
+  }
+
+  const res = await fetch(endpoint, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(reqBody),
+  });
+
+  if (!res.ok) {
+    const errBody = await res.text();
+    throw new Error(`${config.provider.toUpperCase()} API Error (${res.status}): ${errBody}`);
+  }
+
+  const data: any = await res.json();
+  const text = data?.choices?.[0]?.message?.content || "";
+  return text;
 }
 
 // Initialize Google GenAI lazy/safely
@@ -215,29 +398,27 @@ function adaptGenderLocalFallback(certData: any, targetGender: string) {
 // API Connection and Model Health Diagnostics Endpoint
 app.post("/api/test-ai-connection", async (req, res) => {
   const startTime = Date.now();
-  const { apiKey, model } = extractAiCredentials(req);
-  const targetModel = model || "gemini-3.7-flash";
+  const aiConfig = extractAiCredentials(req);
 
   try {
-    const ai = getGenAI(apiKey);
-    const probePrompt = "اختبار اتصال سريع باللغة العربية: قل 'متصل بنجاح' فقط.";
-
-    const response = await generateContentWithRetry(ai, {
-      primaryModel: targetModel,
-      contents: probePrompt,
-      config: {
-        maxOutputTokens: 30,
-        temperature: 0.1,
-      },
+    const probePrompt = "اختبار اتصال سريع باللغة العربية: قل كلمة 'متصل' فقط وتأكيد الاتصال.";
+    const responseText = await callUnifiedAi({
+      config: aiConfig,
+      prompt: probePrompt,
+      systemInstruction: "أنت مساعد ذكي. أجب بإيجاز شديد.",
+      temperature: 0.1,
+      maxTokens: 50,
+      jsonOutput: false,
     });
 
     const elapsed = Date.now() - startTime;
     return res.json({
       success: true,
       latencyMs: elapsed,
-      modelUsed: targetModel,
-      sampleResponse: response.text?.trim() || "متصل بنجاح",
-      message: `تم الاتصال بنموذج الذكاء الاصطناعي (${targetModel}) بنجاح فائق! 🟢`,
+      modelUsed: aiConfig.model,
+      providerUsed: aiConfig.provider,
+      sampleResponse: responseText.trim() || "متصل بنجاح",
+      message: `تم الاتصال بنموذج الذكاء الاصطناعي (${aiConfig.provider}: ${aiConfig.model}) بنجاح فائق! 🟢`,
     });
   } catch (error: any) {
     const elapsed = Date.now() - startTime;
@@ -246,22 +427,21 @@ app.post("/api/test-ai-connection", async (req, res) => {
     return res.status(400).json({
       success: false,
       latencyMs: elapsed,
+      providerUsed: aiConfig.provider,
       error: errorMsg,
       details: error?.message || String(error),
-      helpTip: "تأكد من صحة مفتاح GEMINI_API_KEY أو اختيار نموذج صالح ومتاح لحسابك.",
+      helpTip: "تأكد من صحة مفتاح الـ API المخصص للمزود أو اختيار نموذج صالح ومتاح لحسابك.",
     });
   }
 });
 
 // AI Smart Text Improvement & Rephrasing Endpoint with 3 Distinct Arabic Styles
 app.post("/api/ai-improve-text", async (req, res) => {
-  const { apiKey, model } = extractAiCredentials(req);
+  const aiConfig = extractAiCredentials(req);
   const { text, type, style, gender, studentName, subject, grade, schoolName, tone, temperature, systemInstruction } = req.body;
   const isFemale = gender === 'female';
-  const targetModel = model || "gemini-3.7-flash";
 
   try {
-    const ai = getGenAI(apiKey);
     const prompt = `أنت بروفيسور لغوي وخبير بلاغة عربية وصياغة شهادات شكر وتكريم وأوسمة رسمية.
 المهمة: تحسين وإعادة صياغة النص التالي لشهادة التقدير وتقديم (3) خيارات بلاغية متنوعة وفائقة الجودة باللغة العربية الفصحى.
 
@@ -288,38 +468,22 @@ ${systemInstruction ? `- تعليمات إضافية خاصة: ${systemInstructi
   ]
 }`;
 
-    const response = await generateContentWithRetry(ai, {
-      primaryModel: targetModel,
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        temperature: typeof temperature === 'number' ? temperature : 0.7,
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            variations: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  id: { type: Type.NUMBER },
-                  text: { type: Type.STRING },
-                  styleLabel: { type: Type.STRING },
-                },
-                required: ["id", "text", "styleLabel"],
-              },
-            },
-          },
-          required: ["variations"],
-        },
-      },
+    const rawResponse = await callUnifiedAi({
+      config: aiConfig,
+      prompt,
+      systemInstruction: "أنت خبير بلاغة عربية رفيعة المستوى. أرجع كائن JSON صالح فقط دون أي نص إضافي.",
+      temperature: typeof temperature === 'number' ? temperature : 0.7,
+      jsonOutput: true,
     });
 
-    const parsed = JSON.parse(response.text || "{}");
-    return res.json({
-      success: true,
-      variations: parsed.variations || [],
-    });
+    const parsed = cleanAndParseJson(rawResponse, { variations: [] });
+    if (parsed.variations && parsed.variations.length > 0) {
+      return res.json({
+        success: true,
+        variations: parsed.variations,
+      });
+    }
+    throw new Error("Empty variations in AI response");
   } catch (error: any) {
     console.warn("AI Improve Text fallback used:", error);
     const fallbackVariations = isFemale ? [
@@ -367,14 +531,12 @@ ${systemInstruction ? `- تعليمات إضافية خاصة: ${systemInstructi
 // AI Certificate Generation Endpoint
 app.post("/api/generate-certificate-content", async (req, res) => {
   try {
-    const { apiKey, model } = extractAiCredentials(req);
+    const aiConfig = extractAiCredentials(req);
     const { studentName, subject, achievement, grade, tone, schoolName, teacherName, recipientGender, temperature, systemInstruction } = req.body;
     const isFemale = recipientGender === 'female';
     const genderTerm = isFemale ? "طالبة (مؤنث)" : "طالب (مذكر)";
-    const targetModel = model || "gemini-3.7-flash";
 
     try {
-      const ai = getGenAI(apiKey);
       const prompt = `أنت بروفيسور لغوي وخبير في كتابة وتصميم شهادات التقدير والجوائز التعليمية والأكاديمية باللغة العربية الفصحى الراقية والجزلة.
 قم بصياغة نص شهادة تقدير مخصصة ومبهرة باللغة العربية ذات بلاغة عالية وفخامة بناءً على البيانات التالية:
 - نوع المكرّم: ${genderTerm}
@@ -393,41 +555,31 @@ ${isFemale
   : "المكرّم طالب (ذكر). يُشترط استخدام صيغ التذكير والضمائر المذكرة حصراً في كافة أجزاء الشهادة (مثال: 'للطالب المتميز', 'لجهوده المتميزة', 'تفوقه', 'تألقه', 'تلميذنا المبدع', 'نتمنى له')."}
 
 المطلوب إرجاع كائن JSON حصراً بالهيكل التالي:
-1. title: عنوان الشهادة (مثال: "${isFemale ? 'شهادة تقدير وتفوق راقية' : 'شهادة تقدير وتفوق راقٍ'}", "وسام التميز الأكاديمي", "شهادة شكر وتقدير ووفاء")
-2. recipientIntro: عبارة تقديم الطالب/الطالبة (مثال: "${isFemale ? 'تتقدم إدارة المدرسة بوافر الشكر والتقدير للطالبة المبدعة:' : 'تتقدم إدارة المدرسة بوافر الشكر والتقدير للطالب المبدع:'}")
-3. appreciationText: نص التكريم والشكر التفصيلي (فقرة مشجعة وجميلة وبليغة من 2-4 أسطر تبرز جهودها/جهوده وتتمنى لها/له مستقبلاً باهراً)
-4. poemOrQuote: بيت شعر أصيل أو حكمة ملهمة مشكولة بالحركات باللغة العربية تناسب المناسبة.
-5. badgeTitle: اسم الشارة أو الوسام المقترح (مثال: "${isFemale ? 'نجمة الأسبوع' : 'نجم الأسبوع'}", "${isFemale ? 'فارسة الرياضيات' : 'فارس الرياضيات'}", "وسام الإبداع والريادة", "عبقري العلوم").
-6. primaryColorHex: لون رئيسي مقترح بصيغة Hex (مثال: "#0f172a" أو "#065f46" أو "#1e1b4b" أو "#854d0e").
-7. secondaryColorHex: لون ثانوي مقترح بصيغة Hex (مثال: "#d97706" أو "#059669" أو "#4f46e5" أو "#ca8a04").`;
+{
+  "title": "${isFemale ? 'شهادة تقدير وتفوق راقية' : 'شهادة تقدير وتفوق راقٍ'}",
+  "recipientIntro": "${isFemale ? 'تتقدم إدارة المدرسة بوافر الشكر والتقدير للطالبة المبدعة:' : 'تتقدم إدارة المدرسة بوافر الشكر والتقدير للطالب المبدع:'}",
+  "appreciationText": "نص التكريم والشكر التفصيلي (فقرة مشجعة وجميلة وبليغة من 2-4 أسطر تبرز جهودها/جهوده وتتمنى لها/له مستقبلاً باهراً)",
+  "poemOrQuote": "بيت شعر أصيل أو حكمة ملهمة مشكولة بالحركات باللغة العربية تناسب المناسبة.",
+  "badgeTitle": "${isFemale ? 'وسام التميز والتفوق' : 'وسام التميز والتفوق'}",
+  "primaryColorHex": "#854d0e",
+  "secondaryColorHex": "#d97706"
+}`;
 
-      const response = await generateContentWithRetry(ai, {
-        primaryModel: targetModel,
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          temperature: typeof temperature === 'number' ? temperature : 0.7,
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              title: { type: Type.STRING },
-              recipientIntro: { type: Type.STRING },
-              appreciationText: { type: Type.STRING },
-              poemOrQuote: { type: Type.STRING },
-              badgeTitle: { type: Type.STRING },
-              primaryColorHex: { type: Type.STRING },
-              secondaryColorHex: { type: Type.STRING },
-            },
-            required: ["title", "recipientIntro", "appreciationText", "badgeTitle"],
-          },
-        },
+      const rawResponse = await callUnifiedAi({
+        config: aiConfig,
+        prompt,
+        systemInstruction: "أنت خبير صياغة شهادات تقديرية باللغة العربية الفصحى. أرجع JSON صالح حصراً.",
+        temperature: typeof temperature === 'number' ? temperature : 0.7,
+        jsonOutput: true,
       });
 
-      const jsonText = response.text || "{}";
-      const data = JSON.parse(jsonText);
-      return res.json({ success: true, result: data });
+      const data = cleanAndParseJson(rawResponse, null);
+      if (data && data.title && data.recipientIntro && data.appreciationText) {
+        return res.json({ success: true, result: data });
+      }
+      throw new Error("Invalid certificate JSON returned");
     } catch (aiErr) {
-      console.warn("Gemini generation failed, using intelligent local fallback:", aiErr);
+      console.warn("AI generation failed, using intelligent local fallback:", aiErr);
       const fallbackResult = generateLocalCertificateFallback({
         studentName,
         subject,
@@ -452,14 +604,12 @@ ${isFemale
 // AI Endpoint to adapt/convert certificate texts to Masculine (Male/طالب) or Feminine (Female/طالبة)
 app.post("/api/adapt-gender-ai", async (req, res) => {
   try {
-    const { apiKey, model } = extractAiCredentials(req);
+    const aiConfig = extractAiCredentials(req);
     const { certificateData, targetGender } = req.body;
     const isFemale = targetGender === 'female';
     const genderTerm = isFemale ? "طالبة (مؤنث)" : "طالب (مذكر)";
-    const targetModel = model || "gemini-3.7-flash";
 
     try {
-      const ai = getGenAI(apiKey);
       const prompt = `أنت خبير بلاغة ولغة عربية ومختص في صياغة شهادات التقدير والجوائز التعليمية.
 المطلوب: تحويل كافة عبارات ونصوص الشهادة التالية من صيغ المذكر/المؤنث لتصبح متناسبة تماماً ومخصصة لـ [${genderTerm}]:
 
@@ -478,34 +628,27 @@ app.post("/api/adapt-gender-ai", async (req, res) => {
 3. تأكد أن كل عبارة منسقة وسليمة لغوياً وإملائياً 100%.
 
 أرجع كائن JSON حصراً بالحقول المعدلة:
-- title: string
-- recipientIntro: string
-- appreciationText: string
-- poemOrQuote: string
-- badgeTitle: string`;
+{
+  "title": "string",
+  "recipientIntro": "string",
+  "appreciationText": "string",
+  "poemOrQuote": "string",
+  "badgeTitle": "string"
+}`;
 
-      const response = await generateContentWithRetry(ai, {
-        primaryModel: targetModel,
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              title: { type: Type.STRING },
-              recipientIntro: { type: Type.STRING },
-              appreciationText: { type: Type.STRING },
-              poemOrQuote: { type: Type.STRING },
-              badgeTitle: { type: Type.STRING },
-            },
-            required: ["recipientIntro", "appreciationText"],
-          },
-        },
+      const rawResponse = await callUnifiedAi({
+        config: aiConfig,
+        prompt,
+        systemInstruction: "أنت خبير لغة عربية. أرجع JSON فقط بالحقول المطلوبة.",
+        temperature: 0.3,
+        jsonOutput: true,
       });
 
-      const jsonText = response.text || "{}";
-      const data = JSON.parse(jsonText);
-      return res.json({ success: true, result: data });
+      const data = cleanAndParseJson(rawResponse, null);
+      if (data && data.recipientIntro && data.appreciationText) {
+        return res.json({ success: true, result: data });
+      }
+      throw new Error("Invalid gender adaptation JSON");
     } catch (aiErr) {
       console.warn("AI Adapt Gender failed, using local adaptation:", aiErr);
       const fallbackResult = adaptGenderLocalFallback(certificateData, targetGender);
@@ -524,25 +667,22 @@ app.post("/api/adapt-gender-ai", async (req, res) => {
 // AI Assistant for Certificate Suggestions & Batch Help
 app.post("/api/ai-assistant", async (req, res) => {
   try {
-    const { apiKey, model } = extractAiCredentials(req);
+    const aiConfig = extractAiCredentials(req);
     const { prompt: userPrompt, category, temperature, systemInstruction } = req.body;
-    const targetModel = model || "gemini-3.7-flash";
 
     try {
-      const ai = getGenAI(apiKey);
       const sysInstruction = systemInstruction || `أنت مستشار تربوي ولغوي ذكي متخصص في تصاميم وعبارات شهادات التقدير والشكر للطلاب والأنشطة المدرسية باللغة العربية الفصحى.
 قدم إجابات واضحة ومقترحات جذابة، أفكار شهادات، عبارات تحفيزية راقية، أبيات شعرية موزونة، أو حلول سريعة. الإجابة باللغة العربية وبنسق عصري ومنسق.`;
 
-      const response = await generateContentWithRetry(ai, {
-        primaryModel: targetModel,
-        contents: userPrompt,
-        config: {
-          systemInstruction: sysInstruction,
-          temperature: typeof temperature === 'number' ? temperature : 0.7,
-        },
+      const responseText = await callUnifiedAi({
+        config: aiConfig,
+        prompt: userPrompt,
+        systemInstruction: sysInstruction,
+        temperature: typeof temperature === 'number' ? temperature : 0.7,
+        jsonOutput: false,
       });
 
-      return res.json({ success: true, text: response.text });
+      return res.json({ success: true, text: responseText });
     } catch (aiErr) {
       return res.json({
         success: true,

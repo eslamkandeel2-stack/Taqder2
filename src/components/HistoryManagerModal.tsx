@@ -236,12 +236,11 @@ export const HistoryManagerModal: React.FC<HistoryManagerModalProps> = ({
   const handleSaveSnapshotAsDraft = (snapshot: CertificateData, stepNum: number) => {
     try {
       const name = `${snapshot.title || 'شهادة'} - نسخة الخطوة ${stepNum} (${snapshot.studentName || 'مسودة'})`;
-      saveCertificateAsDraft({
+      saveCertificateAsDraft(snapshot, {
         name,
         type: 'draft',
         tags: ['سجل_تعديلات', `خطوة_${stepNum}`, snapshot.recipientGender === 'female' ? 'طالبات' : 'طلاب'],
-        notes: `تم حفظ هذه النسخة من سجل التعديلات الزمني (الخطوة ${stepNum} من ${history.length})`,
-        data: snapshot
+        notes: `تم حفظ هذه النسخة من سجل التعديلات الزمني (الخطوة ${stepNum} من ${history.length})`
       });
       onShowToast(`تم حفظ نسخة الخطوة #${stepNum} كمسودة في سجل المسودات بنجاح! 💾`);
     } catch (e) {

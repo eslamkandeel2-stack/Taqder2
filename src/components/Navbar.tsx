@@ -15,7 +15,10 @@ import {
   FolderHeart,
   BookmarkCheck,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Undo2,
+  Redo2,
+  History
 } from 'lucide-react';
 import { getSavedDrafts, subscribeToDrafts } from '../utils/draftsManager';
 import { useDragScroll } from '../utils/useDragScroll';
@@ -29,6 +32,11 @@ interface Props {
   onOpenVerificationModal?: () => void;
   onOpenGoogleDriveModal?: () => void;
   onOpenDraftsModal?: () => void;
+  onOpenHistoryModal?: () => void;
+  canUndo?: boolean;
+  canRedo?: boolean;
+  onUndo?: () => void;
+  onRedo?: () => void;
   certificateData?: any;
   onUpdateCloudCertificate?: () => void;
   onSaveNewToCloud?: () => void;
@@ -44,6 +52,11 @@ export const Navbar: React.FC<Props> = ({
   onOpenVerificationModal,
   onOpenGoogleDriveModal,
   onOpenDraftsModal,
+  onOpenHistoryModal,
+  canUndo,
+  canRedo,
+  onUndo,
+  onRedo,
   certificateData,
   onUpdateCloudCertificate,
   onSaveNewToCloud,
@@ -178,6 +191,45 @@ export const Navbar: React.FC<Props> = ({
                 <span>حفظ تلقائي</span>
                 {lastAutosavedTime && <span className="text-slate-400 font-mono text-[9px]">({lastAutosavedTime})</span>}
               </div>
+
+              {/* Undo / Redo & Visual History Controls */}
+              {(onUndo || onRedo || onOpenHistoryModal) && (
+                <div className="flex items-center bg-slate-800/80 border border-slate-700/80 rounded-lg p-0.5 shrink-0 gap-0.5">
+                  {onUndo && (
+                    <button
+                      type="button"
+                      onClick={onUndo}
+                      disabled={!canUndo}
+                      className="p-1 text-slate-300 hover:text-white hover:bg-slate-700/80 disabled:opacity-30 disabled:hover:bg-transparent rounded-md transition cursor-pointer"
+                      title="تراجع (Ctrl+Z)"
+                    >
+                      <Undo2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  {onRedo && (
+                    <button
+                      type="button"
+                      onClick={onRedo}
+                      disabled={!canRedo}
+                      className="p-1 text-slate-300 hover:text-white hover:bg-slate-700/80 disabled:opacity-30 disabled:hover:bg-transparent rounded-md transition cursor-pointer"
+                      title="إعادة (Ctrl+Y)"
+                    >
+                      <Redo2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  {onOpenHistoryModal && (
+                    <button
+                      type="button"
+                      onClick={onOpenHistoryModal}
+                      className="flex items-center gap-1 px-1.5 py-1 text-amber-300 hover:text-amber-200 hover:bg-amber-500/10 rounded-md transition text-[11px] font-bold cursor-pointer"
+                      title="سجل التعديلات الزمني الكامل (Undo/Redo History)"
+                    >
+                      <History className="w-3.5 h-3.5 text-amber-400" />
+                      <span className="hidden lg:inline text-[10px]">السجل</span>
+                    </button>
+                  )}
+                </div>
+              )}
 
               {/* Saved Drafts and Templates Button */}
               {onOpenDraftsModal && (

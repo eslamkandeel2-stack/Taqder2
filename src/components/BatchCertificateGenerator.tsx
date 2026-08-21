@@ -17,6 +17,7 @@ import {
 } from '../utils/studentGroupsManager';
 import { useDragScroll } from '../utils/useDragScroll';
 import { BatchCertificateViewerModal } from './BatchCertificateViewerModal';
+import { BatchConfirmReviewModal, BatchReviewStudentItem } from './BatchConfirmReviewModal';
 import { StudentGroupsManager } from './StudentGroupsManager';
 import {
   Users,
@@ -94,6 +95,11 @@ export const BatchCertificateGenerator: React.FC<Props> = ({
   // Active Batch Viewer Modal state
   const [viewerBatch, setViewerBatch] = useState<BatchRecord | null>(null);
   const [isViewerOpen, setIsViewerOpen] = useState(false);
+
+  // Pre-Generation Confirmation & Review Modal state
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+  const [reviewStudentsList, setReviewStudentsList] = useState<BatchReviewStudentItem[]>([]);
+
   const batchTabsDrag = useDragScroll();
   const quickGroupsDrag = useDragScroll();
 
@@ -229,8 +235,8 @@ export const BatchCertificateGenerator: React.FC<Props> = ({
     return { ...baseCertificate };
   };
 
-  // Generate batch certificates and save with exact gender matching
-  const handleGenerateAndSaveBatch = () => {
+  // Open Review & Confirmation Modal before generating batch
+  const handleOpenReviewModal = () => {
     const rawLines = studentInput
       .split('\n')
       .map(s => s.trim())
@@ -241,16 +247,7 @@ export const BatchCertificateGenerator: React.FC<Props> = ({
       return;
     }
 
-    const templateBase = getSelectedBaseTemplateData();
-    const templateName =
-      templateSelectionMode === 'current'
-        ? 'تصميم المحرر الحالي'
-        : templateSelectionMode === 'preset'
-        ? TEMPLATE_PRESETS.find(p => p.id === selectedPresetId)?.name || 'قالب جاهز'
-        : savedTemplatesList.find(d => d.id === selectedSavedDraftId)?.name || 'قالب مخصص';
-
-    const generatedCertificates: CertificateData[] = rawLines.map((rawLine, idx) => {
-      // 1. Clean name and detect any in-line gender tags e.g. "نورة القحطاني (طالبة)"
+    const preparedStudents: BatchReviewStudentItem[] = rawLines.map((rawLine, idx) => {
       let cleanName = rawLine;
       let explicitGender: 'male' | 'female' | null = null;
 
@@ -262,20 +259,17 @@ export const BatchCertificateGenerator: React.FC<Props> = ({
         cleanName = rawLine.replace(/\((?:طالب|بنين|ذكر|male)\)/gi, '').replace(/,(?:طالب|بنين|ذكر|male)/gi, '').replace(/\[(?:طالب|بنين|ذكر|male)\]/gi, '').trim();
       }
 
-      // 2. Check if student matches loaded group members
       let matchedMember: StudentGroupMember | undefined = undefined;
       if (loadedGroupMembers && loadedGroupMembers.length > 0) {
         matchedMember = loadedGroupMembers.find(
           m => m.name.trim().toLowerCase() === cleanName.trim().toLowerCase() ||
                m.name.trim().toLowerCase() === rawLine.trim().toLowerCase()
         );
-        // Fallback by sequential index if name is same
         if (!matchedMember && loadedGroupMembers[idx] && loadedGroupMembers[idx].name.trim() === cleanName.trim()) {
           matchedMember = loadedGroupMembers[idx];
         }
       }
 
-      // 3. If still not matched, check in all savedGroups
       if (!matchedMember) {
         for (const g of savedGroups) {
           const found = g.students.find(s => s.name.trim().toLowerCase() === cleanName.trim().toLowerCase());
@@ -286,21 +280,71 @@ export const BatchCertificateGenerator: React.FC<Props> = ({
         }
       }
 
-      // 4. Resolve the definitive gender (Member gender > Explicit tag > Algorithmic detection)
-      const finalGender: 'male' | 'female' = 
+      const finalGender: 'male' | 'female' =
         explicitGender ||
         matchedMember?.gender ||
         detectGenderFromName(cleanName);
 
+      return {
+        id: `st-rev-${idx}-${Date.now()}`,
+        name: cleanName,
+        gender: finalGender,
+        grade: matchedMember?.grade || grade || 'الصف الدراسي'
+      };
+    });
+
+    setReviewStudentsList(preparedStudents);
+    setIsReviewModalOpen(true);
+  };
+
+  // Final confirmed generation from the review modal
+  const handleConfirmAndGenerateBatch = (confirmedConfig: {
+    students: BatchReviewStudentItem[];
+    maleAppreciationText: string;
+    femaleAppreciationText: string;
+    maleIntroText: string;
+    femaleIntroText: string;
+    autoGenderAdaptPhrasing: boolean;
+  }) => {
+    const {
+      students,
+      maleAppreciationText,
+      femaleAppreciationText,
+      maleIntroText,
+      femaleIntroText,
+      autoGenderAdaptPhrasing
+    } = confirmedConfig;
+
+    if (students.length === 0) {
+      showToast('لا يوجد طلاب في الدفعة لتوليد الشهادات');
+      return;
+    }
+
+    const templateBase = getSelectedBaseTemplateData();
+    const templateName =
+      templateSelectionMode === 'current'
+        ? 'تصميم المحرر الحالي'
+        : templateSelectionMode === 'preset'
+        ? TEMPLATE_PRESETS.find(p => p.id === selectedPresetId)?.name || 'قالب جاهز'
+        : savedTemplatesList.find(d => d.id === selectedSavedDraftId)?.name || 'قالب مخصص';
+
+    const generatedCertificates: CertificateData[] = students.map((st, idx) => {
+      const isFemale = st.gender === 'female';
       const vCode = generateVerificationCode();
+
+      // Tailor intro and appreciation text dynamically by verified student gender
+      const rawIntro = isFemale ? femaleIntroText : maleIntroText;
+      const rawAppreciation = isFemale ? femaleAppreciationText : maleAppreciationText;
 
       let cert: CertificateData = {
         ...templateBase,
         id: `batch-cert-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
-        studentName: cleanName,
-        recipientGender: finalGender,
-        grade: matchedMember?.grade || grade || templateBase.grade || 'الصف الدراسي',
-        subject: matchedMember?.subject || subject || templateBase.subject || 'التفوق والتميز',
+        studentName: st.name,
+        recipientGender: st.gender,
+        recipientIntro: rawIntro,
+        appreciationText: rawAppreciation.replace(/{الاسم}/g, st.name),
+        grade: st.grade || grade || templateBase.grade || 'الصف الدراسي',
+        subject: subject || templateBase.subject || 'التفوق والتميز',
         schoolName: schoolName || templateBase.schoolName || 'المدرسة',
         verificationCode: vCode,
         qrCodeData: `${window.location.origin}/verify?code=${vCode}`,
@@ -308,13 +352,11 @@ export const BatchCertificateGenerator: React.FC<Props> = ({
         isSavedCloud: false
       };
 
-      if (customAppreciation.trim()) {
-        cert.appreciationText = customAppreciation.replace(/{الاسم}/g, cleanName);
-      }
-
-      if (autoGenderAdapt) {
-        cert = adaptCertificateGenderSync(cert, finalGender, { preserveCustomStudentName: true });
-        cert.recipientGender = finalGender;
+      if (autoGenderAdaptPhrasing) {
+        cert = adaptCertificateGenderSync(cert, st.gender, { preserveCustomStudentName: true });
+        cert.recipientGender = st.gender;
+        cert.recipientIntro = rawIntro;
+        cert.appreciationText = rawAppreciation.replace(/{الاسم}/g, st.name);
       }
 
       return applyDefaultsToCertificate(cert, savedDefaults);
@@ -339,13 +381,14 @@ export const BatchCertificateGenerator: React.FC<Props> = ({
     saveBatchRecord(newBatchRecord);
     setSavedBatches(getSavedBatches());
 
-    // Open Batch Viewer Modal
+    // Close review modal & open Batch Viewer Modal
+    setIsReviewModalOpen(false);
     setViewerBatch(newBatchRecord);
     setIsViewerOpen(true);
 
     const girlsCount = generatedCertificates.filter(c => c.recipientGender === 'female').length;
     const boysCount = generatedCertificates.length - girlsCount;
-    showToast(`تم بنجاح توليد (${generatedCertificates.length}) شهادة مخصصة (${boysCount} بنين • ${girlsCount} بنات)! 🎓✨`);
+    showToast(`تم بنجاح مراجعة وتوليد (${generatedCertificates.length}) شهادة مخصصة (${boysCount} بنين • ${girlsCount} بنات)! 🎓✨`);
   };
 
   const handleOpenExistingBatch = (batch: BatchRecord) => {
@@ -659,7 +702,7 @@ export const BatchCertificateGenerator: React.FC<Props> = ({
 
             {/* Main Generate & View Action Button */}
             <button
-              onClick={handleGenerateAndSaveBatch}
+              onClick={handleOpenReviewModal}
               className="w-full py-4 bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-slate-950 font-black text-sm rounded-2xl shadow-lg transition flex items-center justify-center gap-2 cursor-pointer"
             >
               <Sparkles className="w-5 h-5 text-slate-950" />
@@ -1043,6 +1086,29 @@ export const BatchCertificateGenerator: React.FC<Props> = ({
 
           </div>
         </div>
+      )}
+
+      {/* PRE-GENERATION CONFIRMATION & REVIEW MODAL */}
+      {isReviewModalOpen && (
+        <BatchConfirmReviewModal
+          isOpen={isReviewModalOpen}
+          onClose={() => setIsReviewModalOpen(false)}
+          students={reviewStudentsList}
+          batchTitle={batchTitle.trim() || `دفعة شهادات ${grade}`}
+          grade={grade}
+          subject={subject}
+          schoolName={schoolName}
+          templateName={
+            templateSelectionMode === 'current'
+              ? 'تصميم المحرر الحالي'
+              : templateSelectionMode === 'preset'
+              ? TEMPLATE_PRESETS.find(p => p.id === selectedPresetId)?.name || 'قالب جاهز'
+              : savedTemplatesList.find(d => d.id === selectedSavedDraftId)?.name || 'قالب مخصص'
+          }
+          initialAppreciation={customAppreciation}
+          onConfirmAndGenerate={handleConfirmAndGenerateBatch}
+          onShowToast={showToast}
+        />
       )}
 
       {/* DEDICATED BATCH CERTIFICATE VIEWER MODAL */}

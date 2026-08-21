@@ -18,6 +18,7 @@ import { GoogleDriveSaveModal } from './components/GoogleDriveSaveModal';
 import { PrintPreviewModal } from './components/PrintPreviewModal';
 import { DirectShareModal } from './components/DirectShareModal';
 import { DraftsManagerModal } from './components/DraftsManagerModal';
+import { HistoryManagerModal } from './components/HistoryManagerModal';
 import {
   sanitizeOklchInDoc,
   waitForImagesToLoad,
@@ -292,6 +293,7 @@ export default function App() {
   const [isDriveModalOpen, setIsDriveModalOpen] = useState(false);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [isDraftsModalOpen, setIsDraftsModalOpen] = useState(false);
+  const [isHistoryManagerOpen, setIsHistoryManagerOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
 
@@ -548,6 +550,11 @@ export default function App() {
         onOpenVerificationModal={() => setIsVerificationModalOpen(true)}
         onOpenGoogleDriveModal={() => setIsDriveModalOpen(true)}
         onOpenDraftsModal={() => setIsDraftsModalOpen(true)}
+        onOpenHistoryModal={() => setIsHistoryManagerOpen(true)}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
         certificateData={certificateData}
         onUpdateCloudCertificate={handleUpdateCloudCertificate}
         onSaveNewToCloud={handleSaveNewToCloud}
@@ -863,6 +870,21 @@ export default function App() {
           setActiveTab('editor');
           showToast('تم استرجاع وتطبيق المسودة/القالب بنجاح! 🚀');
         }}
+        onShowToast={showToast}
+      />
+
+      {/* Visual Undo/Redo History Manager Modal */}
+      <HistoryManagerModal
+        isOpen={isHistoryManagerOpen}
+        onClose={() => setIsHistoryManagerOpen(false)}
+        history={history}
+        historyIndex={historyIndex}
+        onJumpToHistoryIndex={(idx) => {
+          setHistoryIndex(idx);
+          showToast(`تم الانتقال إلى الخطوة (${idx + 1}) بنجاح! ⏱️`);
+        }}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
         onShowToast={showToast}
       />
 

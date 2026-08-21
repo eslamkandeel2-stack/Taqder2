@@ -244,3 +244,162 @@ export async function printCertificateViaIframe(
     }, 350);
   }
 }
+
+/**
+ * Builds a standalone, self-contained HTML document for the Official Statement of Verification.
+ */
+export function generateVerificationStatementPrintHtml(
+  statementElement: HTMLElement,
+  studentName: string,
+  verificationCode: string
+): string {
+  const clone = statementElement.cloneNode(true) as HTMLElement;
+  clone.style.margin = '0 auto';
+  clone.style.boxShadow = 'none';
+  clone.style.maxWidth = '800px';
+  clone.style.width = '100%';
+  const printContent = clone.outerHTML;
+
+  const stylesheets = typeof document !== 'undefined' && document.querySelectorAll
+    ? Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
+        .map((node) => node.outerHTML)
+        .join('\n')
+    : '';
+
+  return `<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="utf-8">
+  <title>وثيقة التحقق الرسمية - ${studentName || 'طالب'} (${verificationCode})</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=Amiri:ital,wght@0,400;0,700;1,400&family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+  ${stylesheets}
+  <style>
+    @page {
+      size: A4 portrait !important;
+      margin: 15mm 15mm 15mm 15mm !important;
+    }
+    *, *::before, *::after {
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+      color-adjust: exact !important;
+      box-sizing: border-box !important;
+    }
+    html, body {
+      background-color: #ffffff !important;
+      background: #ffffff !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      overflow: visible !important;
+      font-family: 'Cairo', 'Amiri', sans-serif;
+    }
+    body {
+      padding: 20px !important;
+      display: flex !important;
+      justify-content: center !important;
+      align-items: flex-start !important;
+    }
+    .statement-print-wrapper {
+      width: 100% !important;
+      max-width: 800px !important;
+      margin: 0 auto !important;
+    }
+    button, .no-print, nav, header {
+      display: none !important;
+    }
+  </style>
+</head>
+<body>
+  <div class="statement-print-wrapper">
+    ${printContent}
+  </div>
+</body>
+</html>`;
+}
+
+/**
+ * Opens a dedicated print window for the verification statement.
+ */
+export async function openVerificationStatementInBrowserWindow(
+  statementElement: HTMLElement,
+  studentName: string,
+  verificationCode: string
+): Promise<boolean> {
+  await waitForImagesToLoad(statementElement);
+  const html = generateVerificationStatementPrintHtml(statementElement, studentName, verificationCode);
+
+  const printWindow = window.open('', '_blank');
+  if (!printWindow) {
+    return false;
+  }
+
+  printWindow.document.open();
+  printWindow.document.write(html);
+  printWindow.document.close();
+
+  setTimeout(() => {
+    try {
+      printWindow.focus();
+      printWindow.print();
+    } catch (e) {
+      console.warn('Could not auto-trigger print on new window:', e);
+    }
+  }, 400);
+
+  return true;
+}
+
+/**
+ * Prints the verification statement directly via iframe.
+ */
+export async function printVerificationStatementViaIframe(
+  statementElement: HTMLElement,
+  studentName: string,
+  verificationCode: string
+): Promise<void> {
+  await waitForImagesToLoad(statementElement);
+  const html = generateVerificationStatementPrintHtml(statementElement, studentName, verificationCode);
+
+  let printIframe = document.getElementById('statement-print-iframe') as HTMLIFrameElement | null;
+  if (printIframe) {
+    printIframe.remove();
+  }
+
+  printIframe = document.createElement('iframe');
+  printIframe.id = 'statement-print-iframe';
+  printIframe.style.position = 'fixed';
+  printIframe.style.right = '0';
+  printIframe.style.bottom = '0';
+  printIframe.style.width = '0px';
+  printIframe.style.height = '0px';
+  printIframe.style.border = 'none';
+  printIframe.style.visibility = 'hidden';
+
+  document.body.appendChild(printIframe);
+
+  const iframeDoc = printIframe.contentDocument || printIframe.contentWindow?.document;
+  if (iframeDoc) {
+    iframeDoc.open();
+    iframeDoc.write(html);
+    iframeDoc.close();
+
+    setTimeout(() => {
+      try {
+        if (printIframe && printIframe.contentWindow) {
+          printIframe.contentWindow.focus();
+          printIframe.contentWindow.print();
+        } else {
+          window.print();
+        }
+      } catch (err) {
+        console.warn('Iframe print failed, falling back to window.print:', err);
+        window.print();
+      }
+    }, 350);
+  }
+}
+
