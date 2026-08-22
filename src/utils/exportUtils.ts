@@ -1,4 +1,4 @@
-import React from 'react';
+Import React from 'react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { CertificateData } from '../types';
@@ -412,41 +412,17 @@ export function sanitizeOklchInDoc(clonedDoc: Document, certData?: CertificateDa
     });
   } catch (e) {}
 
-  // Inject explicit Arabic typography fix, flexbox text centering, & badge/stamp layout locks
+  // Inject explicit Arabic typography fix & flexbox text centering stylesheet
   const styleFix = clonedDoc.createElement('style');
   styleFix.textContent = `
     #certificate-print-area, #certificate-print-area * {
-      letter-spacing: 0px !important;
-      word-spacing: 0px !important;
+      letter-spacing: normal !important;
+      word-spacing: normal !important;
       font-variant-ligatures: normal !important;
       font-feature-settings: "liga" 1, "dlig" 1 !important;
       -webkit-font-smoothing: antialiased !important;
       text-rendering: optimizeLegibility !important;
-      box-sizing: border-box !important;
     }
-
-    /* Lock centering for badges, stamps, and circular elements */
-    #certificate-print-area [class*="badge"],
-    #certificate-print-area [class*="stamp"],
-    #certificate-print-area [class*="rounded-full"],
-    #certificate-print-area .flex-col.items-center {
-      display: flex !important;
-      flex-direction: column !important;
-      justify-content: center !important;
-      align-items: center !important;
-      text-align: center !important;
-    }
-
-    #certificate-print-area [class*="rounded-full"] span,
-    #certificate-print-area [class*="stamp"] span,
-    #certificate-print-area [class*="badge"] span {
-      display: block !important;
-      width: 100% !important;
-      text-align: center !important;
-      margin: 0 auto !important;
-      line-height: 1.2 !important;
-    }
-
     #certificate-print-area .text-center {
       text-align: center !important;
     }
@@ -469,8 +445,8 @@ export function sanitizeOklchInDoc(clonedDoc: Document, certData?: CertificateDa
   if (clonedContainer) {
     clonedContainer.setAttribute('dir', 'rtl');
     clonedContainer.style.direction = 'rtl';
-    clonedContainer.style.letterSpacing = '0px';
-    clonedContainer.style.wordSpacing = '0px';
+    clonedContainer.style.letterSpacing = 'normal';
+    clonedContainer.style.wordSpacing = 'normal';
     clonedContainer.style.transform = 'none';
     clonedContainer.style.margin = '0';
     clonedContainer.style.position = 'relative';
@@ -518,21 +494,11 @@ export function sanitizeOklchInDoc(clonedDoc: Document, certData?: CertificateDa
           clonedNode.style.boxShadow = replaceAllColorFunctions(cs.boxShadow);
         }
 
-        // Copy layout spacing & dimensions, except for badges/stamps to avoid responsive layout drift
-        const classNameStr = origNode.className ? origNode.className.toString() : '';
-        const isBadgeOrStamp = classNameStr.includes('rounded-full') || classNameStr.includes('stamp') || classNameStr.includes('badge');
-
-        if (!isBadgeOrStamp) {
-          if (cs.paddingTop) clonedNode.style.paddingTop = cs.paddingTop;
-          if (cs.paddingRight) clonedNode.style.paddingRight = cs.paddingRight;
-          if (cs.paddingBottom) clonedNode.style.paddingBottom = cs.paddingBottom;
-          if (cs.paddingLeft) clonedNode.style.paddingLeft = cs.paddingLeft;
-        } else {
-          clonedNode.style.display = 'flex';
-          clonedNode.style.flexDirection = 'column';
-          clonedNode.style.alignItems = 'center';
-          clonedNode.style.justifyContent = 'center';
-        }
+        // Copy layout spacing & dimensions (essential for padding, margins, badge boxes & verification containers)
+        if (cs.paddingTop) clonedNode.style.paddingTop = cs.paddingTop;
+        if (cs.paddingRight) clonedNode.style.paddingRight = cs.paddingRight;
+        if (cs.paddingBottom) clonedNode.style.paddingBottom = cs.paddingBottom;
+        if (cs.paddingLeft) clonedNode.style.paddingLeft = cs.paddingLeft;
 
         if (cs.marginTop && cs.marginTop !== '0px') clonedNode.style.marginTop = cs.marginTop;
         if (cs.marginRight && cs.marginRight !== '0px') clonedNode.style.marginRight = cs.marginRight;
@@ -541,7 +507,7 @@ export function sanitizeOklchInDoc(clonedDoc: Document, certData?: CertificateDa
 
         if (cs.boxSizing) clonedNode.style.boxSizing = cs.boxSizing;
 
-        // Copy computed opacity, zIndex, and transform
+        // Copy computed opacity, zIndex, and transform (faithfully preserve inline transform for badge/stamp/draggables)
         if (cs.opacity) clonedNode.style.opacity = cs.opacity;
         if (cs.zIndex && cs.zIndex !== 'auto') clonedNode.style.zIndex = cs.zIndex;
         if (origNode !== origContainer) {
@@ -552,7 +518,7 @@ export function sanitizeOklchInDoc(clonedDoc: Document, certData?: CertificateDa
           }
         }
 
-        // Copy typography & alignment
+        // Copy typography & alignment (essential for Arabic text formatting, alignment & line breaks)
         if (cs.fontFamily) clonedNode.style.fontFamily = cs.fontFamily;
         if (cs.fontSize) clonedNode.style.fontSize = cs.fontSize;
         if (cs.fontWeight) clonedNode.style.fontWeight = cs.fontWeight;
@@ -565,10 +531,10 @@ export function sanitizeOklchInDoc(clonedDoc: Document, certData?: CertificateDa
         if (cs.direction) clonedNode.style.direction = cs.direction;
 
         // Force letterSpacing and wordSpacing to normal for Arabic connected text
-        clonedNode.style.letterSpacing = '0px';
-        clonedNode.style.wordSpacing = '0px';
+        clonedNode.style.letterSpacing = 'normal';
+        clonedNode.style.wordSpacing = 'normal';
 
-        // Copy borders & corner radii
+        // Copy borders & corner radii (essential for certificate frames, borders & decorative badges)
         if (cs.borderStyle && cs.borderStyle !== 'none') clonedNode.style.borderStyle = cs.borderStyle;
         if (cs.borderWidth && cs.borderWidth !== '0px') clonedNode.style.borderWidth = cs.borderWidth;
         if (cs.borderColor) clonedNode.style.borderColor = replaceAllColorFunctions(cs.borderColor);
@@ -644,8 +610,8 @@ export function sanitizeOklchInDoc(clonedDoc: Document, certData?: CertificateDa
     allElements.forEach((el) => {
       if (el instanceof HTMLElement || el instanceof SVGElement) {
         if (el instanceof HTMLElement) {
-          el.style.letterSpacing = '0px';
-          el.style.wordSpacing = '0px';
+          el.style.letterSpacing = 'normal';
+          el.style.wordSpacing = 'normal';
           if (el.style?.cssText && /(?:oklch|oklab|lch|lab|color-mix|color)\(/i.test(el.style.cssText)) {
             el.style.cssText = replaceAllColorFunctions(el.style.cssText);
           }
@@ -668,7 +634,7 @@ export function sanitizeOklchInDoc(clonedDoc: Document, certData?: CertificateDa
       ctrl.remove();
     });
 
-    // Convert CSS flex gap to explicit child margins for html2canvas
+    // Convert CSS flex gap to explicit child margins for html2canvas (which ignores flex gap)
     const allFlexEls = [clonedContainer, ...Array.from(clonedContainer.querySelectorAll('*'))];
     allFlexEls.forEach((el) => {
       if (el instanceof HTMLElement) {
@@ -815,8 +781,7 @@ export async function captureCertificateCanvas(
       const clonedCert = (clonedEl || clonedDoc.getElementById('certificate-print-area') || clonedDoc.querySelector('[data-certificate-canvas="true"]')) as HTMLElement;
       if (clonedCert) {
         clonedCert.style.transform = 'none';
-        clonedCert.style.transformOrigin = 'center center';
-        clonedCert.style.margin = '0 auto';
+        clonedCert.style.margin = '0';
         clonedCert.style.position = 'relative';
         clonedCert.style.boxShadow = 'none';
         clonedCert.style.width = `${targetWidth}px`;
@@ -873,7 +838,8 @@ export function createProportionalPdf(
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
 
-  // Mathematical Aspect Ratio Calculations
+  // Mathematical Aspect Ratio Calculations:
+  // Calculate exact scale fit to guarantee 100% fidelity without distortion or clipping
   const canvasAspect = canvas.width / canvas.height;
   const pageAspect = pageWidth / pageHeight;
 
@@ -882,6 +848,7 @@ export function createProportionalPdf(
   let posX = 0;
   let posY = 0;
 
+  // If there is any microscopic delta in aspect ratio, fit and center with mathematical precision
   if (Math.abs(canvasAspect - pageAspect) > 0.002) {
     if (canvasAspect > pageAspect) {
       drawWidth = pageWidth;
@@ -955,6 +922,7 @@ export async function captureCertificateCanvasBlob(
 
 /**
  * Creates and exports a single combined multi-page PDF document containing all batch certificates.
+ * Each certificate is placed on its own dedicated page with exact mathematical proportions.
  */
 export async function exportBatchCertificatesAsSinglePdf(
   certificates: CertificateData[],
@@ -977,7 +945,9 @@ export async function exportBatchCertificatesAsSinglePdf(
       options.onProgress(i + 1, total, cert.studentName);
     }
 
+    // Render this certificate to DOM and get its element
     const element = await renderContainer(cert);
+    // Allow DOM to settle and images to load
     await new Promise((resolve) => setTimeout(resolve, 80));
 
     const canvas = await captureCertificateCanvas(element, cert, { scale: 2.5 });
