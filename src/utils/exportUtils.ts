@@ -1,4 +1,4 @@
-Import React from 'react';
+import React from 'react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { CertificateData } from '../types';
@@ -1021,3 +1021,4 @@ export async function exportBatchCertificatesAsSinglePdf(
     }
   }
 }
+
