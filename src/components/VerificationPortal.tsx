@@ -154,12 +154,10 @@ export const VerificationPortal: React.FC<Props> = ({
     }
   };
 
-  // Load all known certificates for quick sample badges only if not in standalone mode
+  // Load all known certificates for quick sample badges and verification lookup across modes
   useEffect(() => {
-    if (!isStandalone) {
-      const list = getAllVerifiableCertificates(currentCertificate);
-      setAllCertsList(list);
-    }
+    const list = getAllVerifiableCertificates(currentCertificate);
+    setAllCertsList(list);
   }, [currentCertificate, isStandalone]);
 
   const getStandalonePortalUrl = (code?: string) => {

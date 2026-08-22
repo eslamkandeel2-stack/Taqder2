@@ -2,7 +2,17 @@ import React, { useState } from 'react';
 import { CertificateData, FontOption, AspectRatioOption, FrameStyle, BadgeIconType, SignatureItem, GradientConfig, GradientType, ElementStyles, TextElementStyle, LayoutPreset } from '../types';
 import { TEMPLATE_PRESETS } from '../data/templates';
 import { BACKGROUND_TEXTURES } from '../data/backgrounds';
-import { getFormattedTodayDate, getTodayHijriDate, getTodayGregorianDate, normalizeDateDigits, getSavedDefaultSettings, saveDefaultSettingsToStorage } from '../utils/defaultSettings';
+import {
+  getFormattedTodayDate,
+  getTodayHijriDate,
+  getTodayGregorianDate,
+  normalizeDateDigits,
+  getSavedDefaultSettings,
+  saveDefaultSettingsToStorage,
+  saveCurrentCertificateAsDefaultSettings,
+  applyDefaultsToCertificate,
+  extractCertificateToDefaultSettings
+} from '../utils/defaultSettings';
 import { GRADIENT_PRESETS, GRADIENT_COLOR_SWATCHES } from '../utils/gradientUtils';
 import { generateVerificationCode, sanitizeVerificationCode } from '../utils/qrUtils';
 import { adaptCertificateGender, adaptCertificateGenderSync, RecipientGender } from '../utils/genderConverter';
@@ -84,7 +94,12 @@ import {
   Wrench,
   Wand2,
   BrainCircuit,
-  FolderHeart
+  FolderHeart,
+  Star,
+  Eye,
+  EyeOff,
+  Lock,
+  Unlock
 } from 'lucide-react';
 import {
   getSavedDrafts,
@@ -93,6 +108,12 @@ import {
   subscribeToDrafts,
   DraftCertificateItem
 } from '../utils/draftsManager';
+import {
+  getSavedSystemConfig,
+  SystemSettingsConfig,
+  isElementLocked,
+  isFeatureEnabled
+} from '../utils/systemConfig';
 
 interface Props {
   certificateData: CertificateData;
@@ -454,6 +475,7 @@ export const EditorToolbar: React.FC<Props> = ({
   const [savedDraftsList, setSavedDraftsList] = useState<DraftCertificateItem[]>([]);
   const [quickDraftName, setQuickDraftName] = useState('');
   const [draftNotice, setDraftNotice] = useState<string | null>(null);
+  const [defaultSettingsNotice, setDefaultSettingsNotice] = useState<string | null>(null);
 
   React.useEffect(() => {
     const refreshDrafts = () => {
@@ -495,6 +517,33 @@ export const EditorToolbar: React.FC<Props> = ({
   const [isSafeMarginsSpacingSubOpen, setIsSafeMarginsSpacingSubOpen] = useState(false);
   const [isPresetTemplatesSectionOpen, setIsPresetTemplatesSectionOpen] = useState(true);
   const [selectedTemplateCategory, setSelectedTemplateCategory] = useState<string>('الكل');
+
+  // System Configuration & Element Locks State
+  const [systemConfig, setSystemConfig] = useState<SystemSettingsConfig>(getSavedSystemConfig());
+
+  React.useEffect(() => {
+    const handleConfigChange = () => {
+      setSystemConfig(getSavedSystemConfig());
+    };
+    window.addEventListener('taqdeer_system_config_changed', handleConfigChange);
+    return () => {
+      window.removeEventListener('taqdeer_system_config_changed', handleConfigChange);
+    };
+  }, []);
+
+  const isSchoolNameLocked = isElementLocked(systemConfig, 'schoolName');
+  const isHeaderLinesLocked = isElementLocked(systemConfig, 'headerLines');
+  const isTitleLocked = isElementLocked(systemConfig, 'title');
+  const isPoemLocked = isElementLocked(systemConfig, 'poemOrQuote');
+  const isLogoLocked = isElementLocked(systemConfig, 'logo');
+  const isSignaturesLocked = isElementLocked(systemConfig, 'signatures');
+  const isStampLocked = isElementLocked(systemConfig, 'stamp');
+  const isBadgeLocked = isElementLocked(systemConfig, 'badge');
+  const isFrameLocked = isElementLocked(systemConfig, 'frame');
+  const isColorsLocked = isElementLocked(systemConfig, 'colors');
+  const isWatermarkLocked = isElementLocked(systemConfig, 'watermark');
+  const isVerificationBoxLocked = isElementLocked(systemConfig, 'verificationBox');
+  const isAspectRatioLocked = isElementLocked(systemConfig, 'aspectRatio');
 
   const handleOptimizeLayoutAi = async (targetPreset?: LayoutPreset) => {
     setIsAiOptimizingLayout(true);
@@ -646,6 +695,22 @@ export const EditorToolbar: React.FC<Props> = ({
     });
     setMarginNotice('تم تطبيق الهوامش الافتراضية المحفوظة بنجاح.');
     setTimeout(() => setMarginNotice(null), 4000);
+  };
+
+  const handleSaveCurrentCertAsDefault = () => {
+    saveCurrentCertificateAsDefaultSettings(certificateData);
+    setDefaultSettingsNotice('تم حفظ الشهادة الحالية وتنسيقاتها كإعدادات افتراضية للنظام بنجاح! ⭐💾');
+    setTimeout(() => setDefaultSettingsNotice(null), 4500);
+  };
+
+  const handleApplySystemDefaultSettings = () => {
+    const updated = applyDefaultsToCertificate(certificateData);
+    onChange({
+      ...updated,
+      updatedAt: new Date().toISOString()
+    });
+    setDefaultSettingsNotice('تم تطبيق الإعدادات الافتراضية للنظام على الشهادة الحالية بنجاح! ✨');
+    setTimeout(() => setDefaultSettingsNotice(null), 4500);
   };
 
   // Tab navigation ref and drag-to-scroll handlers
@@ -1174,10 +1239,72 @@ export const EditorToolbar: React.FC<Props> = ({
       currentSigs.push(newSig);
     }
     updateField('signatures', currentSigs);
+    // Also auto-save to signature presets library for future reuse
+    saveSignaturePresetToLibrary(newSig);
   };
 
   const removeSignature = (id: string) => {
     updateField('signatures', certificateData.signatures.filter(s => s.id !== id));
+  };
+
+  const toggleSignatureVisibility = (id: string) => {
+    const currentSigs = certificateData.signatures.map(s => {
+      if (s.id === id) {
+        return { ...s, show: s.show === false ? true : false };
+      }
+      return s;
+    });
+    updateField('signatures', currentSigs);
+  };
+
+  const moveSignatureOrder = (index: number, direction: 'up' | 'down') => {
+    const sigs = [...certificateData.signatures];
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= sigs.length) return;
+    const temp = sigs[index];
+    sigs[index] = sigs[targetIndex];
+    sigs[targetIndex] = temp;
+    updateField('signatures', sigs);
+  };
+
+  const getSavedSignaturePresets = (): SignatureItem[] => {
+    try {
+      const stored = localStorage.getItem('taqdeer_saved_signature_presets');
+      if (stored) return JSON.parse(stored);
+    } catch (e) {
+      console.warn('Failed to load saved signature presets:', e);
+    }
+    return [];
+  };
+
+  const saveSignaturePresetToLibrary = (sig: SignatureItem) => {
+    try {
+      const existing = getSavedSignaturePresets();
+      const updated = [sig, ...existing.filter(s => s.id !== sig.id && (s.name !== sig.name || s.title !== sig.title))].slice(0, 15);
+      localStorage.setItem('taqdeer_saved_signature_presets', JSON.stringify(updated));
+    } catch (e) {
+      console.warn('Failed to save signature preset:', e);
+    }
+  };
+
+  const deleteSignaturePresetFromLibrary = (id: string) => {
+    try {
+      const existing = getSavedSignaturePresets();
+      const updated = existing.filter(s => s.id !== id);
+      localStorage.setItem('taqdeer_saved_signature_presets', JSON.stringify(updated));
+      onChange({ ...certificateData, updatedAt: new Date().toISOString() });
+    } catch (e) {
+      console.warn('Failed to delete signature preset:', e);
+    }
+  };
+
+  const addPresetSignatureToCertificate = (preset: SignatureItem) => {
+    const newSig: SignatureItem = {
+      ...preset,
+      id: `sig-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
+      show: true
+    };
+    handleSaveSignature(newSig);
   };
 
   return (
@@ -1263,18 +1390,66 @@ export const EditorToolbar: React.FC<Props> = ({
               </div>
               <button
                 onClick={onOpenAiModal}
-                className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs rounded-lg transition shadow-2xs whitespace-nowrap"
+                className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs rounded-lg transition shadow-2xs whitespace-nowrap cursor-pointer"
               >
                 توليد بـ AI
               </button>
             </div>
 
+            {/* Quick System Default Settings Bar */}
+            <div className="bg-amber-50/70 border border-amber-300/80 rounded-xl p-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-2">
+                <Star className="w-4 h-4 text-amber-600 fill-amber-500" />
+                <span className="font-bold text-slate-800 text-[11px]">
+                  الإعدادات الافتراضية للنظام:
+                </span>
+                <span className="text-[10px] text-slate-500 hidden sm:inline">
+                  (ربط مباشر بإعدادات الشهادات بالنظام)
+                </span>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={handleSaveCurrentCertAsDefault}
+                  className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[11px] rounded-lg shadow-2xs transition flex items-center gap-1 cursor-pointer active:scale-95"
+                  title="حفظ بيانات وتنسيقات هذه الشهادة كإعدادات افتراضية للنظام"
+                >
+                  <Star className="w-3 h-3 fill-slate-950" />
+                  <span>حفظ كإعدادات افتراضية ⭐</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleApplySystemDefaultSettings}
+                  className="px-2.5 py-1 bg-white hover:bg-amber-100/80 text-slate-800 border border-amber-300 font-bold text-[11px] rounded-lg shadow-2xs transition flex items-center gap-1 cursor-pointer active:scale-95"
+                  title="تطبيق الإعدادات الافتراضية المحفوظة بالنظام على هذه الشهادة"
+                >
+                  <RotateCcw className="w-3 h-3 text-amber-700" />
+                  <span>تطبيق الافتراضي 🔄</span>
+                </button>
+              </div>
+
+              {defaultSettingsNotice && (
+                <div className="w-full mt-1 p-2 bg-emerald-100/90 border border-emerald-300 rounded-lg text-[11px] font-bold text-emerald-900 flex items-center gap-1.5 animate-fade-in">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                  <span>{defaultSettingsNotice}</span>
+                </div>
+              )}
+            </div>
+
             {/* Top Margin & Header Customization */}
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+            <div className={`p-3 bg-slate-50 rounded-xl border space-y-3 ${isHeaderLinesLocked ? 'border-amber-400/80 bg-amber-50/20 ring-1 ring-amber-300' : 'border-slate-200'}`}>
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                   <Type className="w-4 h-4 text-amber-600" />
-                  تخصيص الهامش العلوي والترويسة (Header)
+                  <span>تخصيص الهامش العلوي والترويسة (Header)</span>
+                  {isHeaderLinesLocked && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black bg-amber-500 text-slate-950 shadow-2xs">
+                      <Lock className="w-3 h-3" />
+                      <span>مقفل من إعدادات النظام</span>
+                    </span>
+                  )}
                 </span>
                 <span className="text-[10px] text-slate-500 font-medium">إظهار/إخفاء العبارات بكل حرية</span>
               </div>
@@ -1323,6 +1498,7 @@ export const EditorToolbar: React.FC<Props> = ({
                     <button
                       key={idx}
                       type="button"
+                      disabled={isHeaderLinesLocked}
                       onClick={() =>
                         onChange({
                           ...certificateData,
@@ -1338,7 +1514,7 @@ export const EditorToolbar: React.FC<Props> = ({
                           updatedAt: new Date().toISOString()
                         })
                       }
-                      className="px-2 py-1 text-[10px] font-bold bg-white hover:bg-amber-100 text-slate-800 rounded border border-slate-300 transition shadow-2xs"
+                      className="px-2 py-1 text-[10px] font-bold bg-white hover:bg-amber-100 text-slate-800 rounded border border-slate-300 transition shadow-2xs disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {p.label}
                     </button>
@@ -1355,9 +1531,10 @@ export const EditorToolbar: React.FC<Props> = ({
                     <label className="flex items-center gap-1 cursor-pointer text-[10px] font-bold text-slate-600">
                       <input
                         type="checkbox"
+                        disabled={isHeaderLinesLocked}
                         checked={certificateData.showHeaderLine1 ?? true}
                         onChange={(e) => updateField('showHeaderLine1', e.target.checked)}
-                        className="accent-amber-500 rounded w-3.5 h-3.5"
+                        className="accent-amber-500 rounded w-3.5 h-3.5 disabled:opacity-50"
                       />
                       إظهار
                     </label>
@@ -1365,10 +1542,11 @@ export const EditorToolbar: React.FC<Props> = ({
                   {(certificateData.showHeaderLine1 ?? true) && (
                     <input
                       type="text"
+                      disabled={isHeaderLinesLocked}
                       value={certificateData.headerLine1 ?? 'المملكة العربية السعودية'}
                       onChange={(e) => updateField('headerLine1', e.target.value)}
                       placeholder="مثال: المملكة العربية السعودية"
-                      className="w-full px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg bg-white"
+                      className={`w-full px-2.5 py-1.5 text-xs border rounded-lg ${isHeaderLinesLocked ? 'bg-slate-100 text-slate-500 border-slate-300 cursor-not-allowed' : 'border-slate-300 bg-white'}`}
                     />
                   )}
                 </div>
@@ -1380,9 +1558,10 @@ export const EditorToolbar: React.FC<Props> = ({
                     <label className="flex items-center gap-1 cursor-pointer text-[10px] font-bold text-slate-600">
                       <input
                         type="checkbox"
+                        disabled={isHeaderLinesLocked}
                         checked={certificateData.showHeaderLine2 ?? true}
                         onChange={(e) => updateField('showHeaderLine2', e.target.checked)}
-                        className="accent-amber-500 rounded w-3.5 h-3.5"
+                        className="accent-amber-500 rounded w-3.5 h-3.5 disabled:opacity-50"
                       />
                       إظهار
                     </label>
@@ -1390,10 +1569,11 @@ export const EditorToolbar: React.FC<Props> = ({
                   {(certificateData.showHeaderLine2 ?? true) && (
                     <input
                       type="text"
+                      disabled={isHeaderLinesLocked}
                       value={certificateData.headerLine2 ?? 'وزارة التعليم / الجهة المعتمدة'}
                       onChange={(e) => updateField('headerLine2', e.target.value)}
                       placeholder="مثال: وزارة التعليم"
-                      className="w-full px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg bg-white"
+                      className={`w-full px-2.5 py-1.5 text-xs border rounded-lg ${isHeaderLinesLocked ? 'bg-slate-100 text-slate-500 border-slate-300 cursor-not-allowed' : 'border-slate-300 bg-white'}`}
                     />
                   )}
                 </div>
@@ -1405,9 +1585,10 @@ export const EditorToolbar: React.FC<Props> = ({
                     <label className="flex items-center gap-1 cursor-pointer text-[10px] font-bold text-slate-600">
                       <input
                         type="checkbox"
+                        disabled={isHeaderLinesLocked}
                         checked={certificateData.showHeaderLine3 ?? false}
                         onChange={(e) => updateField('showHeaderLine3', e.target.checked)}
-                        className="accent-amber-500 rounded w-3.5 h-3.5"
+                        className="accent-amber-500 rounded w-3.5 h-3.5 disabled:opacity-50"
                       />
                       إظهار
                     </label>
@@ -1415,10 +1596,11 @@ export const EditorToolbar: React.FC<Props> = ({
                   {certificateData.showHeaderLine3 && (
                     <input
                       type="text"
+                      disabled={isHeaderLinesLocked}
                       value={certificateData.headerLine3 ?? 'إدارة التعليم بمحافظة الرياض'}
                       onChange={(e) => updateField('headerLine3', e.target.value)}
                       placeholder="مثال: إدارة التعليم بمحافظة الرياض"
-                      className="w-full px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg bg-white"
+                      className={`w-full px-2.5 py-1.5 text-xs border rounded-lg ${isHeaderLinesLocked ? 'bg-slate-100 text-slate-500 border-slate-300 cursor-not-allowed' : 'border-slate-300 bg-white'}`}
                     />
                   )}
                 </div>
@@ -1430,9 +1612,10 @@ export const EditorToolbar: React.FC<Props> = ({
                     <label className="flex items-center gap-1 cursor-pointer text-[10px] font-bold text-slate-600">
                       <input
                         type="checkbox"
+                        disabled={isHeaderLinesLocked}
                         checked={certificateData.showHeaderRightExtra ?? false}
                         onChange={(e) => updateField('showHeaderRightExtra', e.target.checked)}
-                        className="accent-amber-500 rounded w-3.5 h-3.5"
+                        className="accent-amber-500 rounded w-3.5 h-3.5 disabled:opacity-50"
                       />
                       إظهار
                     </label>
@@ -1440,24 +1623,34 @@ export const EditorToolbar: React.FC<Props> = ({
                   {certificateData.showHeaderRightExtra && (
                     <input
                       type="text"
+                      disabled={isHeaderLinesLocked}
                       value={certificateData.headerRightExtra ?? 'مكتب التعليم الخاص'}
                       onChange={(e) => updateField('headerRightExtra', e.target.value)}
                       placeholder="مثال: قسم الجودة والتطوير"
-                      className="w-full px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg bg-white"
+                      className={`w-full px-2.5 py-1.5 text-xs border rounded-lg ${isHeaderLinesLocked ? 'bg-slate-100 text-slate-500 border-slate-300 cursor-not-allowed' : 'border-slate-300 bg-white'}`}
                     />
                   )}
                 </div>
 
                 {/* School / Institution Name toggle & field */}
-                <div className="space-y-1 pt-1 border-t border-slate-200">
+                <div className={`space-y-1 pt-1 border-t ${isSchoolNameLocked ? 'border-amber-400 bg-amber-50/40 p-2 rounded-lg' : 'border-slate-200'}`}>
                   <div className="flex items-center justify-between">
-                    <label className="text-[11px] font-bold text-slate-700">اسم المدرسة / الجهة بالترويسة:</label>
+                    <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+                      <span>اسم المدرسة / الجهة بالترويسة:</span>
+                      {isSchoolNameLocked && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-500 text-slate-950">
+                          <Lock className="w-2.5 h-2.5" />
+                          <span>مقفل</span>
+                        </span>
+                      )}
+                    </label>
                     <label className="flex items-center gap-1 cursor-pointer text-[10px] font-bold text-slate-600">
                       <input
                         type="checkbox"
+                        disabled={isSchoolNameLocked}
                         checked={certificateData.showHeaderSchoolName ?? true}
                         onChange={(e) => updateField('showHeaderSchoolName', e.target.checked)}
-                        className="accent-amber-500 rounded w-3.5 h-3.5"
+                        className="accent-amber-500 rounded w-3.5 h-3.5 disabled:opacity-50"
                       />
                       إظهار
                     </label>
@@ -1465,10 +1658,11 @@ export const EditorToolbar: React.FC<Props> = ({
                   {(certificateData.showHeaderSchoolName ?? true) && (
                     <input
                       type="text"
+                      disabled={isSchoolNameLocked}
                       value={certificateData.schoolName}
                       onChange={(e) => updateField('schoolName', e.target.value)}
                       placeholder="مثال: مدرسة التميز النموذجية"
-                      className="w-full px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg bg-white font-bold"
+                      className={`w-full px-2.5 py-1.5 text-xs border rounded-lg font-bold ${isSchoolNameLocked ? 'bg-slate-100 text-slate-500 border-slate-300 cursor-not-allowed' : 'border-slate-300 bg-white'}`}
                     />
                   )}
                 </div>
@@ -1915,11 +2109,20 @@ export const EditorToolbar: React.FC<Props> = ({
 
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="block text-xs font-bold text-slate-700">عنوان الشهادة الرئيسي</label>
+                <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                  <span>عنوان الشهادة الرئيسي</span>
+                  {isTitleLocked && (
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-500 text-slate-950">
+                      <Lock className="w-2.5 h-2.5" />
+                      <span>مقفل</span>
+                    </span>
+                  )}
+                </label>
                 <button
                   type="button"
+                  disabled={isTitleLocked}
                   onClick={() => onOpenAiModal?.('improve', 'title')}
-                  className="text-[10px] font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 px-2 py-0.5 rounded-md border border-amber-300 flex items-center gap-1 transition cursor-pointer"
+                  className="text-[10px] font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 px-2 py-0.5 rounded-md border border-amber-300 flex items-center gap-1 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                   title="اقتراح وتحسين عناوين الشهادة بالذكاء الاصطناعي"
                 >
                   <Sparkles className="w-3 h-3 text-amber-600" />
@@ -1928,10 +2131,11 @@ export const EditorToolbar: React.FC<Props> = ({
               </div>
               <input
                 type="text"
+                disabled={isTitleLocked}
                 value={certificateData.title}
                 onChange={(e) => updateField('title', e.target.value)}
                 placeholder="مثال: شهادة شكر وتقدير"
-                className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 font-bold"
+                className={`w-full px-3 py-2 text-xs border rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 font-bold ${isTitleLocked ? 'bg-slate-100 text-slate-500 border-slate-300 cursor-not-allowed' : 'border-slate-300 bg-white'}`}
               />
               <OffsetPad
                 title="عنوان الشهادة الرئيسي"
@@ -1945,13 +2149,22 @@ export const EditorToolbar: React.FC<Props> = ({
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">العنوان الفرعي</label>
+              <label className="text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
+                <span>العنوان الفرعي</span>
+                {isTitleLocked && (
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-500 text-slate-950">
+                    <Lock className="w-2.5 h-2.5" />
+                    <span>مقفل</span>
+                  </span>
+                )}
+              </label>
               <input
                 type="text"
+                disabled={isTitleLocked}
                 value={certificateData.subtitle}
                 onChange={(e) => updateField('subtitle', e.target.value)}
                 placeholder="مثال: وسام التميز للعام الدراسي 1447 هـ"
-                className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                className={`w-full px-3 py-2 text-xs border rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 ${isTitleLocked ? 'bg-slate-100 text-slate-500 border-slate-300 cursor-not-allowed' : 'border-slate-300 bg-white'}`}
               />
               <OffsetPad
                 title="العنوان الفرعي"
@@ -2029,16 +2242,23 @@ export const EditorToolbar: React.FC<Props> = ({
               />
             </div>
 
-            <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-200/80 space-y-2">
+            <div className={`p-3 bg-slate-50/80 rounded-xl border space-y-2 ${isPoemLocked ? 'border-amber-400 bg-amber-50/30 ring-1 ring-amber-300' : 'border-slate-200/80'}`}>
               <div className="flex items-center justify-between">
                 <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                  ✨ بيت شعر أو مقولة ملهمة
+                  <span>✨ بيت شعر أو مقولة ملهمة</span>
+                  {isPoemLocked && (
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-500 text-slate-950">
+                      <Lock className="w-2.5 h-2.5" />
+                      <span>مقفل</span>
+                    </span>
+                  )}
                 </label>
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
+                    disabled={isPoemLocked}
                     onClick={() => onOpenAiModal?.('improve', 'poem')}
-                    className="text-[10px] font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 px-2 py-0.5 rounded-md border border-amber-300 flex items-center gap-1 transition cursor-pointer"
+                    className="text-[10px] font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 px-2 py-0.5 rounded-md border border-amber-300 flex items-center gap-1 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     title="اقتراح وتوليد أبيات شعرية راقية وحكم بالذكاء الاصطناعي"
                   >
                     <Sparkles className="w-3 h-3 text-amber-600" />
@@ -2047,9 +2267,10 @@ export const EditorToolbar: React.FC<Props> = ({
                   <label className="flex items-center gap-1.5 cursor-pointer text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200 shadow-2xs transition-colors">
                     <input
                       type="checkbox"
+                      disabled={isPoemLocked}
                       checked={certificateData.showPoemOrQuote ?? true}
                       onChange={(e) => updateField('showPoemOrQuote', e.target.checked)}
-                      className="accent-amber-600 rounded cursor-pointer w-3.5 h-3.5"
+                      className="accent-amber-600 rounded cursor-pointer w-3.5 h-3.5 disabled:opacity-50"
                     />
                     <span>إظهار في الشهادة</span>
                   </label>
@@ -2058,11 +2279,12 @@ export const EditorToolbar: React.FC<Props> = ({
               {(certificateData.showPoemOrQuote ?? true) && (
                 <>
                   <textarea
+                    disabled={isPoemLocked}
                     value={certificateData.poemOrQuote}
                     onChange={(e) => updateField('poemOrQuote', e.target.value)}
                     placeholder="«من خطا نحو العلا خطوةً... جنى من الثمار أحلى النعم»"
                     rows={2}
-                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 italic bg-white resize-y mt-1.5"
+                    className={`w-full px-3 py-2 text-xs border rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 italic resize-y mt-1.5 ${isPoemLocked ? 'bg-slate-100 text-slate-500 border-slate-300 cursor-not-allowed' : 'border-slate-300 bg-white'}`}
                   />
                   <OffsetPad
                     title="بيت الشعر / المقولة"
@@ -2715,7 +2937,7 @@ export const EditorToolbar: React.FC<Props> = ({
                   </div>
 
                   {/* Margins & Spacing */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
                       <div className="flex justify-between text-xs font-bold text-slate-800 mb-1">
                         <span>الهامش العلوي:</span>
@@ -2744,6 +2966,22 @@ export const EditorToolbar: React.FC<Props> = ({
                         step={2}
                         value={currentStyle.marginBottom || 0}
                         onChange={(e) => updateElementStyle(selectedElementKey, { marginBottom: Number(e.target.value) })}
+                        className="w-full accent-amber-600 cursor-pointer"
+                      />
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between text-xs font-bold text-slate-800 mb-1">
+                        <span>تباعد الحروف:</span>
+                        <span className="text-amber-700">{currentStyle.letterSpacing || 0}px</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={-2}
+                        max={10}
+                        step={0.5}
+                        value={currentStyle.letterSpacing || 0}
+                        onChange={(e) => updateElementStyle(selectedElementKey, { letterSpacing: Number(e.target.value) })}
                         className="w-full accent-amber-600 cursor-pointer"
                       />
                     </div>
@@ -2898,6 +3136,59 @@ export const EditorToolbar: React.FC<Props> = ({
           return (
             <div className="space-y-5">
               
+              {/* FRAME 0: SYSTEM DEFAULT CERTIFICATE SETTINGS CARD */}
+              <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-yellow-500/10 rounded-2xl border-2 border-amber-400/80 p-4 shadow-sm space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center font-black shadow-sm shrink-0">
+                      <Star className="w-5 h-5 fill-slate-950" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-sm font-black text-slate-900 font-['Cairo']">
+                          إعدادات الشهادة الافتراضية للنظام
+                        </h4>
+                        <span className="text-[10px] bg-amber-200 text-amber-950 font-extrabold px-2 py-0.5 rounded-full border border-amber-400">
+                          نظام تقدير الموحد
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-600 mt-0.5">
+                        احفظ نموذج الشهادة والتنسيقات الحالية كإعدادات افتراضية لكافة الشهادات ومحرك التحقق التلقائي
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleSaveCurrentCertAsDefault}
+                      className="px-3.5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer active:scale-95"
+                      title="حفظ الشهادة والتنسيقات الحالية كإعدادات افتراضية للنظام"
+                    >
+                      <Star className="w-4 h-4 fill-slate-950" />
+                      <span>حفظ الشهادة كافتراضي للنظام ⭐</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleApplySystemDefaultSettings}
+                      className="px-3.5 py-2 bg-white hover:bg-amber-50 text-slate-800 border border-amber-300 font-bold text-xs rounded-xl shadow-2xs transition flex items-center gap-1.5 cursor-pointer active:scale-95"
+                      title="تطبيق الإعدادات الافتراضية للنظام على الشهادة الحالية"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5 text-amber-700" />
+                      <span>تطبيق الافتراضي 🔄</span>
+                    </button>
+                  </div>
+                </div>
+
+                {defaultSettingsNotice && (
+                  <div className="p-2.5 bg-emerald-50 border border-emerald-300 rounded-xl text-xs font-bold text-emerald-900 flex items-center gap-2 animate-fade-in">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>{defaultSettingsNotice}</span>
+                  </div>
+                )}
+              </div>
+
               {/* FRAME 1: EXPANDABLE CSS GRID LAYOUTS WINDOW */}
               <div className="bg-gradient-to-br from-amber-50/90 via-white to-orange-50/60 rounded-2xl border-2 border-amber-300/80 shadow-xs overflow-hidden transition-all">
                 
@@ -4239,13 +4530,32 @@ export const EditorToolbar: React.FC<Props> = ({
         {activeTab === 'style' && (
           <div className="space-y-5">
             
+            {isColorsLocked && (
+              <div className="p-3 bg-amber-100/80 border border-amber-300 rounded-xl text-xs font-bold text-amber-950 flex items-center justify-between shadow-2xs">
+                <div className="flex items-center gap-2">
+                  <Lock className="w-4 h-4 text-amber-700" />
+                  <span>تعديل الألوان مقفل حالياً بموجب إعدادات النظام وقفل العناصر</span>
+                </div>
+                <span className="text-[10px] bg-amber-500 text-slate-950 px-2 py-0.5 rounded font-black">مقفل 🔒</span>
+              </div>
+            )}
+
             {/* Curated Color Palettes */}
-            <div>
-              <label className="block text-xs font-bold text-slate-800 mb-2">لوحات الألوان المجهزة بنقرة واحدة (Curated Palettes)</label>
+            <div className={isColorsLocked ? 'opacity-50 pointer-events-none' : ''}>
+              <label className="block text-xs font-bold text-slate-800 mb-2 flex items-center gap-1.5">
+                <span>لوحات الألوان المجهزة بنقرة واحدة (Curated Palettes)</span>
+                {isColorsLocked && (
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-500 text-slate-950">
+                    <Lock className="w-2.5 h-2.5" />
+                    <span>مقفل</span>
+                  </span>
+                )}
+              </label>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {colorPalettes.map((p, idx) => (
                   <button
                     key={idx}
+                    disabled={isColorsLocked}
                     onClick={() => {
                       onChange({
                         ...certificateData,
@@ -4272,7 +4582,7 @@ export const EditorToolbar: React.FC<Props> = ({
             </div>
 
             {/* Custom Color Pickers */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 border-t border-slate-200">
+            <div className={`grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 border-t border-slate-200 ${isColorsLocked ? 'opacity-50 pointer-events-none' : ''}`}>
               <div>
                 <label className="block text-[11px] font-bold text-slate-700 mb-1">اللون الرئيسي</label>
                 <div className="flex items-center gap-2">
@@ -4868,62 +5178,205 @@ export const EditorToolbar: React.FC<Props> = ({
         {activeTab === 'signatures' && (
           <div className="space-y-4">
             
-            <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl flex items-center justify-between gap-3">
+            {isSignaturesLocked && (
+              <div className="p-3 bg-amber-100/80 border border-amber-300 rounded-xl text-xs font-bold text-amber-950 flex items-center justify-between shadow-2xs">
+                <div className="flex items-center gap-2">
+                  <Lock className="w-4 h-4 text-amber-700" />
+                  <span>تعديل وإضافة التوقيعات مقفل حالياً بموجب إعدادات النظام</span>
+                </div>
+                <span className="text-[10px] bg-amber-500 text-slate-950 px-2 py-0.5 rounded font-black">مقفل 🔒</span>
+              </div>
+            )}
+
+            <div className={`bg-amber-50 border border-amber-200 p-4 rounded-xl flex items-center justify-between gap-3 ${isSignaturesLocked ? 'opacity-70' : ''}`}>
               <div>
                 <h4 className="text-xs font-bold text-amber-900 flex items-center gap-1.5 font-['Cairo']">
                   <PenTool className="w-4 h-4 text-amber-600" />
-                  التوقيعات الرقمية المعتمدة
+                  <span>التوقيعات الرقمية المعتمدة</span>
+                  {isSignaturesLocked && (
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-500 text-slate-950">
+                      <Lock className="w-2.5 h-2.5" />
+                      <span>مقفل</span>
+                    </span>
+                  )}
                 </h4>
                 <p className="text-[11px] text-amber-800 mt-0.5">
                   يمكن للمسؤولين والتنفيذيين توقيع الشهادات إلكترونياً (رسم، خط، أو صورة رسمية).
                 </p>
               </div>
               <button
+                disabled={isSignaturesLocked}
                 onClick={() => {
                   setEditingSignature(null);
                   setIsSignatureModalOpen(true);
                 }}
-                className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs rounded-lg transition shadow-2xs flex items-center gap-1 whitespace-nowrap"
+                className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs rounded-lg transition shadow-2xs flex items-center gap-1 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Plus className="w-3.5 h-3.5" /> إضافة توقيع جديد
               </button>
             </div>
 
             {/* Current Signatures List */}
-            <div className="space-y-2">
-              {certificateData.signatures && certificateData.signatures.map((sig) => (
-                <div key={sig.id} className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-amber-100 text-amber-900 font-extrabold flex items-center justify-center text-xs">
-                      {sig.type === 'draw' ? 'رسم' : sig.type === 'upload' ? 'صورة' : 'خط'}
+            <div className={`space-y-2 ${isSignaturesLocked ? 'pointer-events-none opacity-60' : ''}`}>
+              <div className="flex items-center justify-between px-1">
+                <span className="text-[11px] font-bold text-slate-700">التوقيعات الحالية في هذه الشهادة ({certificateData.signatures?.length || 0}):</span>
+                <span className="text-[10px] text-slate-500">يمكنك إخفاء أو إعادة ترتيب أو نقل كل توقيع</span>
+              </div>
+              {(!certificateData.signatures || certificateData.signatures.length === 0) ? (
+                <div className="p-4 bg-slate-50 rounded-xl border border-dashed border-slate-300 text-center text-xs text-slate-500">
+                  لا توجد توقيعات مضافة حالياً. اضغط على زر "إضافة توقيع جديد" للبدء.
+                </div>
+              ) : (
+                certificateData.signatures.map((sig, idx) => (
+                  <div
+                    key={sig.id}
+                    className={`p-3 rounded-xl border transition flex items-center justify-between gap-2 ${
+                      sig.show !== false
+                        ? 'bg-slate-50 border-slate-200 shadow-2xs'
+                        : 'bg-slate-100/70 border-slate-200/70 opacity-60'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      {/* Reorder Buttons */}
+                      <div className="flex flex-col gap-0.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => moveSignatureOrder(idx, 'up')}
+                          disabled={idx === 0}
+                          className="p-1 rounded bg-white hover:bg-amber-100 text-slate-600 disabled:opacity-30 disabled:hover:bg-white border border-slate-200 transition"
+                          title="تحريك التوقيع للأمام / للأعلى"
+                        >
+                          <ArrowUp className="w-3 h-3" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => moveSignatureOrder(idx, 'down')}
+                          disabled={idx === (certificateData.signatures.length - 1)}
+                          className="p-1 rounded bg-white hover:bg-amber-100 text-slate-600 disabled:opacity-30 disabled:hover:bg-white border border-slate-200 transition"
+                          title="تحريك التوقيع للخلف / للأسفل"
+                        >
+                          <ArrowDown className="w-3 h-3" />
+                        </button>
+                      </div>
+
+                      {/* Type Badge */}
+                      <div className="w-9 h-9 rounded-lg bg-amber-100 text-amber-900 font-extrabold flex items-center justify-center text-[11px] shrink-0">
+                        {sig.type === 'draw' ? 'رسم' : sig.type === 'upload' ? 'صورة' : 'خط'}
+                      </div>
+
+                      {/* Signature Info */}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <h5 className="font-bold text-xs text-slate-800 truncate">{sig.name || 'بدون اسم'}</h5>
+                          {sig.show === false && (
+                            <span className="text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.2 rounded font-semibold">مخفي</span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-slate-500 truncate">{sig.title || 'المسمى الوظيفي'}</p>
+                      </div>
                     </div>
-                    <div>
-                      <h5 className="font-bold text-xs text-slate-800">{sig.name}</h5>
-                      <p className="text-[11px] text-slate-500">{sig.title}</p>
+
+                    {/* Actions: Visibility Toggle, Save to Library, Edit, Delete */}
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => toggleSignatureVisibility(sig.id)}
+                        className={`p-1.5 rounded-lg border transition ${
+                          sig.show !== false
+                            ? 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
+                            : 'bg-slate-200 text-slate-500 border-slate-300 hover:bg-slate-300'
+                        }`}
+                        title={sig.show !== false ? 'إخفاء هذا التوقيع من الشهادة' : 'إظهار هذا التوقيع في الشهادة'}
+                      >
+                        {sig.show !== false ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          saveSignaturePresetToLibrary(sig);
+                          onChange({ ...certificateData, updatedAt: new Date().toISOString() });
+                        }}
+                        className="p-1.5 rounded-lg bg-white hover:bg-amber-50 text-amber-600 border border-slate-200 transition"
+                        title="حفظ هذا التوقيع في مكتبة التوقيعات الدائمة للرجوع له لاحقاً"
+                      >
+                        <BookmarkCheck className="w-3.5 h-3.5" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingSignature(sig);
+                          setIsSignatureModalOpen(true);
+                        }}
+                        className="px-2.5 py-1 text-xs font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg transition"
+                      >
+                        تعديل
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => removeSignature(sig.id)}
+                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                        title="حذف التوقيع من هذه الشهادة"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Saved Signature Presets Library */}
+            {(() => {
+              const presets = getSavedSignaturePresets();
+              if (presets.length === 0) return null;
+              return (
+                <div className="p-3 bg-amber-50/50 rounded-xl border border-amber-200/80 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
+                      <BookmarkCheck className="w-3.5 h-3.5 text-amber-600" />
+                      مكتبة التوقيعات المحفوظة ({presets.length})
+                    </span>
+                    <span className="text-[10px] text-amber-700">توقيعات جاهزة يمكنك استخدامها بنقرة واحدة</span>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => {
-                        setEditingSignature(sig);
-                        setIsSignatureModalOpen(true);
-                      }}
-                      className="px-2.5 py-1 text-xs font-bold text-amber-700 hover:bg-amber-100 rounded-lg transition"
-                    >
-                      تعديل
-                    </button>
-                    <button
-                      onClick={() => removeSignature(sig.id)}
-                      className="p-1 text-slate-400 hover:text-red-600 transition"
-                      title="حذف التوقيع"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-44 overflow-y-auto">
+                    {presets.map((preset) => (
+                      <div
+                        key={preset.id}
+                        className="p-2 bg-white rounded-lg border border-amber-200/70 flex items-center justify-between gap-1 shadow-2xs hover:border-amber-400 transition"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <h6 className="text-[11px] font-bold text-slate-800 truncate">{preset.name}</h6>
+                          <p className="text-[10px] text-slate-500 truncate">{preset.title}</p>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => addPresetSignatureToCertificate(preset)}
+                            className="px-2 py-0.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-[10px] rounded transition flex items-center gap-0.5"
+                            title="إدراج التوقيع في الشهادة الحالية"
+                          >
+                            <Plus className="w-3 h-3" />
+                            إدراج
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteSignaturePresetFromLibrary(preset.id)}
+                            className="p-1 text-slate-400 hover:text-red-500 rounded transition"
+                            title="حذف من المكتبة المحفوظة"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
-              ))}
-            </div>
+              );
+            })()}
 
             {/* Signatures Block Position Control */}
             <OffsetPad
@@ -4944,13 +5397,20 @@ export const EditorToolbar: React.FC<Props> = ({
           <div className="space-y-4">
             
             {/* Custom Logo Upload & Comprehensive Customization */}
-            <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-3.5">
+            {/* Logo Customization Box */}
+            <div className={`p-3.5 bg-slate-50 rounded-xl border space-y-3.5 ${isLogoLocked ? 'border-amber-400 bg-amber-50/40' : 'border-slate-200'}`}>
               <div className="flex items-center justify-between border-b pb-2 border-slate-200">
                 <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
                   <ImageIcon className="w-4 h-4 text-amber-600" />
-                  شعار المؤسسة / المدرسة (Logo)
+                  <span>شعار المؤسسة / المدرسة (Logo)</span>
+                  {isLogoLocked && (
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-500 text-slate-950">
+                      <Lock className="w-2.5 h-2.5" />
+                      <span>مقفل</span>
+                    </span>
+                  )}
                 </span>
-                {certificateData.logoUrl && (
+                {certificateData.logoUrl && !isLogoLocked && (
                   <button
                     onClick={() => updateField('logoUrl', undefined)}
                     className="text-[11px] text-red-600 hover:text-red-700 font-bold flex items-center gap-1 bg-red-50 px-2 py-0.5 rounded border border-red-200"
@@ -4961,7 +5421,7 @@ export const EditorToolbar: React.FC<Props> = ({
                 )}
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className={`flex items-center gap-3 ${isLogoLocked ? 'pointer-events-none opacity-60' : ''}`}>
                 {certificateData.logoUrl ? (
                   <div className="relative group">
                     <img
@@ -4976,10 +5436,10 @@ export const EditorToolbar: React.FC<Props> = ({
                   </div>
                 )}
 
-                <label className="flex-1 px-3 py-2.5 bg-amber-600 text-white rounded-xl text-xs font-bold hover:bg-amber-700 cursor-pointer text-center flex items-center justify-center gap-2 shadow-xs transition">
+                <label className={`flex-1 px-3 py-2.5 bg-amber-600 text-white rounded-xl text-xs font-bold hover:bg-amber-700 cursor-pointer text-center flex items-center justify-center gap-2 shadow-xs transition ${isLogoLocked ? 'opacity-50 cursor-not-allowed' : ''}`}>
                   <Upload className="w-4 h-4" />
                   رفع الشعار من الجهاز
-                  <input type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
+                  <input type="file" accept="image/*" onChange={handleLogoUpload} disabled={isLogoLocked} className="hidden" />
                 </label>
               </div>
 
@@ -5285,9 +5745,27 @@ export const EditorToolbar: React.FC<Props> = ({
 
             {/* Frame Styles & Border Controls */}
             <div className="space-y-6">
-              <div>
+              {isFrameLocked && (
+                <div className="p-3 bg-amber-100/80 border border-amber-300 rounded-xl text-xs font-bold text-amber-950 flex items-center justify-between shadow-2xs">
+                  <div className="flex items-center gap-2">
+                    <Lock className="w-4 h-4 text-amber-700" />
+                    <span>تعديل الإطارات وهوامش الإطار مقفل حالياً بموجب إعدادات النظام</span>
+                  </div>
+                  <span className="text-[10px] bg-amber-500 text-slate-950 px-2 py-0.5 rounded font-black">مقفل 🔒</span>
+                </div>
+              )}
+
+              <div className={isFrameLocked ? 'pointer-events-none opacity-60' : ''}>
                 <div className="flex items-center justify-between mb-2">
-                  <label className="block text-xs font-bold text-slate-800">مكتبة الإطارات المزخرفة (Border Presets)</label>
+                  <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <span>مكتبة الإطارات المزخرفة (Border Presets)</span>
+                    {isFrameLocked && (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-500 text-slate-950">
+                        <Lock className="w-2.5 h-2.5" />
+                        <span>مقفل</span>
+                      </span>
+                    )}
+                  </label>
                   <span className="text-[10px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200 font-bold">
                     {frames.length} نمط متوفر
                   </span>
@@ -5710,14 +6188,21 @@ export const EditorToolbar: React.FC<Props> = ({
             </div>
 
             {/* Watermark Section */}
-            <div className="p-3.5 bg-slate-50/80 rounded-xl border border-slate-200 space-y-3">
+            <div className={`p-3.5 bg-slate-50/80 rounded-xl border space-y-3 ${isWatermarkLocked ? 'border-amber-400 bg-amber-50/30' : 'border-slate-200'}`}>
               <div className="flex items-center justify-between">
                 <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                   <Layers className="w-3.5 h-3.5 text-amber-600" />
-                  تخصيص العلامة المائية (Watermark)
+                  <span>تخصيص العلامة المائية (Watermark)</span>
+                  {isWatermarkLocked && (
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-500 text-slate-950">
+                      <Lock className="w-2.5 h-2.5" />
+                      <span>مقفل</span>
+                    </span>
+                  )}
                 </label>
-                <div className="flex rounded-lg border border-slate-200 bg-white p-0.5 text-[11px] font-bold">
+                <div className={`flex rounded-lg border border-slate-200 bg-white p-0.5 text-[11px] font-bold ${isWatermarkLocked ? 'opacity-50 pointer-events-none' : ''}`}>
                   <button
+                    disabled={isWatermarkLocked}
                     onClick={() => updateField('watermarkType', 'text')}
                     className={`px-2 py-1 rounded-md transition ${
                       (certificateData.watermarkType || 'text') === 'text'
@@ -5728,6 +6213,7 @@ export const EditorToolbar: React.FC<Props> = ({
                     نص
                   </button>
                   <button
+                    disabled={isWatermarkLocked}
                     onClick={() => updateField('watermarkType', 'image')}
                     className={`px-2 py-1 rounded-md transition ${
                       certificateData.watermarkType === 'image'
@@ -5738,6 +6224,7 @@ export const EditorToolbar: React.FC<Props> = ({
                     صورة
                   </button>
                   <button
+                    disabled={isWatermarkLocked}
                     onClick={() => updateField('watermarkType', 'none')}
                     className={`px-2 py-1 rounded-md transition ${
                       certificateData.watermarkType === 'none'
@@ -5918,22 +6405,31 @@ export const EditorToolbar: React.FC<Props> = ({
           <div className="space-y-4">
             
             {/* Badge / Medal Settings */}
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+            <div className={`p-3 bg-slate-50 rounded-xl border space-y-3 ${isBadgeLocked ? 'border-amber-400 bg-amber-50/30' : 'border-slate-200'}`}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Award className="w-4 h-4 text-amber-600" />
-                  <span className="text-xs font-bold text-slate-800">تخصيص الوسام / الشارة / الميدالية</span>
+                  <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <span>تخصيص الوسام / الشارة / الميدالية</span>
+                    {isBadgeLocked && (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-500 text-slate-950">
+                        <Lock className="w-2.5 h-2.5" />
+                        <span>مقفل</span>
+                      </span>
+                    )}
+                  </span>
                 </div>
                 <input
                   type="checkbox"
+                  disabled={isBadgeLocked}
                   checked={certificateData.showBadge}
                   onChange={(e) => updateField('showBadge', e.target.checked)}
-                  className="w-4 h-4 accent-amber-500 rounded cursor-pointer"
+                  className="w-4 h-4 accent-amber-500 rounded cursor-pointer disabled:opacity-50"
                 />
               </div>
 
               {certificateData.showBadge && (
-                <div className="space-y-3 pt-1">
+                <div className={`space-y-3 pt-1 ${isBadgeLocked ? 'pointer-events-none opacity-60' : ''}`}>
                   
                   {/* --- 1. BADGE ICON & SOURCE SECTION --- */}
                   <div className="p-2.5 bg-white rounded-lg border border-slate-200/90 space-y-2.5 shadow-2xs">
@@ -6623,21 +7119,30 @@ export const EditorToolbar: React.FC<Props> = ({
             </div>
 
             {/* Stamp / Seal Settings */}
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+            <div className={`p-3 bg-slate-50 rounded-xl border space-y-3 ${isStampLocked ? 'border-amber-400 bg-amber-50/30' : 'border-slate-200'}`}>
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-800">تخصيص الختم الرسمي / الشمعي</span>
+                <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <span>تخصيص الختم الرسمي / الشمعي</span>
+                  {isStampLocked && (
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-500 text-slate-950">
+                      <Lock className="w-2.5 h-2.5" />
+                      <span>مقفل</span>
+                    </span>
+                  )}
+                </span>
                 <input
                   type="checkbox"
+                  disabled={isStampLocked}
                   checked={certificateData.stamp?.show ?? true}
                   onChange={(e) =>
                     updateField('stamp', { ...certificateData.stamp, show: e.target.checked })
                   }
-                  className="w-4 h-4 accent-amber-500 rounded"
+                  className="w-4 h-4 accent-amber-500 rounded disabled:opacity-50"
                 />
               </div>
 
               {certificateData.stamp?.show && (
-                <div className="space-y-3 pt-1">
+                <div className={`space-y-3 pt-1 ${isStampLocked ? 'pointer-events-none opacity-60' : ''}`}>
                   {/* Stamp Source Selector */}
                   <div className="flex rounded-lg border border-slate-200 bg-white p-0.5 text-xs font-bold">
                     <button
@@ -7246,23 +7751,34 @@ export const EditorToolbar: React.FC<Props> = ({
         {activeTab === 'verification' && (
           <div className="space-y-5">
             {/* Header Banner */}
-            <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white p-4 rounded-2xl shadow-md border border-slate-800 flex items-center justify-between gap-3">
+            <div className={`text-white p-4 rounded-2xl shadow-md border flex items-center justify-between gap-3 ${
+              isVerificationBoxLocked 
+                ? 'bg-gradient-to-r from-amber-950 via-slate-900 to-slate-900 border-amber-500/50' 
+                : 'bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 border-slate-800'
+            }`}>
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-400/40 flex items-center justify-center text-amber-400 shrink-0">
                   <ShieldCheck className="w-5 h-5" />
                 </div>
                 <div>
                   <h3 className="text-sm font-extrabold text-amber-300 font-['Cairo'] flex items-center gap-1.5">
-                    تخصيص مربع التوثيق والرمز الرقمي
+                    <span>تخصيص مربع التوثيق والرمز الرقمي</span>
+                    {isVerificationBoxLocked && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500 text-slate-950">
+                        <Lock className="w-3 h-3" />
+                        <span>مقفل بموجب إعدادات النظام</span>
+                      </span>
+                    )}
                   </h3>
                   <p className="text-[11px] text-slate-300">
                     التحكم الكامل بأنماط وقوالب وألوان وإظهار/إخفاء أجزاء مربع التوثيق على الشهادة.
                   </p>
                 </div>
               </div>
-              <label className="relative inline-flex items-center cursor-pointer shrink-0">
+              <label className={`relative inline-flex items-center cursor-pointer shrink-0 ${isVerificationBoxLocked ? 'pointer-events-none opacity-50' : ''}`}>
                 <input
                   type="checkbox"
+                  disabled={isVerificationBoxLocked}
                   checked={(certificateData.showVerificationBox ?? certificateData.showQrCode ?? true)}
                   onChange={(e) => {
                     const checked = e.target.checked;
@@ -7280,7 +7796,7 @@ export const EditorToolbar: React.FC<Props> = ({
             </div>
 
             {((certificateData.showVerificationBox ?? certificateData.showQrCode ?? true)) ? (
-              <div className="space-y-5">
+              <div className={`space-y-5 ${isVerificationBoxLocked ? 'pointer-events-none opacity-60' : ''}`}>
                 {/* 1. Template Patterns Selection */}
                 <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-3">
                   <div className="flex items-center justify-between border-b pb-2 border-slate-100">
@@ -7957,6 +8473,7 @@ export const EditorToolbar: React.FC<Props> = ({
         onClose={() => setIsGalleryModalOpen(false)}
         onSelectTemplate={(template) => applyPresetTemplate(template.id)}
         currentTemplateId={certificateData.templateId}
+        onShowToast={(msg) => setDefaultSettingsNotice(msg)}
       />
 
       {/* Logo Crop & Editing Modal */}

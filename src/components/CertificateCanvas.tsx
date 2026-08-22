@@ -872,6 +872,7 @@ export const CertificateCanvas: React.FC<Props> = ({
     schoolName: 16,
     dateLocation: 14,
     watermarkText: 60,
+    badgeTitle: 10,
   };
 
   // Absolute minimum font sizes in px to guarantee high readability and prestigious certificate appearance
@@ -887,6 +888,7 @@ export const CertificateCanvas: React.FC<Props> = ({
     schoolName: 12,
     dateLocation: 11,
     watermarkText: 24,
+    badgeTitle: 8,
   };
 
   const getElementCssStyle = (fieldKey: keyof ElementStyles, defaultColor?: string) => {
@@ -3572,19 +3574,43 @@ export const CertificateCanvas: React.FC<Props> = ({
                           const totalOffsetX = (data.badgeTitleOffsetX || 0) + (data.badgeBgOffsetX || 0);
                           const totalOffsetY = (data.badgeTitleOffsetY || 0) + (data.badgeBgOffsetY || 0);
 
-                          // Text Typography & Layout
-                          const textColor = data.badgeTextColor || (isNoBg ? (data.primaryColor || '#1e293b') : '#ffffff');
-                          const fontSize = `${data.badgeTextFontSize || 10}px`;
-                          const fontFamily = data.badgeTextFontFamily || data.fontFamily || 'Cairo';
-                          const fontWeight = 
-                            data.badgeTextFontWeight === 'black' ? 900 :
-                            data.badgeTextFontWeight === 'extrabold' ? 800 :
-                            data.badgeTextFontWeight === 'normal' ? 400 : 700;
-                          const letterSpacing = `${data.badgeTextLetterSpacing || 0}px`;
-                          const textAlign = data.badgeTextAlign || 'center';
+                          // Text Typography & Layout - Support elementStyles.badgeTitle overrides with fallback to direct badgeText properties
+                          const badgeElemStyle = getElementCssStyle('badgeTitle', isNoBg ? (data.primaryColor || '#1e293b') : '#ffffff');
+                          const textColor = data.elementStyles?.badgeTitle?.color || data.badgeTextColor || (isNoBg ? (data.primaryColor || '#1e293b') : '#ffffff');
+                          
+                          let rawFontSizePx = data.badgeTextFontSize || 10;
+                          if (data.elementStyles?.badgeTitle?.fontSize) {
+                            if (data.elementStyles.badgeTitle.fontSize <= 45) {
+                              rawFontSizePx = data.elementStyles.badgeTitle.fontSize;
+                            } else {
+                              rawFontSizePx = Math.round((10 * data.elementStyles.badgeTitle.fontSize) / 100);
+                            }
+                          }
+                          const fontSize = `${rawFontSizePx}px`;
+
+                          const fontFamily = data.elementStyles?.badgeTitle?.fontFamily || data.badgeTextFontFamily || data.fontFamily || 'Cairo';
+                          
+                          let fontWeight: number = 700;
+                          if (data.elementStyles?.badgeTitle?.fontWeight) {
+                            fontWeight = data.elementStyles.badgeTitle.fontWeight === 'extrabold' ? 800 :
+                              data.elementStyles.badgeTitle.fontWeight === 'bold' ? 700 :
+                              data.elementStyles.badgeTitle.fontWeight === 'light' ? 300 : 400;
+                          } else if (data.badgeTextFontWeight) {
+                            fontWeight = data.badgeTextFontWeight === 'black' ? 900 :
+                              data.badgeTextFontWeight === 'extrabold' ? 800 :
+                              data.badgeTextFontWeight === 'normal' ? 400 : 700;
+                          }
+
+                          const letterSpacing = data.elementStyles?.badgeTitle?.letterSpacing !== undefined 
+                            ? `${data.elementStyles.badgeTitle.letterSpacing}px` 
+                            : `${data.badgeTextLetterSpacing || 0}px`;
+
+                          const textAlign = data.elementStyles?.badgeTitle?.align || data.badgeTextAlign || 'center';
                           const textWrap = data.badgeTextWrap || 'nowrap';
                           const textOffsetX = data.badgeTextOffsetX || 0;
                           const textOffsetY = data.badgeTextOffsetY || 0;
+                          const marginTop = data.elementStyles?.badgeTitle?.marginTop !== undefined ? `${data.elementStyles.badgeTitle.marginTop}px` : undefined;
+                          const marginBottom = data.elementStyles?.badgeTitle?.marginBottom !== undefined ? `${data.elementStyles.badgeTitle.marginBottom}px` : undefined;
 
                           return (
                             <div

@@ -38,10 +38,23 @@ import {
   RefreshCw,
   ExternalLink,
   ChevronDown,
+  ChevronRight,
+  ChevronLeft,
   Layers,
   FileCheck2,
   Database,
-  Cloud
+  Cloud,
+  Lock,
+  Unlock,
+  Shield,
+  ToggleLeft,
+  ToggleRight,
+  SlidersHorizontal,
+  Star,
+  GraduationCap,
+  School,
+  BookMarked,
+  Briefcase
 } from 'lucide-react';
 import { CertificateData, FontOption, FrameStyle, LayoutPreset, AspectRatioOption, BadgeIconType, BadgeBgShape, VerificationBoxPattern, VerificationCodePattern } from '../types';
 import {
@@ -49,7 +62,10 @@ import {
   getSavedDefaultSettings,
   saveDefaultSettingsToStorage,
   FALLBACK_DEFAULT_SETTINGS,
-  applyDefaultsToCertificate
+  applyDefaultsToCertificate,
+  extractCertificateToDefaultSettings,
+  INSTITUTION_DEFAULT_PRESETS,
+  InstitutionPreset
 } from '../utils/defaultSettings';
 import {
   getDriveVerificationRequests,
@@ -71,6 +87,17 @@ import {
   testAIConnection,
   AITone
 } from '../utils/aiConfig';
+import {
+  getSavedSystemConfig,
+  saveSystemConfig,
+  SystemSettingsConfig,
+  toggleSystemFeature,
+  toggleSystemLockedElement,
+  resetSystemConfig,
+  SystemLockedElements,
+  SystemFeatureToggles
+} from '../utils/systemConfig';
+import { useDragScroll } from '../utils/useDragScroll';
 
 interface Props {
   currentCertificate?: CertificateData;
@@ -88,7 +115,8 @@ type DefaultSubTab =
   | 'stamps-badges'
   | 'verification-box'
   | 'export-print'
-  | 'verification-document';
+  | 'verification-document'
+  | 'element-locks';
 
 const FONT_OPTIONS: FontOption[] = [
   'Cairo', 'Amiri', 'Tajawal', 'Almarai', 'Aref Ruqaa', 'Reem Kufi',
@@ -152,9 +180,14 @@ export const AppSettingsModal: React.FC<Props> = ({
   const [activeSubTab, setActiveSubTab] = useState<DefaultSubTab>('basic-info');
   const [defaultSettings, setDefaultSettings] = useState<DefaultCertificateSettings>(getSavedDefaultSettings());
   const [aiSettings, setAiSettings] = useState<AISettings>(getSavedAISettings());
+  const [systemConfig, setSystemConfig] = useState<SystemSettingsConfig>(getSavedSystemConfig());
   const [showApiKey, setShowApiKey] = useState(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState(false);
   const [aiSaveSuccessMsg, setAiSaveSuccessMsg] = useState(false);
+
+  // Drag-to-scroll horizontal navigation hooks
+  const mainNavDrag = useDragScroll({ scrollStep: 220 });
+  const subNavDrag = useDragScroll({ scrollStep: 200 });
 
   // AI Connection Test state
   const [isTestingAi, setIsTestingAi] = useState(false);
@@ -172,23 +205,100 @@ export const AppSettingsModal: React.FC<Props> = ({
   const [showDeployGuide, setShowDeployGuide] = useState(false);
 
   // App System settings state
-  const [offlineMode, setOfflineMode] = useState(false);
-  const [autoSync, setAutoSync] = useState(true);
-  const [highQualityPdf, setHighQualityPdf] = useState(true);
   const [activeFaq, setActiveFaq] = useState<number | null>(0);
   const [driveRequests, setDriveRequests] = useState<DriveVerificationRequest[]>([]);
 
   useEffect(() => {
     setDefaultSettings(getSavedDefaultSettings());
     setAiSettings(getSavedAISettings());
+    setSystemConfig(getSavedSystemConfig());
     setDriveRequests(getDriveVerificationRequests());
 
     const handleReqChange = () => {
       setDriveRequests(getDriveVerificationRequests());
     };
+    const handleDefaultsChange = (e: any) => {
+      if (e?.detail) {
+        setDefaultSettings(e.detail);
+      } else {
+        setDefaultSettings(getSavedDefaultSettings());
+      }
+    };
+    const handleSystemConfigChange = (e: any) => {
+      if (e?.detail) {
+        setSystemConfig(e.detail);
+      } else {
+        setSystemConfig(getSavedSystemConfig());
+      }
+    };
+
     window.addEventListener('taqdeer_drive_requests_changed', handleReqChange);
-    return () => window.removeEventListener('taqdeer_drive_requests_changed', handleReqChange);
+    window.addEventListener('taqdeer_default_settings_changed', handleDefaultsChange);
+    window.addEventListener('taqdeer_system_config_changed', handleSystemConfigChange);
+
+    return () => {
+      window.removeEventListener('taqdeer_drive_requests_changed', handleReqChange);
+      window.removeEventListener('taqdeer_default_settings_changed', handleDefaultsChange);
+      window.removeEventListener('taqdeer_system_config_changed', handleSystemConfigChange);
+    };
   }, []);
+
+  const handleToggleFeature = (key: keyof SystemFeatureToggles, val?: boolean) => {
+    const updated = toggleSystemFeature(key, val);
+    setSystemConfig(updated);
+    if (onShowToast) {
+      onShowToast(`تم ${updated.features[key] ? 'تفعيل' : 'إيقاف'} الخاصية بنجاح ⚙️`);
+    }
+  };
+
+  const handleToggleLock = (key: keyof SystemLockedElements, val?: boolean) => {
+    const updated = toggleSystemLockedElement(key, val);
+    setSystemConfig(updated);
+    if (onShowToast) {
+      onShowToast(updated.lockedElements[key] ? 'تم قفل هذا العنصر لحمايته من التعديل في المحرر 🔒' : 'تم فك قفل العنصر للتحرير 🔓');
+    }
+  };
+
+  const handleLockAllElements = (lock: boolean) => {
+    const updatedLocks: SystemLockedElements = {
+      schoolName: lock,
+      headerLines: lock,
+      logo: lock,
+      signatures: lock,
+      stamp: lock,
+      badge: lock,
+      frame: lock,
+      watermark: lock,
+      verificationBox: lock,
+      colors: lock,
+      poemOrQuote: lock,
+      aspectRatio: lock,
+      title: lock,
+    };
+    const newConfig: SystemSettingsConfig = {
+      ...systemConfig,
+      lockedElements: updatedLocks
+    };
+    saveSystemConfig(newConfig);
+    setSystemConfig(newConfig);
+    if (onShowToast) {
+      onShowToast(lock ? 'تم قفل وحماية جميع العناصر الأساسية 🔒' : 'تم فك قفل جميع العناصر للتحرير 🔓');
+    }
+  };
+
+  const handleApplyPresetInstitution = (preset: InstitutionPreset) => {
+    const updated: DefaultCertificateSettings = {
+      ...defaultSettings,
+      ...preset.settings
+    };
+    setDefaultSettings(updated);
+    saveDefaultSettingsToStorage(updated);
+    setSaveSuccessMsg(true);
+    if (onShowToast) {
+      onShowToast(`تم تطبيق نموذج "${preset.name}" المؤسسي كإعدادات افتراضية كاملة بنجاح! ✨`);
+    }
+    setTimeout(() => setSaveSuccessMsg(false), 3500);
+  };
 
   const handleUpdateReqStatus = (id: string, status: 'pending' | 'approved' | 'rejected') => {
     if (status === 'approved') {
@@ -281,6 +391,18 @@ export const AppSettingsModal: React.FC<Props> = ({
     if (onShowToast) {
       onShowToast('تم تطبيق الإعدادات الافتراضية الشاملة على الشهادة الحالية بنجاح! ✨');
     }
+  };
+
+  const handleImportCurrentCertToDefaults = () => {
+    if (!currentCertificate) return;
+    const newDefaults = extractCertificateToDefaultSettings(currentCertificate, defaultSettings);
+    setDefaultSettings(newDefaults);
+    saveDefaultSettingsToStorage(newDefaults);
+    setSaveSuccessMsg(true);
+    if (onShowToast) {
+      onShowToast('تم سحب كافة بيانات وتنسيقات الشهادة الحالية وحفظها كإعدادات افتراضية للنظام بنجاح! ⭐💾');
+    }
+    setTimeout(() => setSaveSuccessMsg(false), 3500);
   };
 
   const handleResetToFactory = () => {
@@ -405,51 +527,132 @@ export const AppSettingsModal: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* Main Tab Bar */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-slate-200 p-1.5 rounded-2xl border border-slate-300">
+      {/* Main Tab Bar - Drag to Scroll Navigation */}
+      <div className="relative flex items-center bg-slate-200/90 p-1.5 rounded-2xl border border-slate-300 shadow-xs">
         <button
-          onClick={() => setActiveTab('default-cert')}
-          className={`py-3 px-4 rounded-xl font-extrabold text-xs transition flex items-center justify-center gap-2.5 ${
-            activeTab === 'default-cert'
-              ? 'bg-amber-500 text-slate-950 shadow-md'
-              : 'text-slate-700 hover:bg-slate-300/60'
-          }`}
+          type="button"
+          onClick={mainNavDrag.scrollRight}
+          className="p-2 text-slate-700 hover:text-amber-700 hover:bg-slate-300/80 rounded-xl transition shrink-0 cursor-pointer"
+          title="تمرير لليمين"
         >
-          <Building2 className="w-4 h-4 shrink-0" />
-          <span>بيانات الشهادات الافتراضية</span>
+          <ChevronRight className="w-4 h-4 stroke-[2.5]" />
         </button>
 
-        <button
-          onClick={() => setActiveTab('ai-settings')}
-          className={`py-3 px-4 rounded-xl font-extrabold text-xs transition flex items-center justify-center gap-2.5 ${
-            activeTab === 'ai-settings'
-              ? 'bg-indigo-600 text-white shadow-md'
-              : 'text-slate-700 hover:bg-slate-300/60'
-          }`}
+        <div
+          ref={mainNavDrag.scrollRef}
+          onMouseDown={mainNavDrag.onMouseDown}
+          onMouseLeave={mainNavDrag.onMouseLeave}
+          onMouseUp={mainNavDrag.onMouseUp}
+          onMouseMove={mainNavDrag.onMouseMove}
+          className="flex items-center gap-2 overflow-x-auto no-scrollbar touch-pan-x scroll-smooth w-full px-1 select-none cursor-grab active:cursor-grabbing"
         >
-          <Bot className="w-4 h-4 shrink-0 text-amber-300" />
-          <span>مساعد الذكاء الاصطناعي والـ API</span>
-        </button>
+          <button
+            onClick={() => setActiveTab('default-cert')}
+            className={`py-2.5 px-4 rounded-xl font-extrabold text-xs transition flex items-center justify-center gap-2 shrink-0 whitespace-nowrap cursor-pointer ${
+              activeTab === 'default-cert'
+                ? 'bg-amber-500 text-slate-950 shadow-md font-black'
+                : 'bg-white/90 text-slate-700 hover:bg-white border border-slate-300/60'
+            }`}
+          >
+            <Building2 className="w-4 h-4 shrink-0" />
+            <span>بيانات الشهادات الافتراضية والقوالب</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('ai-settings')}
+            className={`py-2.5 px-4 rounded-xl font-extrabold text-xs transition flex items-center justify-center gap-2 shrink-0 whitespace-nowrap cursor-pointer ${
+              activeTab === 'ai-settings'
+                ? 'bg-indigo-600 text-white shadow-md font-black'
+                : 'bg-white/90 text-slate-700 hover:bg-white border border-slate-300/60'
+            }`}
+          >
+            <Bot className="w-4 h-4 shrink-0 text-amber-300" />
+            <span>مساعد الذكاء الاصطناعي والـ API</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('app-system')}
+            className={`py-2.5 px-4 rounded-xl font-extrabold text-xs transition flex items-center justify-center gap-2 shrink-0 whitespace-nowrap cursor-pointer ${
+              activeTab === 'app-system'
+                ? 'bg-slate-900 text-white shadow-md font-black'
+                : 'bg-white/90 text-slate-700 hover:bg-white border border-slate-300/60'
+            }`}
+          >
+            <Sliders className="w-4 h-4 shrink-0 text-emerald-400" />
+            <span>إعدادات النظام والتحكم الشامل ({Object.values(systemConfig.lockedElements).filter(Boolean).length > 0 ? `🔒 ${Object.values(systemConfig.lockedElements).filter(Boolean).length} مقفل` : 'مفعل'})</span>
+          </button>
+        </div>
 
         <button
-          onClick={() => setActiveTab('app-system')}
-          className={`py-3 px-4 rounded-xl font-extrabold text-xs transition flex items-center justify-center gap-2.5 ${
-            activeTab === 'app-system'
-              ? 'bg-slate-900 text-white shadow-md'
-              : 'text-slate-700 hover:bg-slate-300/60'
-          }`}
+          type="button"
+          onClick={mainNavDrag.scrollLeft}
+          className="p-2 text-slate-700 hover:text-amber-700 hover:bg-slate-300/80 rounded-xl transition shrink-0 cursor-pointer"
+          title="تمرير لليسار"
         >
-          <Wifi className="w-4 h-4 shrink-0 text-emerald-400" />
-          <span>المزامنة والدعم الفني</span>
+          <ChevronLeft className="w-4 h-4 stroke-[2.5]" />
         </button>
       </div>
 
       {/* ========================================================================= */}
-      {/* TAB 1: DEFAULT CERTIFICATE SETTINGS (ALL 9 CORE CATEGORIES)              */}
+      {/* TAB 1: DEFAULT CERTIFICATE SETTINGS (ALL 11 CORE CATEGORIES)              */}
       {/* ========================================================================= */}
       {activeTab === 'default-cert' && (
         <div className="space-y-6">
           
+          {/* Institutional Presets Quick Bar */}
+          <div className="bg-gradient-to-r from-slate-900 via-amber-950/90 to-slate-900 text-white p-4 rounded-2xl border border-amber-500/30 shadow-md space-y-3">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <Star className="w-5 h-5 text-amber-400 fill-amber-400 animate-pulse" />
+                <h3 className="font-black text-xs sm:text-sm text-amber-300">
+                  نماذج وقوالب المؤسسات المعتمدة الجاهزة (1-Click Presets):
+                </h3>
+              </div>
+              <span className="text-[11px] text-slate-300 font-medium hidden sm:inline">
+                اختر نموذج مؤسستك لضبط الترويسة، الصيغ، الخطوط، والتواقيع بضغطة زر
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+              {INSTITUTION_DEFAULT_PRESETS.map((preset) => {
+                const getPresetIcon = (id: string) => {
+                  switch (id) {
+                    case 'ministry-school': return School;
+                    case 'academic-university': return GraduationCap;
+                    case 'quran-center': return BookMarked;
+                    default: return Briefcase;
+                  }
+                };
+                const PresetIcon = getPresetIcon(preset.id);
+                return (
+                  <div
+                    key={preset.id}
+                    className="p-3 bg-white/10 hover:bg-white/15 border border-white/15 hover:border-amber-400/60 rounded-xl transition flex flex-col justify-between gap-2"
+                  >
+                    <div>
+                      <div className="flex items-center gap-2 text-amber-300 font-bold text-xs">
+                        <PresetIcon className="w-4 h-4 shrink-0 text-amber-400" />
+                        <span>{preset.name}</span>
+                      </div>
+                      <p className="text-[10px] text-slate-300 mt-1 leading-relaxed line-clamp-2">
+                        {preset.description}
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleApplyPresetInstitution(preset)}
+                      className="w-full py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[11px] rounded-lg transition shadow-2xs flex items-center justify-center gap-1 cursor-pointer active:scale-95"
+                    >
+                      <Sparkles className="w-3 h-3 text-slate-950" />
+                      <span>تطبيق هذا النموذج ⭐</span>
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Action Bar */}
           <div className="bg-amber-50 p-4 rounded-2xl border border-amber-200 flex flex-wrap items-center justify-between gap-3 shadow-xs">
             <div className="flex items-center gap-2 text-amber-900 text-xs font-bold">
@@ -457,20 +660,31 @@ export const AppSettingsModal: React.FC<Props> = ({
               <span>هذه الإعدادات ستُطبق تلقائياً على كل شهادة جديدة أو دفعة جماعية تنشئها في النظام.</span>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <button
                 onClick={handleResetToFactory}
-                className="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs rounded-xl transition flex items-center gap-1.5"
+                className="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs rounded-xl transition flex items-center gap-1.5 cursor-pointer"
                 title="إعادة التعيين للقيم المصنعية"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>إعادة ضبط المصنع</span>
               </button>
 
+              {currentCertificate && (
+                <button
+                  onClick={handleImportCurrentCertToDefaults}
+                  className="px-3 py-2 bg-amber-100 hover:bg-amber-200 text-amber-950 font-bold text-xs rounded-xl transition shadow-xs flex items-center gap-1.5 border border-amber-300 cursor-pointer"
+                  title="سحب كافة خصائص الشهادة المفتوحة وتعيينها كإعدادات افتراضية"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-700" />
+                  <span>سحب بيانات الشهادة كافتراضي</span>
+                </button>
+              )}
+
               {currentCertificate && onUpdateCurrentCertificate && (
                 <button
                   onClick={handleApplyDefaultsToEditor}
-                  className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl transition shadow-xs flex items-center gap-1.5"
+                  className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl transition shadow-xs flex items-center gap-1.5 cursor-pointer"
                 >
                   <Sparkles className="w-3.5 h-3.5" />
                   <span>تطبيق على الشهادة الحالية</span>
@@ -479,7 +693,7 @@ export const AppSettingsModal: React.FC<Props> = ({
 
               <button
                 onClick={handleSaveDefaults}
-                className="px-5 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs rounded-xl transition shadow-xs flex items-center gap-2"
+                className="px-5 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs rounded-xl transition shadow-xs flex items-center gap-2 cursor-pointer"
               >
                 <Save className="w-4 h-4" />
                 <span>حفظ التغييرات الافتراضية</span>
@@ -494,37 +708,74 @@ export const AppSettingsModal: React.FC<Props> = ({
             </div>
           )}
 
-          {/* Sub-Tabs Grid for the 10 Categories */}
-          <div className="flex flex-wrap gap-1.5 p-1.5 bg-slate-100 rounded-2xl border border-slate-200 text-xs">
-            {[
-              { id: 'basic-info', label: '1. البيانات الأساسية', icon: Building2 },
-              { id: 'text-format', label: '2. تنسيق النصوص', icon: TypeIcon },
-              { id: 'template-layout', label: '3. القوالب والتخطيط', icon: Layout },
-              { id: 'colors-fonts', label: '4. الألوان والخطوط', icon: Palette },
-              { id: 'signatures', label: '5. التوقيعات', icon: PenTool },
-              { id: 'frame-logo', label: '6. الإطار والشعار', icon: Layers },
-              { id: 'stamps-badges', label: '7. الأختام والرموز', icon: Award },
-              { id: 'verification-box', label: '8. مربع التوثيق', icon: QrCode },
-              { id: 'export-print', label: '9. التصدير والطباعة', icon: Printer },
-              { id: 'verification-document', label: '10. وثيقة التحقق الرسمية', icon: FileCheck2 },
-            ].map((st) => {
-              const Icon = st.icon;
-              const isSel = activeSubTab === st.id;
-              return (
-                <button
-                  key={st.id}
-                  onClick={() => setActiveSubTab(st.id as DefaultSubTab)}
-                  className={`px-3 py-2 rounded-xl font-bold transition flex items-center gap-1.5 ${
-                    isSel
-                      ? 'bg-amber-500 text-slate-950 shadow-xs'
-                      : 'text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  <Icon className="w-3.5 h-3.5" />
-                  <span>{st.label}</span>
-                </button>
-              );
-            })}
+          {/* Sub-Tabs Bar - Drag-to-Scroll Horizontal Navigation */}
+          <div className="relative flex items-center bg-slate-100/95 p-1 rounded-2xl border border-slate-200 shadow-xs">
+            <button
+              type="button"
+              onClick={subNavDrag.scrollRight}
+              className="p-2 text-slate-600 hover:text-amber-700 hover:bg-slate-200 rounded-xl transition shrink-0 cursor-pointer"
+              title="تمرير لليمين"
+            >
+              <ChevronRight className="w-4 h-4 stroke-[2.5]" />
+            </button>
+
+            <div
+              ref={subNavDrag.scrollRef}
+              onMouseDown={subNavDrag.onMouseDown}
+              onMouseLeave={subNavDrag.onMouseLeave}
+              onMouseUp={subNavDrag.onMouseUp}
+              onMouseMove={subNavDrag.onMouseMove}
+              className="flex items-center gap-1.5 overflow-x-auto no-scrollbar touch-pan-x scroll-smooth w-full px-2 py-0.5 select-none cursor-grab active:cursor-grabbing text-xs"
+            >
+              {[
+                { id: 'basic-info', label: '1. البيانات الأساسية', icon: Building2 },
+                { id: 'text-format', label: '2. تنسيق النصوص', icon: TypeIcon },
+                { id: 'template-layout', label: '3. القوالب والتخطيط', icon: Layout },
+                { id: 'colors-fonts', label: '4. الألوان والخطوط', icon: Palette },
+                { id: 'signatures', label: '5. التوقيعات', icon: PenTool },
+                { id: 'frame-logo', label: '6. الإطار والشعار', icon: Layers },
+                { id: 'stamps-badges', label: '7. الأختام والرموز', icon: Award },
+                { id: 'verification-box', label: '8. مربع التوثيق', icon: QrCode },
+                { id: 'export-print', label: '9. التصدير والطباعة', icon: Printer },
+                { id: 'verification-document', label: '10. وثيقة التحقق الرسمية', icon: FileCheck2 },
+                { id: 'element-locks', label: '11. 🔒 قفل وتأمين العناصر', icon: Lock },
+              ].map((st) => {
+                const Icon = st.icon;
+                const isSel = activeSubTab === st.id;
+                const isLockTab = st.id === 'element-locks';
+                const lockedCount = Object.values(systemConfig.lockedElements).filter(Boolean).length;
+                return (
+                  <button
+                    key={st.id}
+                    onClick={() => setActiveSubTab(st.id as DefaultSubTab)}
+                    className={`px-3 py-2 rounded-xl font-bold transition flex items-center gap-1.5 shrink-0 whitespace-nowrap cursor-pointer ${
+                      isSel
+                        ? isLockTab
+                          ? 'bg-amber-600 text-white shadow-xs font-black'
+                          : 'bg-amber-500 text-slate-950 shadow-xs font-black'
+                        : 'text-slate-700 bg-white hover:bg-slate-200/80 border border-slate-200/90'
+                    }`}
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                    <span>{st.label}</span>
+                    {isLockTab && lockedCount > 0 && (
+                      <span className="px-1.5 py-0.2 bg-amber-950/20 rounded-full text-[10px] font-black">
+                        {lockedCount}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            <button
+              type="button"
+              onClick={subNavDrag.scrollLeft}
+              className="p-2 text-slate-600 hover:text-amber-700 hover:bg-slate-200 rounded-xl transition shrink-0 cursor-pointer"
+              title="تمرير لليسار"
+            >
+              <ChevronLeft className="w-4 h-4 stroke-[2.5]" />
+            </button>
           </div>
 
           {/* SUB-TAB 1: BASIC INFO & HEADERS */}
@@ -1984,6 +2235,244 @@ export const AppSettingsModal: React.FC<Props> = ({
             </div>
           )}
 
+          {/* SUB-TAB 11: ELEMENT LOCKS & SECURITY CONTROLS */}
+          {activeSubTab === 'element-locks' && (
+            <div className="space-y-6">
+              
+              {/* Header & Quick Action Banner */}
+              <div className="bg-gradient-to-r from-amber-950 via-slate-900 to-amber-950 text-white p-5 rounded-2xl border border-amber-500/30 shadow-sm space-y-4">
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 bg-amber-500/20 text-amber-400 rounded-xl border border-amber-500/30">
+                      <Lock className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h4 className="font-extrabold text-sm text-amber-300">
+                        نظام قفل وحماية العناصر الأساسية للشهادة (Element Protection System)
+                      </h4>
+                      <p className="text-xs text-slate-300 mt-0.5">
+                        يمكنك إغلاق تحرير أي حقل لمنع تعديله بالخطأ أثناء إدخال أسماء الطلاب أو توليد الشهادات، مع ظهور علامة قفل 🔒 ذهبية على الحقل بالمحرر.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="px-3 py-1 bg-amber-500 text-slate-950 font-black text-xs rounded-xl shadow-xs">
+                      {Object.values(systemConfig.lockedElements).filter(Boolean).length} / 13 عناصر مقفلة
+                    </span>
+                  </div>
+                </div>
+
+                {/* Quick Presets for Locking */}
+                <div className="pt-3 border-t border-slate-800 flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs text-amber-200/90 font-bold">إجراءات سريعة:</span>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => handleLockAllElements(true)}
+                      className="px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Lock className="w-3.5 h-3.5 text-amber-400" />
+                      <span>قفل جميع العناصر 🔒</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newLocks: SystemLockedElements = {
+                          ...systemConfig.lockedElements,
+                          signatures: true,
+                          stamp: true,
+                          logo: true,
+                          schoolName: true,
+                          headerLines: true,
+                        };
+                        const updatedConfig = { ...systemConfig, lockedElements: newLocks };
+                        saveSystemConfig(updatedConfig);
+                        setSystemConfig(updatedConfig);
+                        if (onShowToast) onShowToast('تم قفل عناصر الهوية والاعتمادات الرسمية 🛡️');
+                      }}
+                      className="px-3 py-1.5 bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 border border-indigo-500/40 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Shield className="w-3.5 h-3.5 text-indigo-400" />
+                      <span>قفل الهوية والتواقيع والأختام ✍️</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleLockAllElements(false)}
+                      className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Unlock className="w-3.5 h-3.5 text-slate-400" />
+                      <span>إلغاء قفل كافة العناصر 🔓</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Elements Toggles Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                {[
+                  {
+                    key: 'schoolName' as keyof SystemLockedElements,
+                    label: 'اسم المدرسة / المؤسسة',
+                    desc: 'قفل اسم المدرسة بالترويسة لمنع التعديل غير المقصود أثناء إدخال الشهادات',
+                    icon: Building2,
+                    category: 'الهوية الرسمية'
+                  },
+                  {
+                    key: 'headerLines' as keyof SystemLockedElements,
+                    label: 'أسطر الترويسة ورؤية 2030',
+                    desc: 'قفل أسطر الوزارة والإدارة والعبارات العلوية المعتمدة بالشهادة',
+                    icon: TypeIcon,
+                    category: 'الهوية الرسمية'
+                  },
+                  {
+                    key: 'title' as keyof SystemLockedElements,
+                    label: 'عنوان الشهادة والفرعي',
+                    desc: 'قفل عبارة (شهادة شكر وتقدير / تفوق) ونوع التكريم',
+                    icon: Award,
+                    category: 'نصوص الشهادة'
+                  },
+                  {
+                    key: 'poemOrQuote' as keyof SystemLockedElements,
+                    label: 'البيت الشعري / الحكمة',
+                    desc: 'قفل البيت الشعري أو المقولة التحفيزية المختارة',
+                    icon: BookOpen,
+                    category: 'نصوص الشهادة'
+                  },
+                  {
+                    key: 'logo' as keyof SystemLockedElements,
+                    label: 'الشعار الرسمي وموضعه',
+                    desc: 'قفل شعار الوزارة أو المدرسة وموضعه وأبعاده لمنع حذفه أو تغييره',
+                    icon: Layers,
+                    category: 'الهوية والتصميم'
+                  },
+                  {
+                    key: 'signatures' as keyof SystemLockedElements,
+                    label: 'التوقيعات والاعتمادات',
+                    desc: 'قفل أسماء المسؤولين والمعلمين، المسميات الوظيفية وصور التواقيع',
+                    icon: PenTool,
+                    category: 'الاعتماد والأمان'
+                  },
+                  {
+                    key: 'stamp' as keyof SystemLockedElements,
+                    label: 'الختم الرسمي للمؤسسة',
+                    desc: 'قفل نوع الختم وموضعه وحجمه وتوقيعه الرقمي',
+                    icon: StampIcon,
+                    category: 'الاعتماد والأمان'
+                  },
+                  {
+                    key: 'badge' as keyof SystemLockedElements,
+                    label: 'الشارة والأوسمة الذهبية',
+                    desc: 'قفل شارة التميز والأوسمة وأشكالها وألوانها',
+                    icon: Award,
+                    category: 'الهوية والتصميم'
+                  },
+                  {
+                    key: 'frame' as keyof SystemLockedElements,
+                    label: 'الإطار والزخارف الملكية',
+                    desc: 'قفل نمط الإطار وسماكته وهوامش الحدود الخارجية',
+                    icon: Layout,
+                    category: 'الهوية والتصميم'
+                  },
+                  {
+                    key: 'colors' as keyof SystemLockedElements,
+                    label: 'الألوان والخلفيات',
+                    desc: 'قفل سمة الألوان والتدرجات والخلفيات المائية',
+                    icon: Palette,
+                    category: 'الهوية والتصميم'
+                  },
+                  {
+                    key: 'watermark' as keyof SystemLockedElements,
+                    label: 'العلامة المائية الأمنية',
+                    desc: 'قفل نص العلامة المائية ودرجة شفافيتها',
+                    icon: ShieldCheck,
+                    category: 'الاعتماد والأمان'
+                  },
+                  {
+                    key: 'verificationBox' as keyof SystemLockedElements,
+                    label: 'مربع التوثيق وQR والباركود',
+                    desc: 'قفل موضع ونمط مربع التحقق الإلكتروني والأكواد الرقمية',
+                    icon: QrCode,
+                    category: 'الاعتماد والأمان'
+                  },
+                  {
+                    key: 'aspectRatio' as keyof SystemLockedElements,
+                    label: 'مقاس وأبعاد الشهادة',
+                    desc: 'قفل نسبة العرض للارتفاع والاتجاه (A4 أفقي / عمودي)',
+                    icon: Printer,
+                    category: 'الهوية والتصميم'
+                  },
+                ].map((elem) => {
+                  const isLocked = Boolean(systemConfig.lockedElements[elem.key]);
+                  const Icon = elem.icon;
+                  return (
+                    <div
+                      key={elem.key}
+                      onClick={() => handleToggleLock(elem.key)}
+                      className={`p-4 rounded-2xl border transition cursor-pointer select-none flex flex-col justify-between ${
+                        isLocked
+                          ? 'bg-amber-50/90 border-amber-400 ring-2 ring-amber-400/20 shadow-xs'
+                          : 'bg-white hover:bg-slate-50 border-slate-200'
+                      }`}
+                    >
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className={`p-1.5 rounded-lg ${isLocked ? 'bg-amber-200/80 text-amber-900' : 'bg-slate-100 text-slate-600'}`}>
+                              <Icon className="w-4 h-4" />
+                            </div>
+                            <span className="font-extrabold text-xs text-slate-900">{elem.label}</span>
+                          </div>
+
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-black flex items-center gap-1 ${
+                            isLocked ? 'bg-amber-500 text-slate-950 shadow-2xs' : 'bg-slate-200 text-slate-600'
+                          }`}>
+                            {isLocked ? (
+                              <>
+                                <Lock className="w-3 h-3" />
+                                <span>مقفل 🔒</span>
+                              </>
+                            ) : (
+                              <>
+                                <Unlock className="w-3 h-3" />
+                                <span>متاح للتحرير</span>
+                              </>
+                            )}
+                          </span>
+                        </div>
+
+                        <p className="text-[11px] text-slate-600 leading-relaxed">
+                          {elem.desc}
+                        </p>
+                      </div>
+
+                      <div className="mt-3 pt-2.5 border-t border-slate-200/80 flex items-center justify-between text-[10px]">
+                        <span className="text-slate-400 font-medium">{elem.category}</span>
+                        <span className={`font-bold ${isLocked ? 'text-amber-800' : 'text-slate-500'}`}>
+                          {isLocked ? 'انقر للفتح 🔓' : 'انقر للقفل 🔒'}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Informational Guidance */}
+              <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-3 text-xs text-amber-950">
+                <ShieldCheck className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <span className="font-extrabold block">كيف يؤثر القفل على المحرر وتوليد الشهادات؟</span>
+                  <p className="text-[11px] text-amber-900 leading-relaxed">
+                    العناصر المقفلة تظهر في شريط أدوات المحرر مع علامة قفل 🔒 ذهبية وتكون في وضع القراءة فقط لحمايتها من أي تعديل عرضي أو مسح بالخطأ. يمكنك دائماً العودة إلى هنا وإلغاء قفل أي عنصر عند الحاجة.
+                  </p>
+                </div>
+              </div>
+
+            </div>
+          )}
+
         </div>
       )}
 
@@ -2412,61 +2901,189 @@ export const AppSettingsModal: React.FC<Props> = ({
         <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             
-            {/* Column 1: Synchronization, Storage & Backup */}
+            {/* Column 1: System Feature Toggles & Control Center */}
             <div className="space-y-5">
               
-              {/* Synchronization Card */}
+              {/* Feature Toggles Card */}
               <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
                 <div className="flex items-center justify-between border-b pb-3">
-                  <h3 className="font-extrabold text-sm text-slate-800 flex items-center gap-2">
-                    <Wifi className="w-4 h-4 text-amber-600" />
-                    المزامنة والوضع المحلي
-                  </h3>
-                  <span className="text-[11px] text-amber-700 font-bold bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200">
-                    مفعل تلقائياً
+                  <div className="flex items-center gap-2">
+                    <SlidersHorizontal className="w-5 h-5 text-amber-600" />
+                    <h3 className="font-extrabold text-sm text-slate-800">
+                      إعدادات وتفعيل ميزات النظام (System Features)
+                    </h3>
+                  </div>
+                  <span className="text-[11px] text-emerald-700 font-bold bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                    {Object.values(systemConfig.features).filter(Boolean).length} ميزة مفعلة
                   </span>
                 </div>
 
-                <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200">
-                  <div>
-                    <h5 className="font-bold text-xs text-slate-900">الوضع غير المتصل (Offline Mode)</h5>
-                    <p className="text-[11px] text-slate-500 mt-0.5">العمل بالكامل بدون إنترنت والاعتماد على الذاكرة المحلية</p>
+                <div className="space-y-2.5 max-h-[460px] overflow-y-auto pr-1">
+                  {[
+                    {
+                      key: 'autoArchive' as keyof SystemFeatureToggles,
+                      title: 'الأرشفة التلقائية في المكتبة السحابية (Cloud Library)',
+                      desc: 'حفظ وتصنيف الشهادات المكتملة تلقائياً في الأرشيف السحابي حسب التاريخ والمدرسة',
+                      icon: Cloud
+                    },
+                    {
+                      key: 'autoGenderInflection' as keyof SystemFeatureToggles,
+                      title: 'محرك التوافق اللغوي والتذكير والتأنيث (طالب / طالبة)',
+                      desc: 'تحويل الأفعال والصفات وصيغ التكريم تلقائياً عند التوليد الفردي والجماعي',
+                      icon: Sparkles
+                    },
+                    {
+                      key: 'aiFeatures' as keyof SystemFeatureToggles,
+                      title: 'مساعد الذكاء الاصطناعي وتوليد النصوص (Gemini / OpenAI)',
+                      desc: 'تفعيل زر التوليد الذكي لصياغة نصوص التكريم والثناء البلاغي',
+                      icon: Bot
+                    },
+                    {
+                      key: 'qrVerification' as keyof SystemFeatureToggles,
+                      title: 'نظام التحقق الرقمي ومربع الـ QR والباركود',
+                      desc: 'توليد باركود وQR للتحقق الفوري من صحة ومطابقة الشهادات إلكترونياً',
+                      icon: QrCode
+                    },
+                    {
+                      key: 'crispVectorPdf' as keyof SystemFeatureToggles,
+                      title: 'تصدير الطباعة فائق الدقة (Crisp Vector PDF)',
+                      desc: 'ضمان نقاء الخطوط والزخارف ودقة الطباعة حتى مقاسات البوسترات الكبيرة',
+                      icon: Printer
+                    },
+                    {
+                      key: 'batchReviewModal' as keyof SystemFeatureToggles,
+                      title: 'نافذة المراجعة والتحقق من الطلاب قبل التوليد الجماعي',
+                      desc: 'عرض جدول الأسماء ومطابقة الصيغ قبل إنشاء وطباعة الدفعة',
+                      icon: FileCheck2
+                    },
+                    {
+                      key: 'autoSaveDrafts' as keyof SystemFeatureToggles,
+                      title: 'الحفظ التلقائي للمسودات واستعادة العمل',
+                      desc: 'حفظ التعديلات لحظة بلحظة لمنع فقدان البيانات عند إغلاق المتصفح',
+                      icon: Save
+                    },
+                    {
+                      key: 'watermark' as keyof SystemFeatureToggles,
+                      title: 'العلامة المائية الأمنية لمنع التزوير',
+                      desc: 'إظهار نص أمني شبه شفاف بخلفية الشهادة',
+                      icon: ShieldCheck
+                    },
+                    {
+                      key: 'soundEffects' as keyof SystemFeatureToggles,
+                      title: 'المؤثرات الصوتية والتفاعلية',
+                      desc: 'تشغيل نغمات تأكيدية خفيفة عند الحفظ، التصدير، وإنجاز الدفعات',
+                      icon: Activity
+                    },
+                    {
+                      key: 'strictQrSecurity' as keyof SystemFeatureToggles,
+                      title: 'التشفير الأمني المشدد لبيانات الـ QR',
+                      desc: 'تضمين رمز التوثيق المشفر وتاريخ الإصدار لمنع التلاعب',
+                      icon: Lock
+                    },
+                    {
+                      key: 'printCropMarks' as keyof SystemFeatureToggles,
+                      title: 'علامات القص وهوامش المطابع (Crop Marks)',
+                      desc: 'إظهار خطوط إرشادية حول الإطار لتسهيل القص الاحترافي بعد الطباعة',
+                      icon: Layout
+                    },
+                    {
+                      key: 'cloudAutoSync' as keyof SystemFeatureToggles,
+                      title: 'المزامنة السحابية الفورية مع مساحة التخزين',
+                      desc: 'مزامنة القوالب والشهادات مع التخزين السحابي المحلي',
+                      icon: Wifi
+                    }
+                  ].map((feat) => {
+                    const isEnabled = Boolean(systemConfig.features[feat.key]);
+                    const Icon = feat.icon;
+                    return (
+                      <div
+                        key={feat.key}
+                        onClick={() => handleToggleFeature(feat.key)}
+                        className={`p-3 rounded-xl border transition cursor-pointer flex items-center justify-between gap-3 ${
+                          isEnabled
+                            ? 'bg-amber-50/70 border-amber-300'
+                            : 'bg-slate-50 border-slate-200 opacity-75'
+                        }`}
+                      >
+                        <div className="flex items-start gap-2.5">
+                          <div className={`p-1.5 rounded-lg mt-0.5 shrink-0 ${isEnabled ? 'bg-amber-200/80 text-amber-900' : 'bg-slate-200 text-slate-500'}`}>
+                            <Icon className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <h5 className="font-bold text-xs text-slate-900">{feat.title}</h5>
+                            <p className="text-[11px] text-slate-600 mt-0.5">{feat.desc}</p>
+                          </div>
+                        </div>
+
+                        <div className="shrink-0">
+                          <button
+                            type="button"
+                            className={`w-10 h-6 flex items-center rounded-full p-1 transition duration-300 ${
+                              isEnabled ? 'bg-amber-500 justify-end' : 'bg-slate-300 justify-start'
+                            }`}
+                          >
+                            <div className="w-4 h-4 rounded-full bg-white shadow-md transform transition" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Element Locks Status Quick Card */}
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                <div className="flex items-center justify-between border-b pb-3">
+                  <div className="flex items-center gap-2">
+                    <Lock className="w-5 h-5 text-amber-600" />
+                    <h3 className="font-extrabold text-sm text-slate-800">
+                      حالة قفل العناصر الأساسية بالمحرر
+                    </h3>
                   </div>
                   <button
-                    onClick={() => setOfflineMode(!offlineMode)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${
-                      offlineMode ? 'bg-amber-500 text-slate-950' : 'bg-slate-200 text-slate-700'
-                    }`}
+                    onClick={() => {
+                      setActiveTab('default-cert');
+                      setActiveSubTab('element-locks');
+                    }}
+                    className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer"
                   >
-                    {offlineMode ? <WifiOff className="w-4 h-4" /> : <Wifi className="w-4 h-4" />}
-                    {offlineMode ? 'مفعل' : 'معطل'}
+                    <span>إدارة الأقفال</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
                   </button>
                 </div>
 
-                <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200">
-                  <div>
-                    <h5 className="font-bold text-xs text-slate-900">المزامنة السحابية والحفظ التلقائي</h5>
-                    <p className="text-[11px] text-slate-500 mt-0.5">حفظ وتحديث التغييرات في مساحة التخزين تلقائياً</p>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={autoSync}
-                    onChange={(e) => setAutoSync(e.target.checked)}
-                    className="w-4 h-4 accent-amber-500 rounded cursor-pointer"
-                  />
-                </div>
-
-                <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200">
-                  <div>
-                    <h5 className="font-bold text-xs text-slate-900">تصدير الطباعة فائق الدقة (Vector PDF)</h5>
-                    <p className="text-[11px] text-slate-500 mt-0.5">ضمان عدم ضبابية النصوص أو الخطوط عند الطباعة</p>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={highQualityPdf}
-                    onChange={(e) => setHighQualityPdf(e.target.checked)}
-                    className="w-4 h-4 accent-amber-500 rounded cursor-pointer"
-                  />
+                <div className="flex flex-wrap gap-1.5">
+                  {Object.entries(systemConfig.lockedElements).map(([key, isLocked]) => {
+                    const labelsMap: Record<string, string> = {
+                      schoolName: 'اسم المدرسة',
+                      headerLines: 'الترويسة',
+                      logo: 'الشعار',
+                      signatures: 'التوقيعات',
+                      stamp: 'الختم',
+                      badge: 'الشارة',
+                      frame: 'الإطار',
+                      watermark: 'العلامة المائية',
+                      verificationBox: 'مربع التوثيق',
+                      colors: 'الألوان',
+                      poemOrQuote: 'البيت الشعري',
+                      aspectRatio: 'المقاس والاتجاه',
+                      title: 'العنوان',
+                    };
+                    return (
+                      <button
+                        key={key}
+                        onClick={() => handleToggleLock(key as keyof SystemLockedElements)}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 border ${
+                          isLocked
+                            ? 'bg-amber-100 text-amber-900 border-amber-300'
+                            : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        {isLocked ? <Lock className="w-3 h-3 text-amber-700" /> : <Unlock className="w-3 h-3 text-slate-400" />}
+                        <span>{labelsMap[key] || key}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 

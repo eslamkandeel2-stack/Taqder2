@@ -1,24 +1,46 @@
 import React, { useState } from 'react';
 import { TEMPLATE_PRESETS } from '../data/templates';
 import { TemplatePreset, CertificateData } from '../types';
-import { LayoutGrid, Search, Check, Sparkles, X, Eye, Award, SlidersHorizontal } from 'lucide-react';
+import { LayoutGrid, Search, Check, Sparkles, X, Eye, Award, SlidersHorizontal, Star, CheckCircle2 } from 'lucide-react';
+import { saveCurrentCertificateAsDefaultSettings } from '../utils/defaultSettings';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
   onSelectTemplate: (template: TemplatePreset) => void;
   currentTemplateId?: string;
+  onShowToast?: (msg: string) => void;
 }
 
 export const TemplateGalleryModal: React.FC<Props> = ({
   isOpen,
   onClose,
   onSelectTemplate,
-  currentTemplateId
+  currentTemplateId,
+  onShowToast
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<string>('الكل');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [previewTemplate, setPreviewTemplate] = useState<TemplatePreset | null>(null);
+  const [savedDefaultId, setSavedDefaultId] = useState<string | null>(null);
+
+  const handleSaveAsSystemDefault = (tmpl: TemplatePreset, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const certObj: CertificateData = {
+      id: `template-${tmpl.id}`,
+      verificationCode: `TMPL-${tmpl.id}`,
+      ...tmpl.defaultData
+    } as CertificateData;
+    saveCurrentCertificateAsDefaultSettings(certObj);
+    setSavedDefaultId(tmpl.id);
+    const msg = `تم حفظ قالب "${tmpl.name}" كإعدادات افتراضية للنظام بنجاح! ⭐💾`;
+    if (onShowToast) {
+      onShowToast(msg);
+    }
+    setTimeout(() => {
+      setSavedDefaultId(null);
+    }, 3500);
+  };
 
   if (!isOpen) return null;
 
@@ -255,28 +277,55 @@ export const TemplateGalleryModal: React.FC<Props> = ({
                         </p>
                       </div>
 
-                      {/* Color Palette Swatches */}
-                      <div className="flex items-center justify-between pt-1">
-                        <div className="flex items-center gap-1">
-                          <span className="text-[10px] text-slate-400 font-bold ml-1">الألوان:</span>
-                          <span className="w-3.5 h-3.5 rounded-full border shadow-2xs" style={{ backgroundColor: d.primaryColor }} title="اللون الرئيسي" />
-                          <span className="w-3.5 h-3.5 rounded-full border shadow-2xs" style={{ backgroundColor: d.secondaryColor }} title="اللون الثانوي" />
-                          <span className="w-3.5 h-3.5 rounded-full border shadow-2xs" style={{ backgroundColor: d.backgroundColor }} title="خلفية الشهادة" />
-                        </div>
+                      {/* Color Palette Swatches & Actions */}
+                      <div className="flex flex-col gap-2 pt-1">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1">
+                            <span className="text-[10px] text-slate-400 font-bold ml-1">الألوان:</span>
+                            <span className="w-3.5 h-3.5 rounded-full border shadow-2xs" style={{ backgroundColor: d.primaryColor }} title="اللون الرئيسي" />
+                            <span className="w-3.5 h-3.5 rounded-full border shadow-2xs" style={{ backgroundColor: d.secondaryColor }} title="اللون الثانوي" />
+                            <span className="w-3.5 h-3.5 rounded-full border shadow-2xs" style={{ backgroundColor: d.backgroundColor }} title="خلفية الشهادة" />
+                          </div>
 
-                        <button
-                          onClick={() => {
-                            onSelectTemplate(tmpl);
-                            onClose();
-                          }}
-                          className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
-                            isCurrent
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : 'bg-slate-900 hover:bg-amber-600 text-white'
-                          }`}
-                        >
-                          {isCurrent ? 'القالب المختار' : 'اختر القالب'}
-                        </button>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={(e) => handleSaveAsSystemDefault(tmpl, e)}
+                              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer border ${
+                                savedDefaultId === tmpl.id
+                                  ? 'bg-emerald-600 text-white border-emerald-600'
+                                  : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300'
+                              }`}
+                              title="حفظ تنسيقات وبيانات هذا القالب كإعدادات افتراضية للنظام"
+                            >
+                              {savedDefaultId === tmpl.id ? (
+                                <>
+                                  <CheckCircle2 className="w-3 h-3 text-white" />
+                                  <span>تم الحفظ كافتراضي</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Star className="w-3 h-3 text-amber-600 fill-amber-500" />
+                                  <span>تعيين كافتراضي للنظام</span>
+                                </>
+                              )}
+                            </button>
+
+                            <button
+                              onClick={() => {
+                                onSelectTemplate(tmpl);
+                                onClose();
+                              }}
+                              className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
+                                isCurrent
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : 'bg-slate-900 hover:bg-amber-600 text-white'
+                              }`}
+                            >
+                              {isCurrent ? 'القالب المختار' : 'اختر القالب'}
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -341,25 +390,49 @@ export const TemplateGalleryModal: React.FC<Props> = ({
                 </div>
               </div>
 
-              <div className="bg-slate-50 px-6 py-4 flex items-center justify-between border-t border-slate-200">
+              <div className="bg-slate-50 px-6 py-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200">
                 <button
                   onClick={() => setPreviewTemplate(null)}
-                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition"
+                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition cursor-pointer"
                 >
                   رجوع للمعرض
                 </button>
 
-                <button
-                  onClick={() => {
-                    onSelectTemplate(previewTemplate);
-                    setPreviewTemplate(null);
-                    onClose();
-                  }}
-                  className="px-6 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl shadow-lg flex items-center gap-2 transition"
-                >
-                  <Check className="w-4 h-4" />
-                  اعتماد وتطبيق هذا القالب فوراً
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={(e) => handleSaveAsSystemDefault(previewTemplate, e)}
+                    className={`px-4 py-2.5 rounded-xl font-bold text-xs shadow-xs flex items-center gap-1.5 transition border cursor-pointer ${
+                      savedDefaultId === previewTemplate.id
+                        ? 'bg-emerald-600 text-white border-emerald-600'
+                        : 'bg-amber-100 hover:bg-amber-200 text-amber-950 border-amber-300'
+                    }`}
+                  >
+                    {savedDefaultId === previewTemplate.id ? (
+                      <>
+                        <CheckCircle2 className="w-4 h-4 text-white" />
+                        <span>تم حفظ القالب كإعدادات افتراضية للنظام</span>
+                      </>
+                    ) : (
+                      <>
+                        <Star className="w-4 h-4 text-amber-600 fill-amber-500" />
+                        <span>حفظ كإعدادات افتراضية للنظام</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      onSelectTemplate(previewTemplate);
+                      setPreviewTemplate(null);
+                      onClose();
+                    }}
+                    className="px-6 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl shadow-lg flex items-center gap-2 transition cursor-pointer"
+                  >
+                    <Check className="w-4 h-4" />
+                    اعتماد وتطبيق هذا القالب فوراً
+                  </button>
+                </div>
               </div>
             </div>
           </div>

@@ -50,6 +50,7 @@ interface BatchConfirmReviewModalProps {
   schoolName: string;
   templateName: string;
   initialAppreciation: string;
+  initialIntro?: string;
   onConfirmAndGenerate: (confirmedConfig: {
     students: BatchReviewStudentItem[];
     maleAppreciationText: string;
@@ -146,6 +147,7 @@ export const BatchConfirmReviewModal: React.FC<BatchConfirmReviewModalProps> = (
   schoolName,
   templateName,
   initialAppreciation,
+  initialIntro,
   onConfirmAndGenerate,
   onShowToast
 }) => {
@@ -171,8 +173,19 @@ export const BatchConfirmReviewModal: React.FC<BatchConfirmReviewModalProps> = (
     return LOCAL_PHRASE_PRESETS[0].femaleAppreciation;
   });
 
-  const [maleIntro, setMaleIntro] = useState<string>(LOCAL_PHRASE_PRESETS[0].maleIntro);
-  const [femaleIntro, setFemaleIntro] = useState<string>(LOCAL_PHRASE_PRESETS[0].femaleIntro);
+  const [maleIntro, setMaleIntro] = useState<string>(() => {
+    if (initialIntro && initialIntro.trim()) {
+      return convertArabicTextGender(initialIntro, 'male');
+    }
+    return LOCAL_PHRASE_PRESETS[0].maleIntro;
+  });
+
+  const [femaleIntro, setFemaleIntro] = useState<string>(() => {
+    if (initialIntro && initialIntro.trim()) {
+      return convertArabicTextGender(initialIntro, 'female');
+    }
+    return LOCAL_PHRASE_PRESETS[0].femaleIntro;
+  });
   const [autoGenderAdaptPhrasing, setAutoGenderAdaptPhrasing] = useState(true);
 
   // AI Generation state

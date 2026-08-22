@@ -3,6 +3,7 @@ import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { CertificateData } from '../types';
 import { generateCertificatePrintHtml } from './printUtils';
+import { autoArchiveCertificate, autoArchiveBatchCertificates } from './archiveManager';
 
 export interface CertificateDimensionConfig {
   baseWidth: number;
@@ -878,6 +879,11 @@ export async function exportCertificateAsPdf(
   const pdf = createProportionalPdf(canvas, certificateData);
   const fileName = getCleanStudentFileName(certificateData.studentName, 'شهادة_تقدير', 'pdf');
   pdf.save(fileName);
+  try {
+    autoArchiveCertificate(certificateData, { event: 'export_pdf' });
+  } catch (e) {
+    console.warn('Auto-archive on PDF export error:', e);
+  }
 }
 
 export async function exportCertificateAsPng(
@@ -890,6 +896,11 @@ export async function exportCertificateAsPng(
   link.download = fileName;
   link.href = canvas.toDataURL('image/png', 1.0);
   link.click();
+  try {
+    autoArchiveCertificate(certificateData, { event: 'export_png' });
+  } catch (e) {
+    console.warn('Auto-archive on PNG export error:', e);
+  }
 }
 
 /**
@@ -1002,6 +1013,12 @@ export async function exportBatchCertificatesAsSinglePdf(
     const safeTitle = rawTitle.replace(/[^\w\s\u0600-\u06FF-]/gi, '').trim().replace(/\s+/g, '_');
     const fileName = `${safeTitle}_(${total}_شهادة).pdf`;
     pdf.save(fileName);
+
+    try {
+      autoArchiveBatchCertificates(certificates, rawTitle);
+    } catch (e) {
+      console.warn('Auto-archive batch on PDF export error:', e);
+    }
   }
 }
 

@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { CertificateData } from '../types';
 import { getCertificateDimensions } from '../utils/exportUtils';
+import { autoArchiveCertificate } from '../utils/archiveManager';
 
 interface PrintPreviewModalProps {
   isOpen: boolean;
@@ -451,6 +452,13 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
   const handlePrintNow = () => {
     setIsPrinting(true);
     setTimeout(() => setIsPrinting(false), 3500);
+
+    // Auto-Archive this completed certificate when printed
+    try {
+      autoArchiveCertificate(certificateData, { event: 'print' });
+    } catch (e) {
+      console.warn('Auto-archive on print error:', e);
+    }
 
     const docData = getPrintableDocumentHtml();
     if (!docData || !docData.html) {

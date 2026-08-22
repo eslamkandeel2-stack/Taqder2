@@ -426,29 +426,351 @@ export function getSavedDefaultSettings(): DefaultCertificateSettings {
 }
 
 /**
- * Saves default settings to localStorage
+ * Saves default settings to localStorage and notifies all components across the app
  */
 export function saveDefaultSettingsToStorage(settings: DefaultCertificateSettings): void {
   try {
     localStorage.setItem('taqdeer_default_settings', JSON.stringify(settings));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('taqdeer_default_settings_changed', { detail: settings }));
+    }
   } catch (e) {
     console.error('Failed to save default settings to storage:', e);
   }
 }
 
 /**
+ * Extracts complete default settings structure from an existing certificate
+ */
+export function extractCertificateToDefaultSettings(
+  cert: CertificateData,
+  existingSettings?: DefaultCertificateSettings
+): DefaultCertificateSettings {
+  const currentDefaults = existingSettings || getSavedDefaultSettings();
+
+  const isFemale = cert.recipientGender === 'female';
+  const sigCount = cert.signatures?.length ? (cert.signatures.length >= 3 ? 3 : cert.signatures.length === 1 ? 1 : 2) : (currentDefaults.signatureCount || 2);
+  const sig1 = cert.signatures?.[0];
+  const sig2 = cert.signatures?.[1];
+  const sig3 = cert.signatures?.[2];
+
+  return {
+    ...currentDefaults,
+
+    // 1. Basic Institution & Header Info
+    schoolName: cert.schoolName || currentDefaults.schoolName,
+    issuePlace: cert.issuePlace || currentDefaults.issuePlace,
+    headerLine1: cert.headerLine1 ?? currentDefaults.headerLine1,
+    headerLine2: cert.headerLine2 ?? currentDefaults.headerLine2,
+    headerLine3: cert.headerLine3 ?? currentDefaults.headerLine3,
+    showHeaderLine1: cert.showHeaderLine1 ?? currentDefaults.showHeaderLine1,
+    showHeaderLine2: cert.showHeaderLine2 ?? currentDefaults.showHeaderLine2,
+    showHeaderLine3: cert.showHeaderLine3 ?? currentDefaults.showHeaderLine3,
+    headerVisionText: cert.headerVisionText ?? currentDefaults.headerVisionText,
+    showHeaderVisionText: cert.showHeaderVisionText ?? currentDefaults.showHeaderVisionText,
+    defaultSubject: cert.subject || currentDefaults.defaultSubject,
+    defaultGrade: cert.grade || currentDefaults.defaultGrade,
+    defaultTitle: cert.title || currentDefaults.defaultTitle,
+    defaultSubtitle: cert.subtitle || currentDefaults.defaultSubtitle,
+    recipientIntroMale: !isFemale ? (cert.recipientIntro || currentDefaults.recipientIntroMale) : currentDefaults.recipientIntroMale,
+    recipientIntroFemale: isFemale ? (cert.recipientIntro || currentDefaults.recipientIntroFemale) : currentDefaults.recipientIntroFemale,
+    defaultPoemOrQuote: cert.poemOrQuote ?? currentDefaults.defaultPoemOrQuote,
+    showPoemOrQuote: cert.showPoemOrQuote ?? currentDefaults.showPoemOrQuote,
+    dateFormatMode: cert.dateFormatMode || currentDefaults.dateFormatMode,
+    dateDisplayLayout: cert.dateDisplayLayout || currentDefaults.dateDisplayLayout,
+
+    // 2. Text Formatting & Layout Styles
+    fontSizeScale: cert.fontSizeScale ?? currentDefaults.fontSizeScale,
+    headerFontFamily: cert.headerFontFamily || currentDefaults.headerFontFamily,
+    headerFontSizeScale: cert.headerFontSizeScale ?? currentDefaults.headerFontSizeScale,
+    appreciationLineHeight: (cert as any).appreciationLineHeight ?? currentDefaults.appreciationLineHeight,
+    showRecipientBox: cert.showRecipientBox ?? currentDefaults.showRecipientBox,
+    recipientBoxColor: cert.recipientBoxColor || currentDefaults.recipientBoxColor,
+    recipientBoxOpacity: cert.recipientBoxOpacity ?? currentDefaults.recipientBoxOpacity,
+    recipientSpacing: cert.recipientSpacing ?? currentDefaults.recipientSpacing,
+
+    // 3. Template & Page Layout
+    aspectRatio: cert.aspectRatio || currentDefaults.aspectRatio,
+    layoutPreset: cert.layoutPreset || currentDefaults.layoutPreset,
+    canvasMarginTop: cert.canvasMarginTop ?? currentDefaults.canvasMarginTop,
+    canvasMarginBottom: cert.canvasMarginBottom ?? currentDefaults.canvasMarginBottom,
+    canvasMarginLeft: cert.canvasMarginLeft ?? currentDefaults.canvasMarginLeft,
+    canvasMarginRight: cert.canvasMarginRight ?? currentDefaults.canvasMarginRight,
+
+    // 4. Colors & Typography
+    fontFamily: cert.fontFamily || currentDefaults.fontFamily,
+    titleFontFamily: cert.elementStyles?.title?.fontFamily || (cert as any).titleFontFamily || cert.fontFamily || currentDefaults.titleFontFamily,
+    studentNameFontFamily: cert.elementStyles?.studentName?.fontFamily || (cert as any).studentNameFontFamily || currentDefaults.studentNameFontFamily,
+    primaryColor: cert.primaryColor || currentDefaults.primaryColor,
+    secondaryColor: cert.secondaryColor || currentDefaults.secondaryColor,
+    accentColor: cert.accentColor || currentDefaults.accentColor,
+    backgroundColor: cert.backgroundColor || currentDefaults.backgroundColor,
+    textColor: cert.textColor || currentDefaults.textColor,
+    borderColor: cert.borderColor || currentDefaults.borderColor,
+    borderSecondaryColor: cert.borderSecondaryColor || currentDefaults.borderSecondaryColor,
+
+    // 5. Signatures
+    signatureCount: sigCount,
+    teacherTitle: sig1?.title || currentDefaults.teacherTitle,
+    teacherName: sig1?.name || currentDefaults.teacherName,
+    teacherSignatureUrl: sig1?.signatureUrl || currentDefaults.teacherSignatureUrl,
+    principalTitle: sig2?.title || currentDefaults.principalTitle,
+    principalName: sig2?.name || currentDefaults.principalName,
+    principalSignatureUrl: sig2?.signatureUrl || currentDefaults.principalSignatureUrl,
+    signature3Title: sig3?.title || currentDefaults.signature3Title,
+    signature3Name: sig3?.name || currentDefaults.signature3Name,
+    signature3SignatureUrl: sig3?.signatureUrl || currentDefaults.signature3SignatureUrl,
+    signatureFontFamily: sig1?.fontFamily || currentDefaults.signatureFontFamily,
+    signatureInkColor: sig1?.color || currentDefaults.signatureInkColor,
+
+    // 6. Frame & Logo
+    frameStyle: cert.frameStyle || currentDefaults.frameStyle,
+    borderWidth: cert.borderWidth ?? currentDefaults.borderWidth,
+    borderPadding: cert.borderPadding ?? currentDefaults.borderPadding,
+    logoUrl: cert.logoUrl !== undefined ? cert.logoUrl : currentDefaults.logoUrl,
+    logoPosition: cert.logoPosition || currentDefaults.logoPosition,
+    logoSize: cert.logoSize || currentDefaults.logoSize,
+    logoShape: cert.logoShape || currentDefaults.logoShape,
+    logoBgMode: cert.logoBgMode || currentDefaults.logoBgMode,
+    bgCardBacking: cert.bgCardBacking ?? currentDefaults.bgCardBacking,
+    bgCardOpacity: cert.bgCardOpacity ?? currentDefaults.bgCardOpacity,
+
+    // 7. Stamps & Badges
+    stampTitle: cert.stamp?.title || currentDefaults.stampTitle,
+    stampSubtext: cert.stamp?.subtext || currentDefaults.stampSubtext,
+    stampColor: cert.stamp?.color || currentDefaults.stampColor,
+    stampShape: (cert.stamp?.shape as any) || currentDefaults.stampShape,
+    stampOpacity: cert.stamp?.opacity ?? currentDefaults.stampOpacity,
+    stampImageUrl: cert.stamp?.imageUrl || currentDefaults.stampImageUrl,
+    badgeTitle: cert.badgeTitle || currentDefaults.badgeTitle,
+    badgeIcon: cert.badgeIcon || currentDefaults.badgeIcon,
+    badgeBgShape: cert.badgeBgShape || currentDefaults.badgeBgShape,
+    badgeBgColor: cert.badgeBgColor || currentDefaults.badgeBgColor,
+    badgeBgGradient: cert.badgeBgGradient ?? currentDefaults.badgeBgGradient,
+    badgeSize: cert.badgeSize || currentDefaults.badgeSize,
+    watermarkText: cert.watermarkText || cert.schoolName || currentDefaults.watermarkText,
+
+    // 8. Verification Box Defaults
+    verificationBoxPattern: cert.verificationBoxPattern || currentDefaults.verificationBoxPattern,
+    showVerificationQr: cert.showVerificationQr ?? currentDefaults.showVerificationQr,
+    showVerificationBarcode: cert.showVerificationBarcode ?? currentDefaults.showVerificationBarcode,
+    showVerificationSerialCode: cert.showVerificationSerialCode ?? currentDefaults.showVerificationSerialCode,
+    showVerificationStatusText: cert.showVerificationStatusText ?? currentDefaults.showVerificationStatusText,
+    showVerificationIcon: cert.showVerificationIcon ?? currentDefaults.showVerificationIcon,
+    verificationBadgeText: cert.verificationBadgeText || currentDefaults.verificationBadgeText,
+    verificationPrefix: cert.verificationPrefix || currentDefaults.verificationPrefix,
+    verificationCodePattern: cert.verificationCodePattern || currentDefaults.verificationCodePattern,
+    verificationBoxBgColor: cert.verificationBoxBgColor || currentDefaults.verificationBoxBgColor,
+    verificationBoxTextColor: cert.verificationBoxTextColor || currentDefaults.verificationBoxTextColor,
+    verificationBoxBorderColor: cert.verificationBoxBorderColor || currentDefaults.verificationBoxBorderColor,
+    verificationBoxBgOpacity: cert.verificationBoxBgOpacity ?? currentDefaults.verificationBoxBgOpacity,
+    verificationBoxSize: cert.verificationBoxSize || currentDefaults.verificationBoxSize,
+  };
+}
+
+/**
+ * Saves given certificate as system default settings and returns the newly saved defaults
+ */
+export function saveCurrentCertificateAsDefaultSettings(cert: CertificateData): DefaultCertificateSettings {
+  const newDefaults = extractCertificateToDefaultSettings(cert);
+  saveDefaultSettingsToStorage(newDefaults);
+  return newDefaults;
+}
+
+export interface ApplyDefaultsOptions {
+  preserveExistingSubject?: boolean;
+  preserveExistingGrade?: boolean;
+  preserveExistingIntro?: boolean;
+  preserveExistingSchoolName?: boolean;
+  preserveExistingTitle?: boolean;
+  preserveExistingSubtitle?: boolean;
+  preserveExistingAppreciation?: boolean;
+  preserveExistingSignatures?: boolean;
+  preserveExistingStamp?: boolean;
+  preserveExistingBadge?: boolean;
+}
+
+export interface DefaultSettingsPreset {
+  id: string;
+  name: string;
+  category: string;
+  icon: string;
+  description: string;
+  settings: Partial<DefaultCertificateSettings>;
+}
+
+export type InstitutionPreset = DefaultSettingsPreset;
+
+export const INSTITUTION_DEFAULT_PRESETS: DefaultSettingsPreset[] = [
+  {
+    id: 'ministry-school',
+    name: 'التعليم العام والمدارس الرسمية 🇸🇦',
+    category: 'تعليم',
+    icon: '🏫',
+    description: 'ترويسة وزارة التعليم السعودية مع رؤية 2030 وإطار ذهبي فاخر وتوقيعين رسميين',
+    settings: {
+      headerLine1: 'المملكة العربية السعودية',
+      headerLine2: 'وزارة التعليم',
+      headerLine3: 'الإدارة العامة للتعليم بمنطقة الرياض',
+      showHeaderLine1: true,
+      showHeaderLine2: true,
+      showHeaderLine3: true,
+      headerVisionText: 'رؤية 2030',
+      showHeaderVisionText: true,
+      schoolName: 'ثانوية الملك فهد بن عبد العزيز للموهوبين',
+      defaultTitle: 'شهادة شكر وتقدير وتفوق',
+      defaultSubtitle: 'تكريم الطلاب المتفوقين في الأداء الأكاديمي',
+      defaultSubject: 'التفوق والتميز الدراسي العام',
+      defaultGrade: 'المرحلة الثانوية',
+      recipientIntroMale: 'تسر إدارة المدرسة ومعلموها أن تمنح هذه الشهادة للطالب المتميز:',
+      recipientIntroFemale: 'تسر إدارة المدرسة ومعلموها أن تمنح هذه الشهادة للطالبة المتميزة:',
+      frameStyle: 'double-gold',
+      primaryColor: '#854d0e',
+      secondaryColor: '#d97706',
+      signatureCount: 2,
+      teacherTitle: 'معلم المادة والنشاط',
+      teacherName: 'أ. عبد الرحمن السعيد',
+      principalTitle: 'مدير المدرسة',
+      principalName: 'د. خالد العصيمي',
+      stampTitle: 'ثانوية الملك فهد',
+      stampSubtext: 'معتمد رسمياً',
+      badgeTitle: 'وسام التميز والتفوق',
+      badgeIcon: 'award'
+    }
+  },
+  {
+    id: 'university-academy',
+    name: 'الجامعات والكليات الأكاديمية 🎓',
+    category: 'جامعي',
+    icon: '🏛️',
+    description: 'ترويسة التعليم العالي والعمادات مع نمط الدبلوم الأكاديمي والختم الشمعي',
+    settings: {
+      headerLine1: 'وزارة التعليم العالي والبحث العلمي',
+      headerLine2: 'جامعة الملك سعود - كلية علوم الحاسب والمعلومات',
+      headerLine3: 'عمادة الشؤون الأكاديمية والبحث العلمي',
+      showHeaderLine1: true,
+      showHeaderLine2: true,
+      showHeaderLine3: true,
+      headerVisionText: 'التميز الأكاديمي',
+      showHeaderVisionText: true,
+      schoolName: 'جامعة الملك سعود - الرياض',
+      defaultTitle: 'شهادة امتياز وتفوق أكاديمي',
+      defaultSubtitle: 'Academic Excellence & Distinction Certificate',
+      defaultSubject: 'هندسة البرمجيات والذكاء الاصطناعي',
+      defaultGrade: 'مرحلة البكالوريوس',
+      recipientIntroMale: 'يشهد عميد الكلية ومجلس القسم بأن الطالب المتميز:',
+      recipientIntroFemale: 'تشهد عميدة الكلية ومجلس القسم بأن الطالبة المتميزة:',
+      frameStyle: 'guilloche-royal',
+      layoutPreset: 'diploma-grand',
+      primaryColor: '#1e3a8a',
+      secondaryColor: '#3b82f6',
+      signatureCount: 3,
+      teacherTitle: 'رئيس القسم الأكاديمي',
+      teacherName: 'د. سعود الشمري',
+      principalTitle: 'عميد الكلية',
+      principalName: 'أ.د. عبد الله الراجحي',
+      signature3Title: 'وكيل الجامعة للشؤون التعليمية',
+      signature3Name: 'أ.د. محمد القحطاني',
+      stampTitle: 'عمادة الشؤون الأكاديمية',
+      stampSubtext: 'صادر وموثق رسمياً',
+      badgeTitle: 'وسام مرتبة الشرف الأولى',
+      badgeIcon: 'crown'
+    }
+  },
+  {
+    id: 'quran-society',
+    name: 'حلقات وجمعيات تحفيظ القرآن الكريم 📖',
+    category: 'قرآني',
+    icon: '🕌',
+    description: 'نمط القوس والزخرفة الإسلامية مع ترويسة الشؤون الإسلامية وختم الإتقان',
+    settings: {
+      headerLine1: 'المملكة العربية السعودية',
+      headerLine2: 'وزارة الشؤون الإسلامية والدعوة والإرشاد',
+      headerLine3: 'الجمعية الخيرية لتحفيظ القرآن الكريم',
+      showHeaderLine1: true,
+      showHeaderLine2: true,
+      showHeaderLine3: true,
+      headerVisionText: 'خيركم من تعلم القرآن وعلمه',
+      showHeaderVisionText: true,
+      schoolName: 'مجمع الفرقان لحلقات القرآن الكريم',
+      defaultTitle: 'شهادة إتقان وحفظ كتاب الله الكريم',
+      defaultSubtitle: 'نظير إتمام الحفظ والمواظبة على التلاوة والتجويد',
+      defaultSubject: 'القرآن الكريم والتجويد المتقن',
+      defaultGrade: 'حلقة الحفاظ والمجازين',
+      recipientIntroMale: 'تتشرف إدارة المجمع القرآني بمنح شهادة الإتقان للطالب الحافظ:',
+      recipientIntroFemale: 'تتشرف إدارة المجمع القرآني بمنح شهادة الإتقان للطالبة الحافظة:',
+      frameStyle: 'islamic-arch',
+      primaryColor: '#065f46',
+      secondaryColor: '#10b981',
+      signatureCount: 2,
+      teacherTitle: 'معلم ومقرئ الحلقة',
+      teacherName: 'الشيخ / إبراهيم العلي',
+      principalTitle: 'المشرف العام على المجمع',
+      principalName: 'د. عبد العزيز المقرن',
+      stampTitle: 'جمعية تحفيظ القرآن',
+      stampSubtext: 'معتمد ومجاز',
+      badgeTitle: 'وسام الإتقان القرآني',
+      badgeIcon: 'book'
+    }
+  },
+  {
+    id: 'corporate-training',
+    name: 'مراكز التدريب والتطوير المهني 💼',
+    category: 'مهني',
+    icon: '🏢',
+    description: 'تصميم تنفيذي عصري لشهادات الدورات الاحترافية وورش العمل والشهادات المعتمدة',
+    settings: {
+      headerLine1: 'المعهد الدولي لتطوير القيادات والمهارات الاحترافية',
+      headerLine2: 'إدارة البرامج التنفيذية والاعتماد المهني',
+      headerLine3: '',
+      showHeaderLine1: true,
+      showHeaderLine2: true,
+      showHeaderLine3: false,
+      headerVisionText: 'الاعتماد الدولي',
+      showHeaderVisionText: true,
+      schoolName: 'أكاديمية الرواد للتدريب والتطوير',
+      defaultTitle: 'شهادة إتمام برنامج تدريبي مهني معتمد',
+      defaultSubtitle: 'Professional Training & Mastery Certificate',
+      defaultSubject: 'القيادة التنفيذية وإدارة المشاريع الاحترافية (PMP)',
+      defaultGrade: 'المستوى الاحترافي المتقدم',
+      recipientIntroMale: 'يشهد المركز الدولي للتدريب بأن المتدرب المتميز:',
+      recipientIntroFemale: 'يشهد المركز الدولي للتدريب بأن المتدربة المتميزة:',
+      frameStyle: 'modern-geometric',
+      layoutPreset: 'executive-horizontal',
+      primaryColor: '#0f172a',
+      secondaryColor: '#0284c7',
+      signatureCount: 2,
+      teacherTitle: 'المدرب والخبير الدولي',
+      teacherName: 'م. طارق العتيبي',
+      principalTitle: 'المدير التنفيذي للأكاديمية',
+      principalName: 'د. فيصل الغامدي',
+      stampTitle: 'الاعتماد والتوثيق المهني',
+      stampSubtext: 'ISO 9001 Certified',
+      badgeTitle: 'Professional Certified Master',
+      badgeIcon: 'target'
+    }
+  }
+];
+
+/**
  * Merges default settings into a given certificate object
  */
 export function applyDefaultsToCertificate(
   cert: CertificateData,
-  customDefaults?: DefaultCertificateSettings
+  customDefaults?: DefaultCertificateSettings,
+  options?: ApplyDefaultsOptions
 ): CertificateData {
   const defaults = customDefaults || getSavedDefaultSettings();
 
   const isFemale = cert.recipientGender === 'female';
-  const introToUse = isFemale 
-    ? (defaults.recipientIntroFemale || cert.recipientIntro)
-    : (defaults.recipientIntroMale || cert.recipientIntro);
+  
+  // Decide recipient intro
+  let introToUse = cert.recipientIntro;
+  if (!options?.preserveExistingIntro || !cert.recipientIntro) {
+    introToUse = isFemale 
+      ? (defaults.recipientIntroFemale || cert.recipientIntro)
+      : (defaults.recipientIntroMale || cert.recipientIntro);
+  }
 
   const issueDateToUse = defaults.autoTodayDate ? getFormattedTodayDate(defaults.dateNumeralType || 'latin') : (cert.issueDate || getFormattedTodayDate());
 
@@ -488,11 +810,34 @@ export function applyDefaultsToCertificate(
     show: count >= 3
   };
 
-  const updatedSignatures: SignatureItem[] = count === 1 ? [sig1] : count === 2 ? [sig1, sig2] : [sig1, sig2, sig3];
+  const defaultSignatures: SignatureItem[] = count === 1 ? [sig1] : count === 2 ? [sig1, sig2] : [sig1, sig2, sig3];
+  const finalSignatures = (options?.preserveExistingSignatures && cert.signatures && cert.signatures.length > 0)
+    ? cert.signatures
+    : defaultSignatures;
+
+  const schoolNameToUse = (options?.preserveExistingSchoolName && cert.schoolName)
+    ? cert.schoolName
+    : (defaults.schoolName || cert.schoolName);
+
+  const subjectToUse = (options?.preserveExistingSubject && cert.subject)
+    ? cert.subject
+    : (cert.subject || defaults.defaultSubject);
+
+  const gradeToUse = (options?.preserveExistingGrade && cert.grade)
+    ? cert.grade
+    : (cert.grade || defaults.defaultGrade);
+
+  const titleToUse = (options?.preserveExistingTitle && cert.title)
+    ? cert.title
+    : (cert.title || defaults.defaultTitle);
+
+  const subtitleToUse = (options?.preserveExistingSubtitle && cert.subtitle)
+    ? cert.subtitle
+    : (cert.subtitle || defaults.defaultSubtitle);
 
   return {
     ...cert,
-    schoolName: defaults.schoolName || cert.schoolName,
+    schoolName: schoolNameToUse,
     issuePlace: defaults.issuePlace || cert.issuePlace,
     headerLine1: defaults.headerLine1 !== undefined ? defaults.headerLine1 : cert.headerLine1,
     headerLine2: defaults.headerLine2 !== undefined ? defaults.headerLine2 : cert.headerLine2,
@@ -502,10 +847,10 @@ export function applyDefaultsToCertificate(
     showHeaderLine3: defaults.showHeaderLine3 !== undefined ? defaults.showHeaderLine3 : cert.showHeaderLine3,
     headerVisionText: defaults.headerVisionText !== undefined ? defaults.headerVisionText : cert.headerVisionText,
     showHeaderVisionText: defaults.showHeaderVisionText !== undefined ? defaults.showHeaderVisionText : cert.showHeaderVisionText,
-    subject: defaults.defaultSubject || cert.subject,
-    grade: defaults.defaultGrade || cert.grade,
-    title: defaults.defaultTitle || cert.title,
-    subtitle: defaults.defaultSubtitle || cert.subtitle,
+    subject: subjectToUse,
+    grade: gradeToUse,
+    title: titleToUse,
+    subtitle: subtitleToUse,
     recipientIntro: introToUse,
     poemOrQuote: defaults.defaultPoemOrQuote || cert.poemOrQuote,
     showPoemOrQuote: defaults.showPoemOrQuote !== undefined ? defaults.showPoemOrQuote : cert.showPoemOrQuote,
@@ -544,7 +889,7 @@ export function applyDefaultsToCertificate(
     logoBgMode: defaults.logoBgMode || cert.logoBgMode || 'transparent',
     bgCardBacking: defaults.bgCardBacking !== undefined ? defaults.bgCardBacking : cert.bgCardBacking,
     bgCardOpacity: defaults.bgCardOpacity !== undefined ? defaults.bgCardOpacity : cert.bgCardOpacity,
-    signatures: updatedSignatures,
+    signatures: finalSignatures,
     stamp: {
       ...cert.stamp,
       title: defaults.stampTitle || cert.stamp?.title || 'الختم الرسمي',
@@ -554,7 +899,7 @@ export function applyDefaultsToCertificate(
       opacity: defaults.stampOpacity !== undefined ? defaults.stampOpacity : (cert.stamp?.opacity ?? 0.95),
       imageUrl: defaults.stampImageUrl || cert.stamp?.imageUrl || ''
     },
-    badgeTitle: defaults.badgeTitle || cert.badgeTitle || 'وسام التميز والتفوق',
+    badgeTitle: (options?.preserveExistingBadge && cert.badgeTitle) ? cert.badgeTitle : (defaults.badgeTitle || cert.badgeTitle || 'وسام التميز والتفوق'),
     badgeIcon: defaults.badgeIcon || cert.badgeIcon || 'award',
     badgeBgShape: defaults.badgeBgShape || cert.badgeBgShape || 'pill',
     badgeBgColor: defaults.badgeBgColor || cert.badgeBgColor || '#854d0e',

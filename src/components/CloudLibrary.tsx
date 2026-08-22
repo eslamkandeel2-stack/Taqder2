@@ -16,6 +16,15 @@ import {
   uploadCertificateToDrive,
   getAccessToken
 } from '../services/googleDriveService';
+import {
+  subscribeToArchiveChanges,
+  normalizeSchoolName,
+  autoArchiveCertificate,
+  getAutoArchiveConfig
+} from '../utils/archiveManager';
+import { SchoolClassificationView } from './archive/SchoolClassificationView';
+import { DateClassificationView } from './archive/DateClassificationView';
+import { AutoArchiveSettingsModal } from './archive/AutoArchiveSettingsModal';
 import { CertificateCanvas } from './CertificateCanvas';
 import { User } from 'firebase/auth';
 import {
@@ -57,7 +66,12 @@ import {
   BookOpen,
   Share2,
   FileCheck2,
-  Lock
+  Lock,
+  School,
+  Archive,
+  CalendarDays,
+  Settings2,
+  FolderTree
 } from 'lucide-react';
 
 interface UnifiedCertificate extends CertificateData {
@@ -86,16 +100,21 @@ export const CloudLibrary: React.FC<Props> = ({
   const [syncStatus, setSyncStatus] = useState<'متزامن' | 'جاري الحفظ...'>('متزامن');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
-  // 2. View & Pagination States
-  const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
+  // 2. View & Pagination States: 'grid' | 'table' | 'by_school' | 'by_date'
+  const [viewMode, setViewMode] = useState<'grid' | 'table' | 'by_school' | 'by_date'>('grid');
   const [pageSize, setPageSize] = useState<number>(10);
   const [currentPage, setCurrentPage] = useState<number>(1);
 
   // 3. Filter States
   const [searchQuery, setSearchQuery] = useState('');
   const [filterGrade, setFilterGrade] = useState<string>('all');
+  const [filterSchool, setFilterSchool] = useState<string>('all');
+  const [filterDate, setFilterDate] = useState<string>('all');
   const [filterSource, setFilterSource] = useState<string>('all');
   const [filterDrive, setFilterDrive] = useState<'all' | 'drive' | 'nodrive'>('all');
+
+  // Auto Archive Modal State
+  const [isAutoArchiveSettingsOpen, setIsAutoArchiveSettingsOpen] = useState(false);
 
   // 4. Selection States
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -185,8 +204,18 @@ export const CloudLibrary: React.FC<Props> = ({
   useEffect(() => {
     reloadAllCertificates();
 
+    // Listen to Auto-Archive updates from anywhere in the app
+    const unsubArchive = subscribeToArchiveChanges(() => {
+      reloadAllCertificates();
+    });
+
+    const handleWindowArchiveUpdate = () => {
+      reloadAllCertificates();
+    };
+    window.addEventListener('taqdeer_archive_updated', handleWindowArchiveUpdate);
+
     // Listen to Google Drive auth changes
-    const unsub = initDriveAuth(
+    const unsubDrive = initDriveAuth(
       (u, t) => {
         setDriveUser(u);
         setDriveToken(t);
@@ -197,7 +226,11 @@ export const CloudLibrary: React.FC<Props> = ({
       }
     );
 
-    return () => unsub();
+    return () => {
+      unsubArchive();
+      window.removeEventListener('taqdeer_archive_updated', handleWindowArchiveUpdate);
+      unsubDrive();
+    };
   }, [currentCertificate]);
 
   // Generate QR Code data URL when inspection modal opens
@@ -222,6 +255,16 @@ export const CloudLibrary: React.FC<Props> = ({
       }
     });
     return Array.from(grades).sort();
+  }, [allCertificates]);
+
+  // Extract unique schools for filter dropdown
+  const uniqueSchools = useMemo(() => {
+    const schools = new Set<string>();
+    allCertificates.forEach(c => {
+      const norm = normalizeSchoolName(c.schoolName);
+      schools.add(norm);
+    });
+    return Array.from(schools).sort();
   }, [allCertificates]);
 
   // Extract unique batches for filter dropdown
@@ -261,6 +304,12 @@ export const CloudLibrary: React.FC<Props> = ({
 
   // Filtering logic
   const filteredCertificates = useMemo(() => {
+    const now = new Date();
+    const todayStr = now.toISOString().slice(0, 10);
+    const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const currentMonthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const currentYearPrefix = `${now.getFullYear()}`;
+
     return allCertificates.filter((cert) => {
       // 1. Search Query
       if (searchQuery.trim()) {
@@ -282,25 +331,47 @@ export const CloudLibrary: React.FC<Props> = ({
         if (!cert.grade || cert.grade.trim() !== filterGrade) return false;
       }
 
-      // 3. Source Filter
+      // 3. School Filter
+      if (filterSchool !== 'all') {
+        const certSchool = normalizeSchoolName(cert.schoolName);
+        if (certSchool !== filterSchool) return false;
+      }
+
+      // 4. Date Preset Filter
+      if (filterDate !== 'all') {
+        const rawDate = cert.archiveDate || cert.issueDate || cert.updatedAt || cert.createdAt || '';
+        const certDate = new Date(rawDate);
+
+        if (filterDate === 'today') {
+          if (!rawDate.startsWith(todayStr)) return false;
+        } else if (filterDate === 'this_week') {
+          if (isNaN(certDate.getTime()) || certDate < oneWeekAgo) return false;
+        } else if (filterDate === 'this_month') {
+          if (!rawDate.startsWith(currentMonthPrefix)) return false;
+        } else if (filterDate === 'this_year') {
+          if (!rawDate.startsWith(currentYearPrefix)) return false;
+        }
+      }
+
+      // 5. Source Filter
       if (filterSource !== 'all') {
         if (filterSource === 'single_only' && cert._sourceType !== 'single') return false;
         if (filterSource.startsWith('batch:') && cert._batchId !== filterSource.replace('batch:', '')) return false;
       }
 
-      // 4. Drive Status Filter
+      // 6. Drive Status Filter
       const hasDrive = !!(cert.driveFileWebViewLink || cert.driveFileUrl || cert.driveFileId);
       if (filterDrive === 'drive' && !hasDrive) return false;
       if (filterDrive === 'nodrive' && hasDrive) return false;
 
       return true;
     });
-  }, [allCertificates, searchQuery, filterGrade, filterSource, filterDrive]);
+  }, [allCertificates, searchQuery, filterGrade, filterSchool, filterDate, filterSource, filterDrive]);
 
   // Reset pagination when filter results change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, filterGrade, filterSource, filterDrive, pageSize]);
+  }, [searchQuery, filterGrade, filterSchool, filterDate, filterSource, filterDrive, pageSize]);
 
   // Pagination calculations
   const totalPages = Math.max(1, Math.ceil(filteredCertificates.length / pageSize));
@@ -473,6 +544,78 @@ export const CloudLibrary: React.FC<Props> = ({
       setExportProgress(null);
       setRenderCertTarget(null);
     }
+  };
+
+  // Export Combined PDF for a specific School
+  const handleExportSchoolPdf = async (certs: UnifiedCertificate[], schoolName: string) => {
+    if (!certs || certs.length === 0) return;
+    setIsExportingBatchPdf(true);
+    setExportProgress({ current: 0, total: certs.length, name: `تجهيز شهادات ${schoolName}...` });
+
+    try {
+      const title = `شهادات_${schoolName.replace(/[^\w\s\u0600-\u06FF-]/gi, '').trim().replace(/\s+/g, '_')}`;
+      await exportBatchCertificatesAsSinglePdf(
+        certs,
+        renderCertificateToDom,
+        {
+          batchTitle: title,
+          onProgress: (current, total, name) => {
+            setExportProgress({ current, total, name });
+          }
+        }
+      );
+      showToast(`تم تصدير ملف PDF المجمع لكافة شهادات "${schoolName}" بنجاح (${certs.length} شهادة)! 📄🏫`);
+    } catch (err: any) {
+      console.error('Error exporting school combined PDF:', err);
+      showToast('فشل تصدير شهادات المدرسة المجمعة.');
+    } finally {
+      setIsExportingBatchPdf(false);
+      setExportProgress(null);
+      setRenderCertTarget(null);
+    }
+  };
+
+  // Export Combined PDF for a specific Date Period
+  const handleExportDateGroupPdf = async (certs: UnifiedCertificate[], periodLabel: string) => {
+    if (!certs || certs.length === 0) return;
+    setIsExportingBatchPdf(true);
+    setExportProgress({ current: 0, total: certs.length, name: `تجهيز شهادات فترة ${periodLabel}...` });
+
+    try {
+      const title = `شهادات_فترة_${periodLabel.replace(/[^\w\s\u0600-\u06FF-]/gi, '').trim().replace(/\s+/g, '_')}`;
+      await exportBatchCertificatesAsSinglePdf(
+        certs,
+        renderCertificateToDom,
+        {
+          batchTitle: title,
+          onProgress: (current, total, name) => {
+            setExportProgress({ current, total, name });
+          }
+        }
+      );
+      showToast(`تم تصدير ملف PDF المجمع لشهادات فترة "${periodLabel}" بنجاح (${certs.length} شهادة)! 📄📅`);
+    } catch (err: any) {
+      console.error('Error exporting date group combined PDF:', err);
+      showToast('فشل تصدير شهادات الفترة المجمعة.');
+    } finally {
+      setIsExportingBatchPdf(false);
+      setExportProgress(null);
+      setRenderCertTarget(null);
+    }
+  };
+
+  // Select / Deselect all certificates in a group (School / Date)
+  const handleSelectAllInGroup = (certIds: string[]) => {
+    const next = new Set(selectedIds);
+    const allSelected = certIds.every(id => next.has(id));
+    if (allSelected) {
+      certIds.forEach(id => next.delete(id));
+      showToast(`تم إلغاء تحديد ${certIds.length} شهادة.`);
+    } else {
+      certIds.forEach(id => next.add(id));
+      showToast(`تم تحديد ${certIds.length} شهادة للمجموعة.`);
+    }
+    setSelectedIds(next);
   };
 
   // Batch Google Drive Upload for Selected Certificates
@@ -730,11 +873,15 @@ export const CloudLibrary: React.FC<Props> = ({
     showToast('تم تحميل ملف النسخة الاحتياطية بنجاح!');
   };
 
-  const hasActiveFilters = searchQuery || filterGrade !== 'all' || filterSource !== 'all' || filterDrive !== 'all';
+  const archiveConfig = useMemo(() => getAutoArchiveConfig(), [isAutoArchiveSettingsOpen]);
+
+  const hasActiveFilters = searchQuery || filterGrade !== 'all' || filterSchool !== 'all' || filterDate !== 'all' || filterSource !== 'all' || filterDrive !== 'all';
 
   const resetAllFilters = () => {
     setSearchQuery('');
     setFilterGrade('all');
+    setFilterSchool('all');
+    setFilterDate('all');
     setFilterSource('all');
     setFilterDrive('all');
   };
@@ -742,7 +889,7 @@ export const CloudLibrary: React.FC<Props> = ({
   return (
     <div className="max-w-7xl mx-auto space-y-5 text-right font-sans">
       
-      {/* 1. TOP HERO BANNER */}
+      {/* 1. TOP HERO BANNER WITH AUTO-ARCHIVE BADGE & SETTINGS */}
       <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 text-white p-6 rounded-3xl shadow-xl border border-slate-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-5 relative overflow-hidden">
         <div className="relative z-10 space-y-1.5">
           <div className="flex items-center gap-2.5">
@@ -750,9 +897,21 @@ export const CloudLibrary: React.FC<Props> = ({
               <Cloud className="w-6 h-6 text-amber-400" />
             </div>
             <div>
-              <h2 className="text-xl font-black text-white">المكتبة السحابية الشاملة للشهادات والتوثيق</h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-xl font-black text-white">المكتبة السحابية الشاملة والأرشفة الذكية</h2>
+                {archiveConfig.enabled ? (
+                  <span className="bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-[11px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    الأرشفة التلقائية مفعلة
+                  </span>
+                ) : (
+                  <span className="bg-slate-800 text-slate-400 text-[11px] font-bold px-2.5 py-0.5 rounded-full">
+                    الأرشفة معطلة
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-slate-300">
-                المرجع السحابي الموحد لكافة الشهادات الفردية ودفعات الفصول مع إمكانية فحص التوثيق، والتصفية، والتصدير المجمع.
+                أرشفة وتصنيف تلقائي فوري لكافة الشهادات المكتملة حسب اسم المدرسة أو تاريخ الإصدار مع دعم التوثيق السحابي والتصدير المجمع.
               </p>
             </div>
           </div>
@@ -760,11 +919,20 @@ export const CloudLibrary: React.FC<Props> = ({
 
         <div className="relative z-10 flex flex-wrap items-center gap-2.5">
           <button
+            onClick={() => setIsAutoArchiveSettingsOpen(true)}
+            className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-amber-400 font-bold text-xs rounded-xl border border-amber-500/30 hover:border-amber-500/60 transition flex items-center gap-2 cursor-pointer shadow"
+            title="إعدادات وقواعد الأرشفة التلقائية"
+          >
+            <Settings2 className="w-4 h-4 text-amber-400" />
+            <span>إعدادات الأرشفة</span>
+          </button>
+
+          <button
             onClick={saveCurrentToCloud}
             className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl shadow-lg shadow-amber-500/20 transition flex items-center gap-2 cursor-pointer"
           >
             <Sparkles className="w-4 h-4" />
-            <span>حفظ الشهادة الحالية بالسحابة</span>
+            <span>أرشفة الشهادة الحالية</span>
           </button>
           
           <button
@@ -780,36 +948,69 @@ export const CloudLibrary: React.FC<Props> = ({
 
       {/* 2. ADVANCED FILTERS & SEARCH CONTROL PANEL */}
       <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl shadow-sm space-y-3">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-center">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 items-center">
           
-          {/* Search Box */}
-          <div className="relative">
+          {/* Search Box (Span 2) */}
+          <div className="relative sm:col-span-2">
             <Search className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="ابحث باسم الطالب، الفصل، رمز التوثيق..."
+              placeholder="ابحث بالطالب، المدرسة، الفصل، رمز التوثيق..."
               className="w-full pl-3 pr-9 py-2 bg-slate-800/80 border border-slate-700 text-xs rounded-xl text-white placeholder-slate-400 focus:outline-none focus:border-amber-500 transition"
             />
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery('')}
-                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs"
+                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs cursor-pointer"
               >
                 ✕
               </button>
             )}
           </div>
 
+          {/* School Filter */}
+          <div className="flex items-center gap-1.5 bg-slate-800/80 border border-slate-700 px-3 py-1.5 rounded-xl text-xs">
+            <School className="w-4 h-4 text-amber-400 shrink-0" />
+            <span className="text-slate-400 shrink-0">المدرسة:</span>
+            <select
+              value={filterSchool}
+              onChange={(e) => setFilterSchool(e.target.value)}
+              className="bg-transparent text-white font-bold text-xs w-full focus:outline-none cursor-pointer truncate"
+            >
+              <option value="all" className="bg-slate-900 text-white">جميع المدارس ({uniqueSchools.length})</option>
+              {uniqueSchools.map(s => (
+                <option key={s} value={s} className="bg-slate-900 text-white">{s}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Date Filter */}
+          <div className="flex items-center gap-1.5 bg-slate-800/80 border border-slate-700 px-3 py-1.5 rounded-xl text-xs">
+            <CalendarDays className="w-4 h-4 text-sky-400 shrink-0" />
+            <span className="text-slate-400 shrink-0">التاريخ:</span>
+            <select
+              value={filterDate}
+              onChange={(e) => setFilterDate(e.target.value)}
+              className="bg-transparent text-white font-bold text-xs w-full focus:outline-none cursor-pointer"
+            >
+              <option value="all" className="bg-slate-900 text-white">كافة التواريخ</option>
+              <option value="today" className="bg-slate-900 text-white">اليوم</option>
+              <option value="this_week" className="bg-slate-900 text-white">آخر 7 أيام</option>
+              <option value="this_month" className="bg-slate-900 text-white">هذا الشهر</option>
+              <option value="this_year" className="bg-slate-900 text-white">هذا العام</option>
+            </select>
+          </div>
+
           {/* Grade / Class Filter */}
           <div className="flex items-center gap-1.5 bg-slate-800/80 border border-slate-700 px-3 py-1.5 rounded-xl text-xs">
-            <GraduationCap className="w-4 h-4 text-amber-400 shrink-0" />
+            <GraduationCap className="w-4 h-4 text-emerald-400 shrink-0" />
             <span className="text-slate-400 shrink-0">الفصل:</span>
             <select
               value={filterGrade}
               onChange={(e) => setFilterGrade(e.target.value)}
-              className="bg-transparent text-white font-bold text-xs w-full focus:outline-none cursor-pointer"
+              className="bg-transparent text-white font-bold text-xs w-full focus:outline-none cursor-pointer truncate"
             >
               <option value="all" className="bg-slate-900 text-white">جميع الفصول ({uniqueGrades.length})</option>
               {uniqueGrades.map(g => (
@@ -818,26 +1019,9 @@ export const CloudLibrary: React.FC<Props> = ({
             </select>
           </div>
 
-          {/* Source / Batch Filter */}
-          <div className="flex items-center gap-1.5 bg-slate-800/80 border border-slate-700 px-3 py-1.5 rounded-xl text-xs">
-            <Layers className="w-4 h-4 text-sky-400 shrink-0" />
-            <span className="text-slate-400 shrink-0">المصدر:</span>
-            <select
-              value={filterSource}
-              onChange={(e) => setFilterSource(e.target.value)}
-              className="bg-transparent text-white font-bold text-xs w-full focus:outline-none cursor-pointer"
-            >
-              <option value="all" className="bg-slate-900 text-white">جميع المصادر ({allCertificates.length})</option>
-              <option value="single_only" className="bg-slate-900 text-white">شهادات فردية فقط</option>
-              {uniqueBatches.map(([bId, bTitle]) => (
-                <option key={bId} value={`batch:${bId}`} className="bg-slate-900 text-white">دفعة: {bTitle}</option>
-              ))}
-            </select>
-          </div>
-
           {/* Drive Status Filter */}
           <div className="flex items-center gap-1.5 bg-slate-800/80 border border-slate-700 px-3 py-1.5 rounded-xl text-xs">
-            <Cloud className="w-4 h-4 text-emerald-400 shrink-0" />
+            <Cloud className="w-4 h-4 text-violet-400 shrink-0" />
             <span className="text-slate-400 shrink-0">التوثيق:</span>
             <select
               value={filterDrive}
@@ -851,7 +1035,7 @@ export const CloudLibrary: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* Sub bar: View Switcher, Counts, Reset, Page Size Selector */}
+        {/* Sub bar: View Switcher (4 Modes), Counts, Reset, Page Size Selector */}
         <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-800/80 text-xs">
           <div className="flex items-center gap-3">
             <span className="text-slate-400 font-medium">
@@ -870,37 +1054,62 @@ export const CloudLibrary: React.FC<Props> = ({
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Page Size Selector */}
-            <div className="flex items-center gap-1.5 bg-slate-800/60 border border-slate-700/60 px-2.5 py-1 rounded-xl">
-              <span className="text-slate-400 text-[11px]">عدد في الصفحة:</span>
-              <select
-                value={pageSize}
-                onChange={(e) => setPageSize(Number(e.target.value))}
-                className="bg-transparent text-amber-400 font-black text-xs focus:outline-none cursor-pointer"
-              >
-                <option value={10} className="bg-slate-900 text-white">10</option>
-                <option value={20} className="bg-slate-900 text-white">20</option>
-                <option value={30} className="bg-slate-900 text-white">30</option>
-                <option value={50} className="bg-slate-900 text-white">50</option>
-              </select>
-            </div>
+            {/* Page Size Selector (Visible in Grid/Table modes) */}
+            {(viewMode === 'grid' || viewMode === 'table') && (
+              <div className="flex items-center gap-1.5 bg-slate-800/60 border border-slate-700/60 px-2.5 py-1 rounded-xl">
+                <span className="text-slate-400 text-[11px]">عدد في الصفحة:</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => setPageSize(Number(e.target.value))}
+                  className="bg-transparent text-amber-400 font-black text-xs focus:outline-none cursor-pointer"
+                >
+                  <option value={10} className="bg-slate-900 text-white">10</option>
+                  <option value={20} className="bg-slate-900 text-white">20</option>
+                  <option value={30} className="bg-slate-900 text-white">30</option>
+                  <option value={50} className="bg-slate-900 text-white">50</option>
+                </select>
+              </div>
+            )}
 
-            {/* View Mode Toggle */}
+            {/* View Mode Toggle: School, Date, Grid, Table */}
             <div className="flex items-center bg-slate-800 p-1 rounded-xl border border-slate-700">
+              <button
+                onClick={() => setViewMode('by_school')}
+                className={`px-3 py-1 text-xs rounded-lg font-bold flex items-center gap-1.5 transition cursor-pointer ${
+                  viewMode === 'by_school' ? 'bg-amber-500 text-slate-950 shadow font-black' : 'text-slate-400 hover:text-white'
+                }`}
+                title="عرض وتصنيف حسب اسم المدرسة"
+              >
+                <School className="w-3.5 h-3.5" />
+                <span>حسب المدرسة</span>
+              </button>
+
+              <button
+                onClick={() => setViewMode('by_date')}
+                className={`px-3 py-1 text-xs rounded-lg font-bold flex items-center gap-1.5 transition cursor-pointer ${
+                  viewMode === 'by_date' ? 'bg-amber-500 text-slate-950 shadow font-black' : 'text-slate-400 hover:text-white'
+                }`}
+                title="عرض وتصنيف حسب التاريخ والسنوات الدراسية"
+              >
+                <CalendarDays className="w-3.5 h-3.5" />
+                <span>حسب التاريخ</span>
+              </button>
+
               <button
                 onClick={() => setViewMode('grid')}
                 className={`px-2.5 py-1 text-xs rounded-lg font-bold flex items-center gap-1 transition cursor-pointer ${
-                  viewMode === 'grid' ? 'bg-amber-500 text-slate-950 shadow' : 'text-slate-400 hover:text-white'
+                  viewMode === 'grid' ? 'bg-amber-500 text-slate-950 shadow font-black' : 'text-slate-400 hover:text-white'
                 }`}
                 title="عرض شبكة بطاقات"
               >
                 <Grid className="w-3.5 h-3.5" />
                 <span>بطاقات</span>
               </button>
+
               <button
                 onClick={() => setViewMode('table')}
                 className={`px-2.5 py-1 text-xs rounded-lg font-bold flex items-center gap-1 transition cursor-pointer ${
-                  viewMode === 'table' ? 'bg-amber-500 text-slate-950 shadow' : 'text-slate-400 hover:text-white'
+                  viewMode === 'table' ? 'bg-amber-500 text-slate-950 shadow font-black' : 'text-slate-400 hover:text-white'
                 }`}
                 title="عرض جدول تفصيلي"
               >
@@ -1001,7 +1210,7 @@ export const CloudLibrary: React.FC<Props> = ({
         </div>
       )}
 
-      {/* 5. MAIN CONTENT DISPLAY (GRID OR TABLE) */}
+      {/* 5. MAIN CONTENT DISPLAY (SCHOOL CLASSIFICATION, DATE CLASSIFICATION, GRID, OR TABLE) */}
       {filteredCertificates.length === 0 ? (
         <div className="bg-slate-900 p-12 text-center rounded-3xl border border-dashed border-slate-800 space-y-3">
           <Cloud className="w-14 h-14 text-slate-700 mx-auto" />
@@ -1012,12 +1221,36 @@ export const CloudLibrary: React.FC<Props> = ({
           {hasActiveFilters && (
             <button
               onClick={resetAllFilters}
-              className="mt-2 px-4 py-2 bg-amber-500 text-slate-950 font-bold text-xs rounded-xl"
+              className="mt-2 px-4 py-2 bg-amber-500 text-slate-950 font-bold text-xs rounded-xl cursor-pointer"
             >
               إلغاء التصفية
             </button>
           )}
         </div>
+      ) : viewMode === 'by_school' ? (
+        /* VIEW 1: SCHOOL CLASSIFICATION VIEW */
+        <SchoolClassificationView
+          certificates={filteredCertificates}
+          selectedIds={selectedIds}
+          onToggleSelectCert={toggleSelectCertificate}
+          onSelectAllInGroup={handleSelectAllInGroup}
+          onInspectCert={(cert) => setInspectCert(cert as UnifiedCertificate)}
+          onLoadCert={onLoadCertificate}
+          onExportSchoolPdf={handleExportSchoolPdf}
+          onUploadSchoolToDrive={handleStartBatchDriveUpload}
+        />
+      ) : viewMode === 'by_date' ? (
+        /* VIEW 2: DATE CLASSIFICATION VIEW */
+        <DateClassificationView
+          certificates={filteredCertificates}
+          selectedIds={selectedIds}
+          onToggleSelectCert={toggleSelectCertificate}
+          onSelectAllInGroup={handleSelectAllInGroup}
+          onInspectCert={(cert) => setInspectCert(cert as UnifiedCertificate)}
+          onLoadCert={onLoadCertificate}
+          onExportDateGroupPdf={handleExportDateGroupPdf}
+          onUploadDateGroupToDrive={handleStartBatchDriveUpload}
+        />
       ) : (
         <>
           {/* Select All Checkbox Header for Table / Grid */}
@@ -1039,7 +1272,7 @@ export const CloudLibrary: React.FC<Props> = ({
             </span>
           </div>
 
-          {/* VIEW 1: GRID CARDS VIEW */}
+          {/* VIEW 3: GRID CARDS VIEW */}
           {viewMode === 'grid' && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
               {currentPagedCertificates.map((cert) => {
@@ -1970,6 +2203,17 @@ export const CloudLibrary: React.FC<Props> = ({
           </div>
         );
       })()}
+
+      {/* 12. AUTO-ARCHIVE SETTINGS MODAL */}
+      <AutoArchiveSettingsModal
+        isOpen={isAutoArchiveSettingsOpen}
+        onClose={() => setIsAutoArchiveSettingsOpen(false)}
+        onSettingsSaved={() => {
+          reloadAllCertificates();
+          showToast('تم تحديث إعدادات الأرشفة التلقائية بنجاح! ⚙️💾');
+        }}
+        onShowToast={showToast}
+      />
 
     </div>
   );

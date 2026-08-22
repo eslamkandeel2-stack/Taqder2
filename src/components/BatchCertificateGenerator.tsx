@@ -3,7 +3,7 @@ import { CertificateData, BatchRecord, TemplatePreset, StudentGroup, StudentGrou
 import { TEMPLATE_PRESETS } from '../data/templates';
 import { applyDefaultsToCertificate, getSavedDefaultSettings } from '../utils/defaultSettings';
 import { generateVerificationCode } from '../utils/qrUtils';
-import { adaptCertificateGenderSync, detectGenderFromName } from '../utils/genderConverter';
+import { adaptCertificateGenderSync, detectGenderFromName, convertArabicTextGender } from '../utils/genderConverter';
 import { getSavedDrafts, DraftCertificateItem } from '../utils/draftsManager';
 import {
   getSavedBatches,
@@ -15,6 +15,7 @@ import {
   getSavedStudentGroups,
   subscribeToStudentGroups
 } from '../utils/studentGroupsManager';
+import { autoArchiveBatchCertificates } from '../utils/archiveManager';
 import { useDragScroll } from '../utils/useDragScroll';
 import { BatchCertificateViewerModal } from './BatchCertificateViewerModal';
 import { BatchConfirmReviewModal, BatchReviewStudentItem } from './BatchConfirmReviewModal';
@@ -333,16 +334,23 @@ export const BatchCertificateGenerator: React.FC<Props> = ({
       const vCode = generateVerificationCode();
 
       // Tailor intro and appreciation text dynamically by verified student gender
-      const rawIntro = isFemale ? femaleIntroText : maleIntroText;
-      const rawAppreciation = isFemale ? femaleAppreciationText : maleAppreciationText;
+      let introToUse = isFemale ? femaleIntroText : maleIntroText;
+      let appreciationToUse = isFemale ? femaleAppreciationText : maleAppreciationText;
+
+      if (autoGenderAdaptPhrasing) {
+        introToUse = convertArabicTextGender(introToUse, st.gender);
+        appreciationToUse = convertArabicTextGender(appreciationToUse, st.gender);
+      }
+
+      appreciationToUse = appreciationToUse.replace(/{الاسم}/g, st.name);
 
       let cert: CertificateData = {
         ...templateBase,
         id: `batch-cert-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
         studentName: st.name,
         recipientGender: st.gender,
-        recipientIntro: rawIntro,
-        appreciationText: rawAppreciation.replace(/{الاسم}/g, st.name),
+        recipientIntro: introToUse,
+        appreciationText: appreciationToUse,
         grade: st.grade || grade || templateBase.grade || 'الصف الدراسي',
         subject: subject || templateBase.subject || 'التفوق والتميز',
         schoolName: schoolName || templateBase.schoolName || 'المدرسة',
@@ -355,11 +363,19 @@ export const BatchCertificateGenerator: React.FC<Props> = ({
       if (autoGenderAdaptPhrasing) {
         cert = adaptCertificateGenderSync(cert, st.gender, { preserveCustomStudentName: true });
         cert.recipientGender = st.gender;
-        cert.recipientIntro = rawIntro;
-        cert.appreciationText = rawAppreciation.replace(/{الاسم}/g, st.name);
+        cert.recipientIntro = introToUse;
+        cert.appreciationText = appreciationToUse;
       }
 
-      return applyDefaultsToCertificate(cert, savedDefaults);
+      return applyDefaultsToCertificate(cert, savedDefaults, {
+        preserveExistingSubject: true,
+        preserveExistingGrade: true,
+        preserveExistingIntro: true,
+        preserveExistingSchoolName: !!(schoolName || templateBase.schoolName),
+        preserveExistingTitle: true,
+        preserveExistingSubtitle: true,
+        preserveExistingAppreciation: true,
+      });
     });
 
     const newBatchRecord: BatchRecord = {
@@ -380,6 +396,13 @@ export const BatchCertificateGenerator: React.FC<Props> = ({
     // Save permanently in system
     saveBatchRecord(newBatchRecord);
     setSavedBatches(getSavedBatches());
+
+    // Auto-Archive batch into Cloud Library
+    try {
+      autoArchiveBatchCertificates(generatedCertificates, newBatchRecord.title, schoolName);
+    } catch (e) {
+      console.warn('Auto-archive batch on generation error:', e);
+    }
 
     // Close review modal & open Batch Viewer Modal
     setIsReviewModalOpen(false);
@@ -1105,7 +1128,8 @@ export const BatchCertificateGenerator: React.FC<Props> = ({
               ? TEMPLATE_PRESETS.find(p => p.id === selectedPresetId)?.name || 'قالب جاهز'
               : savedTemplatesList.find(d => d.id === selectedSavedDraftId)?.name || 'قالب مخصص'
           }
-          initialAppreciation={customAppreciation}
+          initialAppreciation={customAppreciation || baseCertificate.appreciationText || ''}
+          initialIntro={baseCertificate.recipientIntro || ''}
           onConfirmAndGenerate={handleConfirmAndGenerateBatch}
           onShowToast={showToast}
         />

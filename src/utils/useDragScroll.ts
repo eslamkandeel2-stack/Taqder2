@@ -1,77 +1,79 @@
-import { useRef, useState, useCallback, useEffect, MouseEvent } from 'react';
+import React, { useRef, useState, useCallback, useEffect } from 'react';
 
-/**
- * Custom React Hook for smooth mouse dragging and horizontal scrolling on desktop/touch.
- * Enables clicking and dragging left/right to scroll content naturally.
- */
-export function useDragScroll() {
+interface DragScrollOptions {
+  scrollStep?: number;
+  direction?: 'horizontal' | 'vertical';
+}
+
+export function useDragScroll(options: DragScrollOptions = {}) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [startX, setStartX] = useState(0);
-  const [scrollLeftState, setScrollLeftState] = useState(0);
+  const [scrollLeft, setScrollLeft] = useState(0);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
 
-  const checkScrollability = useCallback(() => {
+  const scrollStep = options.scrollStep || 160;
+
+  const updateScrollState = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const hasOverflow = el.scrollWidth > el.clientWidth;
-    // Note: in RTL layout, scrollLeft can be negative or positive depending on browser implementation
-    const maxScroll = el.scrollWidth - el.clientWidth;
-    const currentScroll = Math.abs(el.scrollLeft);
-    
-    setCanScrollLeft(hasOverflow && currentScroll < maxScroll - 4);
-    setCanScrollRight(hasOverflow && currentScroll > 4);
+    const { scrollLeft: sl, scrollWidth: sw, clientWidth: cw } = el;
+    // In RTL, scrollLeft can be negative or positive depending on browser implementation
+    const maxScroll = sw - cw;
+    const absScroll = Math.abs(sl);
+    setCanScrollLeft(absScroll < maxScroll - 2 || sl > 2);
+    setCanScrollRight(absScroll > 2 || sl < maxScroll - 2);
   }, []);
 
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
 
-    checkScrollability();
-    const handleResize = () => checkScrollability();
-    window.addEventListener('resize', handleResize);
-    el.addEventListener('scroll', checkScrollability);
+    updateScrollState();
+    el.addEventListener('scroll', updateScrollState, { passive: true });
+    window.addEventListener('resize', updateScrollState);
 
     return () => {
-      window.removeEventListener('resize', handleResize);
-      el.removeEventListener('scroll', checkScrollability);
+      el.removeEventListener('scroll', updateScrollState);
+      window.removeEventListener('resize', updateScrollState);
     };
-  }, [checkScrollability]);
+  }, [updateScrollState]);
 
-  const onMouseDown = (e: MouseEvent<HTMLDivElement>) => {
+  const onMouseDown = useCallback((e: React.MouseEvent) => {
     const el = scrollRef.current;
     if (!el) return;
     setIsDragging(true);
     setStartX(e.pageX - el.offsetLeft);
-    setScrollLeftState(el.scrollLeft);
-  };
+    setScrollLeft(el.scrollLeft);
+  }, []);
 
-  const onMouseLeave = () => {
+  const onMouseLeave = useCallback(() => {
     setIsDragging(false);
-  };
+  }, []);
 
-  const onMouseUp = () => {
+  const onMouseUp = useCallback(() => {
     setIsDragging(false);
-  };
+  }, []);
 
-  const onMouseMove = (e: MouseEvent<HTMLDivElement>) => {
+  const onMouseMove = useCallback((e: React.MouseEvent) => {
     if (!isDragging) return;
     e.preventDefault();
     const el = scrollRef.current;
     if (!el) return;
     const x = e.pageX - el.offsetLeft;
-    const walk = (x - startX) * 1.5; // Scroll speed factor
-    el.scrollLeft = scrollLeftState - walk;
-    checkScrollability();
-  };
+    const walk = (x - startX) * 1.5; // Drag sensitivity multiplier
+    el.scrollLeft = scrollLeft - walk;
+    updateScrollState();
+  }, [isDragging, startX, scrollLeft, updateScrollState]);
 
-  const scrollByAmount = (amount: number) => {
+  const scrollBy = useCallback((direction: 'left' | 'right') => {
     const el = scrollRef.current;
     if (!el) return;
-    el.scrollBy({ left: amount, behavior: 'smooth' });
-    setTimeout(checkScrollability, 300);
-  };
+    const delta = direction === 'left' ? -scrollStep : scrollStep;
+    el.scrollBy({ left: delta, behavior: 'smooth' });
+    setTimeout(updateScrollState, 250);
+  }, [scrollStep, updateScrollState]);
 
   return {
     scrollRef,
@@ -82,8 +84,9 @@ export function useDragScroll() {
     onMouseLeave,
     onMouseUp,
     onMouseMove,
-    scrollLeft: () => scrollByAmount(-220),
-    scrollRight: () => scrollByAmount(220),
-    checkScrollability
+    scrollBy,
+    scrollLeft: () => scrollBy('left'),
+    scrollRight: () => scrollBy('right'),
+    updateScrollState
   };
 }

@@ -407,6 +407,12 @@ export interface CertificateData {
   bgTextureUrl?: string;
   bgGradient?: GradientConfig;
   isSavedCloud: boolean;
+  archivedAt?: string;                              // Auto-archival timestamp
+  archiveDate?: string;                             // YYYY-MM-DD archival date
+  academicYear?: string;                            // Academic Year (e.g. 2025 - 2026م)
+  archiveStatus?: 'completed' | 'archived' | 'draft';
+  archiveCategory?: string;
+  archiveTags?: string[];
   driveFileId?: string;
   driveFileUrl?: string;
   driveFileWebViewLink?: string;
