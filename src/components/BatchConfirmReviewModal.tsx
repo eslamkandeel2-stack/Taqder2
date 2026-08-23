@@ -915,13 +915,14 @@ export const BatchConfirmReviewModal: React.FC<BatchConfirmReviewModalProps> = (
             <span>({maleCount} بنين • {femaleCount} بنات)</span>
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto">
+          <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full sm:w-auto justify-end">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 sm:flex-none px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl transition cursor-pointer"
+              className="flex-1 sm:flex-none px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5"
             >
-              إلغاء
+              <Edit3 className="w-3.5 h-3.5" />
+              <span>العودة لتعديل البيانات</span>
             </button>
 
             <button
@@ -931,7 +932,7 @@ export const BatchConfirmReviewModal: React.FC<BatchConfirmReviewModalProps> = (
               className="flex-1 sm:flex-none px-6 py-2.5 bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:brightness-110 active:scale-95 text-slate-950 font-black text-xs sm:text-sm rounded-xl shadow-lg shadow-amber-500/20 transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
             >
               <Zap className="w-4 h-4 fill-slate-950" />
-              <span>تأكيد وتوليد الدفعة والطباعة 🚀</span>
+              <span>توليد الشهادات للمعاينة ومراجعة الحفظ 🚀</span>
             </button>
           </div>
         </div>

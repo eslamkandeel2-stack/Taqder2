@@ -890,58 +890,59 @@ export const CloudLibrary: React.FC<Props> = ({
     <div className="max-w-7xl mx-auto space-y-5 text-right font-sans">
       
       {/* 1. TOP HERO BANNER WITH AUTO-ARCHIVE BADGE & SETTINGS */}
-      <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 text-white p-6 rounded-3xl shadow-xl border border-slate-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-5 relative overflow-hidden">
-        <div className="relative z-10 space-y-1.5">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2.5 bg-amber-500/20 border border-amber-500/30 rounded-2xl">
-              <Cloud className="w-6 h-6 text-amber-400" />
+      <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 text-white p-4 sm:p-6 rounded-3xl shadow-xl border border-slate-800 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 sm:gap-5 relative overflow-hidden">
+        <div className="relative z-10 space-y-1.5 min-w-0">
+          <div className="flex items-start sm:items-center gap-2.5 sm:gap-3">
+            <div className="p-2 sm:p-2.5 bg-amber-500/20 border border-amber-500/30 rounded-2xl shrink-0">
+              <Cloud className="w-5 h-5 sm:w-6 sm:h-6 text-amber-400" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-xl font-black text-white">المكتبة السحابية الشاملة والأرشفة الذكية</h2>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-lg sm:text-xl font-black text-white">المكتبة السحابية الشاملة والأرشفة الذكية</h2>
                 {archiveConfig.enabled ? (
-                  <span className="bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-[11px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                  <span className="bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-[11px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1 shrink-0">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                     الأرشفة التلقائية مفعلة
                   </span>
                 ) : (
-                  <span className="bg-slate-800 text-slate-400 text-[11px] font-bold px-2.5 py-0.5 rounded-full">
+                  <span className="bg-slate-800 text-slate-400 text-[11px] font-bold px-2.5 py-0.5 rounded-full shrink-0">
                     الأرشفة معطلة
                   </span>
                 )}
               </div>
-              <p className="text-xs text-slate-300">
+              <p className="text-xs text-slate-300 mt-1 leading-relaxed">
                 أرشفة وتصنيف تلقائي فوري لكافة الشهادات المكتملة حسب اسم المدرسة أو تاريخ الإصدار مع دعم التوثيق السحابي والتصدير المجمع.
               </p>
             </div>
           </div>
         </div>
 
-        <div className="relative z-10 flex flex-wrap items-center gap-2.5">
+        {/* Action Buttons: Clean uniform grid on mobile, inline flex on desktop */}
+        <div className="relative z-10 grid grid-cols-1 sm:grid-cols-3 lg:flex lg:flex-row items-center gap-2 sm:gap-2.5 w-full lg:w-auto shrink-0 pt-1 lg:pt-0">
           <button
             onClick={() => setIsAutoArchiveSettingsOpen(true)}
-            className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-amber-400 font-bold text-xs rounded-xl border border-amber-500/30 hover:border-amber-500/60 transition flex items-center gap-2 cursor-pointer shadow"
+            className="w-full lg:w-auto px-3.5 py-2.5 bg-slate-800/90 hover:bg-slate-700 text-amber-400 font-bold text-xs rounded-xl border border-amber-500/30 hover:border-amber-500/60 transition flex items-center justify-center gap-2 cursor-pointer shadow-xs"
             title="إعدادات وقواعد الأرشفة التلقائية"
           >
-            <Settings2 className="w-4 h-4 text-amber-400" />
-            <span>إعدادات الأرشفة</span>
+            <Settings2 className="w-4 h-4 text-amber-400 shrink-0" />
+            <span className="whitespace-nowrap">إعدادات الأرشفة</span>
           </button>
 
           <button
             onClick={saveCurrentToCloud}
-            className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl shadow-lg shadow-amber-500/20 transition flex items-center gap-2 cursor-pointer"
+            className="w-full lg:w-auto px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl shadow-lg shadow-amber-500/20 transition flex items-center justify-center gap-2 cursor-pointer"
           >
-            <Sparkles className="w-4 h-4" />
-            <span>أرشفة الشهادة الحالية</span>
+            <Sparkles className="w-4 h-4 shrink-0" />
+            <span className="whitespace-nowrap">أرشفة الشهادة الحالية</span>
           </button>
           
           <button
             onClick={exportBackupJSON}
-            className="px-3.5 py-2.5 bg-slate-800/90 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-xl border border-slate-700 transition flex items-center gap-2 cursor-pointer"
+            className="w-full lg:w-auto px-3.5 py-2.5 bg-slate-800/90 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-xl border border-slate-700 transition flex items-center justify-center gap-2 cursor-pointer"
             title="تصدير نسخة احتياطية لكافة شهادات السحابة"
           >
-            <HardDrive className="w-4 h-4" />
-            <span>نسخة احتياطية (JSON)</span>
+            <HardDrive className="w-4 h-4 shrink-0" />
+            <span className="whitespace-nowrap">نسخة احتياطية (JSON)</span>
           </button>
         </div>
       </div>
@@ -1036,8 +1037,8 @@ export const CloudLibrary: React.FC<Props> = ({
         </div>
 
         {/* Sub bar: View Switcher (4 Modes), Counts, Reset, Page Size Selector */}
-        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-800/80 text-xs">
-          <div className="flex items-center gap-3">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2 border-t border-slate-800/80 text-xs">
+          <div className="flex flex-wrap items-center gap-3">
             <span className="text-slate-400 font-medium">
               النتائج المطابقة: <strong className="text-amber-400">{filteredCertificates.length}</strong> من إجمالي {allCertificates.length} شهادة
             </span>
@@ -1053,10 +1054,10 @@ export const CloudLibrary: React.FC<Props> = ({
             )}
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3 justify-end">
             {/* Page Size Selector (Visible in Grid/Table modes) */}
             {(viewMode === 'grid' || viewMode === 'table') && (
-              <div className="flex items-center gap-1.5 bg-slate-800/60 border border-slate-700/60 px-2.5 py-1 rounded-xl">
+              <div className="flex items-center gap-1.5 bg-slate-800/60 border border-slate-700/60 px-2.5 py-1 rounded-xl shrink-0">
                 <span className="text-slate-400 text-[11px]">عدد في الصفحة:</span>
                 <select
                   value={pageSize}
@@ -1072,49 +1073,49 @@ export const CloudLibrary: React.FC<Props> = ({
             )}
 
             {/* View Mode Toggle: School, Date, Grid, Table */}
-            <div className="flex items-center bg-slate-800 p-1 rounded-xl border border-slate-700">
+            <div className="flex items-center bg-slate-800 p-1 rounded-xl border border-slate-700 overflow-x-auto max-w-full">
               <button
                 onClick={() => setViewMode('by_school')}
-                className={`px-3 py-1 text-xs rounded-lg font-bold flex items-center gap-1.5 transition cursor-pointer ${
+                className={`px-2.5 sm:px-3 py-1 text-xs rounded-lg font-bold flex items-center gap-1 sm:gap-1.5 transition cursor-pointer shrink-0 ${
                   viewMode === 'by_school' ? 'bg-amber-500 text-slate-950 shadow font-black' : 'text-slate-400 hover:text-white'
                 }`}
                 title="عرض وتصنيف حسب اسم المدرسة"
               >
                 <School className="w-3.5 h-3.5" />
-                <span>حسب المدرسة</span>
+                <span className="whitespace-nowrap">حسب المدرسة</span>
               </button>
 
               <button
                 onClick={() => setViewMode('by_date')}
-                className={`px-3 py-1 text-xs rounded-lg font-bold flex items-center gap-1.5 transition cursor-pointer ${
+                className={`px-2.5 sm:px-3 py-1 text-xs rounded-lg font-bold flex items-center gap-1 sm:gap-1.5 transition cursor-pointer shrink-0 ${
                   viewMode === 'by_date' ? 'bg-amber-500 text-slate-950 shadow font-black' : 'text-slate-400 hover:text-white'
                 }`}
                 title="عرض وتصنيف حسب التاريخ والسنوات الدراسية"
               >
                 <CalendarDays className="w-3.5 h-3.5" />
-                <span>حسب التاريخ</span>
+                <span className="whitespace-nowrap">حسب التاريخ</span>
               </button>
 
               <button
                 onClick={() => setViewMode('grid')}
-                className={`px-2.5 py-1 text-xs rounded-lg font-bold flex items-center gap-1 transition cursor-pointer ${
+                className={`px-2 sm:px-2.5 py-1 text-xs rounded-lg font-bold flex items-center gap-1 transition cursor-pointer shrink-0 ${
                   viewMode === 'grid' ? 'bg-amber-500 text-slate-950 shadow font-black' : 'text-slate-400 hover:text-white'
                 }`}
                 title="عرض شبكة بطاقات"
               >
                 <Grid className="w-3.5 h-3.5" />
-                <span>بطاقات</span>
+                <span className="whitespace-nowrap">بطاقات</span>
               </button>
 
               <button
                 onClick={() => setViewMode('table')}
-                className={`px-2.5 py-1 text-xs rounded-lg font-bold flex items-center gap-1 transition cursor-pointer ${
+                className={`px-2 sm:px-2.5 py-1 text-xs rounded-lg font-bold flex items-center gap-1 transition cursor-pointer shrink-0 ${
                   viewMode === 'table' ? 'bg-amber-500 text-slate-950 shadow font-black' : 'text-slate-400 hover:text-white'
                 }`}
                 title="عرض جدول تفصيلي"
               >
                 <TableIcon className="w-3.5 h-3.5" />
-                <span>جدول</span>
+                <span className="whitespace-nowrap">جدول</span>
               </button>
             </div>
           </div>
@@ -2208,7 +2209,7 @@ export const CloudLibrary: React.FC<Props> = ({
       <AutoArchiveSettingsModal
         isOpen={isAutoArchiveSettingsOpen}
         onClose={() => setIsAutoArchiveSettingsOpen(false)}
-        onSettingsSaved={() => {
+        onRefreshLibrary={() => {
           reloadAllCertificates();
           showToast('تم تحديث إعدادات الأرشفة التلقائية بنجاح! ⚙️💾');
         }}

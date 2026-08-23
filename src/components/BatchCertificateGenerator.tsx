@@ -96,6 +96,7 @@ export const BatchCertificateGenerator: React.FC<Props> = ({
   // Active Batch Viewer Modal state
   const [viewerBatch, setViewerBatch] = useState<BatchRecord | null>(null);
   const [isViewerOpen, setIsViewerOpen] = useState(false);
+  const [isViewerPendingSave, setIsViewerPendingSave] = useState(false);
 
   // Pre-Generation Confirmation & Review Modal state
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
@@ -393,29 +394,58 @@ export const BatchCertificateGenerator: React.FC<Props> = ({
       isVerifiedOnDrive: false
     };
 
-    // Save permanently in system
-    saveBatchRecord(newBatchRecord);
-    setSavedBatches(getSavedBatches());
-
-    // Auto-Archive batch into Cloud Library
-    try {
-      autoArchiveBatchCertificates(generatedCertificates, newBatchRecord.title, schoolName);
-    } catch (e) {
-      console.warn('Auto-archive batch on generation error:', e);
-    }
-
-    // Close review modal & open Batch Viewer Modal
+    // Close review modal & open Batch Viewer Modal in Pending/Preview mode
     setIsReviewModalOpen(false);
     setViewerBatch(newBatchRecord);
+    setIsViewerPendingSave(true);
     setIsViewerOpen(true);
 
     const girlsCount = generatedCertificates.filter(c => c.recipientGender === 'female').length;
     const boysCount = generatedCertificates.length - girlsCount;
-    showToast(`تم بنجاح مراجعة وتوليد (${generatedCertificates.length}) شهادة مخصصة (${boysCount} بنين • ${girlsCount} بنات)! 🎓✨`);
+    showToast(`تم توليد (${generatedCertificates.length}) شهادة بنجاح للمعاينة (${boysCount} بنين • ${girlsCount} بنات). يمكنك الآن مراجعتها وتأكيد الحفظ في السجل أو العودة للتعديل! 🎓✨`);
+  };
+
+  // 1. Confirm and permanently save batch to history and cloud
+  const handleConfirmSaveBatch = (batchToSave: BatchRecord) => {
+    saveBatchRecord(batchToSave);
+    setSavedBatches(getSavedBatches());
+
+    try {
+      autoArchiveBatchCertificates(batchToSave.certificates, batchToSave.title, schoolName);
+    } catch (e) {
+      console.warn('Auto-archive batch on confirmation save error:', e);
+    }
+
+    setIsViewerPendingSave(false);
+    setViewerBatch(batchToSave);
+    showToast(`تم بنجاح حفظ واعتماد الدفعة (${batchToSave.totalCount} شهادة) في سجل الدفعات المحفوظة والمكتبة السحابية! 📁✨`);
+  };
+
+  // 2. Return to Edit Form to modify students, phrasing, or errors
+  const handleReturnToEdit = (batchToEdit: BatchRecord) => {
+    setIsViewerOpen(false);
+    setIsViewerPendingSave(false);
+    setActiveTab('create');
+    if (batchToEdit.certificates && batchToEdit.certificates.length > 0) {
+      setStudentInput(batchToEdit.certificates.map(c => c.studentName).join('\n'));
+    }
+    if (batchToEdit.title) setBatchTitle(batchToEdit.title);
+    if (batchToEdit.grade) setGrade(batchToEdit.grade);
+    if (batchToEdit.subject) setSubject(batchToEdit.subject);
+    showToast('تمت العودة إلى محرر الدفعة لتعديل وتصحيح الأخطاء قبل إعادة التوليد.');
+  };
+
+  // 3. Cancel and discard pending batch without saving
+  const handleCancelBatchSave = () => {
+    setIsViewerOpen(false);
+    setViewerBatch(null);
+    setIsViewerPendingSave(false);
+    showToast('تم إلغاء حفظ الدفعة وتجاهلها بنجاح.');
   };
 
   const handleOpenExistingBatch = (batch: BatchRecord) => {
     setViewerBatch(batch);
+    setIsViewerPendingSave(false);
     setIsViewerOpen(true);
   };
 
@@ -1139,11 +1169,24 @@ export const BatchCertificateGenerator: React.FC<Props> = ({
       {viewerBatch && (
         <BatchCertificateViewerModal
           isOpen={isViewerOpen}
-          onClose={() => setIsViewerOpen(false)}
+          onClose={() => {
+            if (isViewerPendingSave) {
+              // In pending mode, confirm discard or close safely
+              handleCancelBatchSave();
+            } else {
+              setIsViewerOpen(false);
+            }
+          }}
           batch={viewerBatch}
+          isPendingSave={isViewerPendingSave}
+          onConfirmSaveBatch={handleConfirmSaveBatch}
+          onCancelBatchSave={handleCancelBatchSave}
+          onReturnToEdit={handleReturnToEdit}
           onUpdateBatch={(updated) => {
             setViewerBatch(updated);
-            setSavedBatches(getSavedBatches());
+            if (!isViewerPendingSave) {
+              setSavedBatches(getSavedBatches());
+            }
           }}
           onApplySingleToEditor={(cert) => {
             onApplySingleToEditor(cert);

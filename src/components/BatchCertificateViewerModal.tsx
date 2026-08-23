@@ -56,6 +56,10 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   batch: BatchRecord;
+  isPendingSave?: boolean;
+  onConfirmSaveBatch?: (batch: BatchRecord) => void;
+  onCancelBatchSave?: () => void;
+  onReturnToEdit?: (batch: BatchRecord) => void;
   onUpdateBatch: (updated: BatchRecord) => void;
   onApplySingleToEditor: (cert: CertificateData) => void;
   onShowToast: (msg: string) => void;
@@ -65,6 +69,10 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
   isOpen,
   onClose,
   batch,
+  isPendingSave = false,
+  onConfirmSaveBatch,
+  onCancelBatchSave,
+  onReturnToEdit,
   onUpdateBatch,
   onApplySingleToEditor,
   onShowToast
@@ -74,9 +82,10 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
   const [selectedCertId, setSelectedCertId] = useState<string>(batch.certificates?.[0]?.id || '');
   const [editingCert, setEditingCert] = useState<CertificateData | null>(null);
 
-  // Deletion Confirmation States
+  // Deletion & Cancel Confirmation States
   const [certToDelete, setCertToDelete] = useState<CertificateData | null>(null);
   const [showDeleteBatchConfirm, setShowDeleteBatchConfirm] = useState(false);
+  const [showCancelPendingConfirm, setShowCancelPendingConfirm] = useState(false);
 
   // Exporting state
   const [isExportingPdf, setIsExportingPdf] = useState(false);
@@ -530,7 +539,7 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
 
             {/* Close Button */}
             <button
-              onClick={onClose}
+              onClick={isPendingSave ? () => setShowCancelPendingConfirm(true) : onClose}
               className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition cursor-pointer"
               title="إغلاق النافذة"
             >
@@ -538,6 +547,85 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
             </button>
           </div>
         </div>
+
+        {/* BATCH SAVE CONFIRMATION & WORKFLOW BANNER */}
+        {isPendingSave ? (
+          <div className="bg-gradient-to-r from-amber-950/50 via-slate-900 to-amber-950/40 border-b border-amber-500/30 p-3 sm:p-4 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 text-right shrink-0">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-amber-500/20 text-amber-300 rounded-2xl shrink-0 border border-amber-500/40 animate-pulse">
+                <Sparkles className="w-5 h-5 text-amber-400" />
+              </div>
+              <div className="space-y-0.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h4 className="text-sm sm:text-base font-black text-amber-300">
+                    مراجعة وتأكيد حفظ الشهادات الجماعية
+                  </h4>
+                  <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] sm:text-[11px] font-extrabold px-2.5 py-0.5 rounded-full">
+                    ⏳ مسودة قيد المعاينة (لم تُحفظ في السجل بعد)
+                  </span>
+                </div>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  تم توليد ({certificates.length}) شهادة بنجاح. عاين الشهادات أدناه، ثم اختر حفظها نهائياً في سجل الدفعات، أو العودة للتعديل لتصحيح أي أخطاء، أو إلغاء الحفظ.
+                </p>
+              </div>
+            </div>
+
+            {/* 3 Explicit Action Buttons */}
+            <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full lg:w-auto justify-end shrink-0 pt-1 lg:pt-0">
+              
+              {/* 1. Confirm and Save to History */}
+              <button
+                type="button"
+                onClick={() => onConfirmSaveBatch && onConfirmSaveBatch(batch)}
+                className="flex-1 sm:flex-none px-4 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs rounded-xl shadow-lg shadow-emerald-500/20 hover:scale-[1.02] active:scale-[0.98] transition flex items-center justify-center gap-2 cursor-pointer"
+                title="تأكيد حفظ واعتماد الدفعة في سجل الدفعات المحفوظة والمكتبة السحابية"
+              >
+                <CheckCircle2 className="w-4 h-4 text-slate-950" />
+                <span className="whitespace-nowrap">تأكيد حفظ الشهادات في السجل</span>
+              </button>
+
+              {/* 2. Return to Edit Form to Fix Errors */}
+              <button
+                type="button"
+                onClick={() => onReturnToEdit && onReturnToEdit(batch)}
+                className="flex-1 sm:flex-none px-3.5 py-2.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-bold text-xs rounded-xl border border-amber-500/40 hover:border-amber-400 transition flex items-center justify-center gap-2 cursor-pointer"
+                title="العودة لمحرر الدفعة لتعديل أسماء الطلاب أو الصيغ وتصحيح الأخطاء"
+              >
+                <Edit3 className="w-4 h-4 text-amber-400" />
+                <span className="whitespace-nowrap">العودة للتعديل وتصحيح الأخطاء</span>
+              </button>
+
+              {/* 3. Cancel and Discard */}
+              <button
+                type="button"
+                onClick={() => setShowCancelPendingConfirm(true)}
+                className="flex-1 sm:flex-none px-3.5 py-2.5 bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 font-bold text-xs rounded-xl border border-rose-500/30 hover:border-rose-400 transition flex items-center justify-center gap-2 cursor-pointer"
+                title="إلغاء الحفظ وتجاهل الشهادات المولدة بدون حفظها"
+              >
+                <X className="w-4 h-4 text-rose-400" />
+                <span className="whitespace-nowrap">إلغاء الحفظ وعدم الحفظ</span>
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="bg-slate-900/90 border-b border-slate-800 p-2.5 sm:p-3 flex flex-wrap items-center justify-between gap-3 text-right shrink-0 text-xs">
+            <div className="flex items-center gap-2 text-slate-300">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span>هذه الدفعة محفوظة رسمياً في <strong>سجل الدفعات المحفوظة</strong> وتاريخ الإنشاء: {new Date(batch.createdAt).toLocaleDateString('ar-SA')}</span>
+            </div>
+            {onReturnToEdit && (
+              <button
+                type="button"
+                onClick={() => onReturnToEdit(batch)}
+                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-300 hover:text-amber-200 font-bold text-xs rounded-xl border border-amber-500/30 transition flex items-center gap-1.5 cursor-pointer"
+                title="نسخ وتحميل بيانات هذه الدفعة في محرر الدفعات للتعديل وإعادة التوليد"
+              >
+                <Edit3 className="w-3.5 h-3.5" />
+                <span>العودة لتعديل بيانات الدفعة في المحرر</span>
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Search & View Switcher Bar */}
         <div className="p-3 bg-slate-800/80 border-b border-slate-700/60 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
@@ -1238,6 +1326,75 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 <span>تأكيد الحذف</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CANCEL / DISCARD PENDING BATCH CONFIRMATION MODAL */}
+      {showCancelPendingConfirm && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 max-w-md w-full rounded-2xl p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-200 text-right">
+            <div className="flex items-center gap-3 text-rose-400">
+              <div className="p-3 bg-rose-500/20 rounded-xl">
+                <AlertCircle className="w-6 h-6 text-rose-400" />
+              </div>
+              <div>
+                <h4 className="font-extrabold text-base text-white">إلغاء حفظ الشهادات وتجاهل الدفعة</h4>
+                <p className="text-xs text-slate-400">لن يتم حفظ هذه الشهادات في سجل الدفعات أو السحابة</p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-slate-800/80 rounded-xl border border-slate-700/80 text-xs space-y-1">
+              <div className="flex justify-between">
+                <span className="text-slate-400">عنوان الدفعة:</span>
+                <span className="font-bold text-white">{batch.title}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">عدد الشهادات المولدة:</span>
+                <span className="font-bold text-amber-400">{certificates.length} شهادة</span>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-300">
+              هل أنت متأكد من رغبتك في إلغاء حفظ هذه الدفعة وإغلاق المعاينة؟ يمكنك العودة للتعديل إذا كنت تريد تصحيح الأخطاء بدلاً من الإلغاء.
+            </p>
+
+            <div className="flex flex-wrap items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowCancelPendingConfirm(false)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl transition cursor-pointer"
+              >
+                تراجع والمتابعة
+              </button>
+              {onReturnToEdit && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowCancelPendingConfirm(false);
+                    onReturnToEdit(batch);
+                  }}
+                  className="px-3.5 py-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-bold text-xs rounded-xl border border-amber-500/30 transition cursor-pointer"
+                >
+                  العودة للتعديل
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCancelPendingConfirm(false);
+                  if (onCancelBatchSave) {
+                    onCancelBatchSave();
+                  } else {
+                    onClose();
+                  }
+                }}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white font-black text-xs rounded-xl shadow-lg shadow-rose-600/30 transition flex items-center gap-1.5 cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>نعم، تجاهل وإلغاء الحفظ</span>
               </button>
             </div>
           </div>

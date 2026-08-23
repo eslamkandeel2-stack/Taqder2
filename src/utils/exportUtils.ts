@@ -334,14 +334,34 @@ export function sanitizeOklchInDoc(clonedDoc: Document, certData?: CertificateDa
       return;
     }
     try {
-      const sheet = Array.from(document.styleSheets).find((s) => s.href === href);
+      let sheet: CSSStyleSheet | undefined;
+      try {
+        if (typeof document !== 'undefined' && document.styleSheets) {
+          const docSheets = Array.from(document.styleSheets);
+          for (const s of docSheets) {
+            try {
+              if (s.href === href) {
+                sheet = s;
+                break;
+              }
+            } catch (e) {
+              // Cross-origin stylesheet access restriction - safe ignore
+            }
+          }
+        }
+      } catch (e) {
+        // Restricted document.styleSheets access - safe ignore
+      }
+
       if (sheet) {
         let cssText = '';
         try {
           const rules = sheet.cssRules || sheet.rules;
           if (rules) {
             for (let i = 0; i < rules.length; i++) {
-              cssText += rules[i].cssText + '\n';
+              try {
+                cssText += rules[i].cssText + '\n';
+              } catch (e) {}
             }
           }
         } catch (e) {}
@@ -423,6 +443,11 @@ export function sanitizeOklchInDoc(clonedDoc: Document, certData?: CertificateDa
       -webkit-font-smoothing: antialiased !important;
       text-rendering: optimizeLegibility !important;
     }
+    #certificate-print-area svg {
+      display: inline-block !important;
+      vertical-align: middle !important;
+      flex-shrink: 0 !important;
+    }
     #certificate-print-area .text-center {
       text-align: center !important;
     }
@@ -434,6 +459,7 @@ export function sanitizeOklchInDoc(clonedDoc: Document, certData?: CertificateDa
     }
     #certificate-print-area .inline-flex {
       display: inline-flex !important;
+      align-items: center !important;
     }
   `;
   clonedDoc.head.appendChild(styleFix);
@@ -571,6 +597,15 @@ export function sanitizeOklchInDoc(clonedDoc: Document, certData?: CertificateDa
         }
       } else if (origNode instanceof SVGElement && clonedNode instanceof SVGElement) {
         const cs = window.getComputedStyle(origNode);
+        if (cs.width && cs.width !== 'auto') {
+          clonedNode.style.width = cs.width;
+        }
+        if (cs.height && cs.height !== 'auto') {
+          clonedNode.style.height = cs.height;
+        }
+        clonedNode.style.display = 'inline-block';
+        clonedNode.style.verticalAlign = 'middle';
+
         if (cs.fill && cs.fill !== 'none') {
           const resFill = replaceAllColorFunctions(cs.fill);
           clonedNode.style.fill = resFill;

@@ -740,10 +740,10 @@ export const VerificationModal: React.FC<Props> = ({
 
       {isDriveRequestModalOpen && result && result.cert && (
         <DriveVerificationRequestModal
+          isOpen={isDriveRequestModalOpen}
           certificate={result.cert}
-          verificationCode={result.verificationCode}
           onClose={() => setIsDriveRequestModalOpen(false)}
-          onShowToast={showToast}
+          onSuccess={showToast}
         />
       )}
     </div>

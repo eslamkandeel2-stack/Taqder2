@@ -19,7 +19,16 @@ import {
   Crown,
   ScrollText,
   Rocket,
-  Heart
+  Heart,
+  Smile,
+  Award,
+  FileText,
+  Ribbon,
+  Quote,
+  Eye,
+  EyeOff,
+  Zap,
+  Feather
 } from 'lucide-react';
 import { CertificateData } from '../types';
 import { RecipientGender, detectGenderFromName, generateLocalCertificateFallback } from '../utils/genderConverter';
@@ -149,11 +158,11 @@ export const AIGeneratorModal: React.FC<Props> = ({
   };
 
   const quickPresets = [
-    { title: 'عبقري الرياضيات', achievement: 'حصوله على المركز الأول في أولمبياد الرياضيات وسرعة حل المسائل المعقدة' },
-    { title: 'حفظ جزء من القرآن', achievement: 'حفظ جزأي عم وتبارك وإتقان الترتيل والتجويد وحسن الأداء' },
-    { title: 'الانضباط والمواظبة', achievement: 'حضور يومي بنسبة 100% دون أي غياب والتزام كامل بالأنظمة المدرسية' },
-    { title: 'الفنان المبدع', achievement: 'التميز في الرسم والأنشطة الإبداعية وتنسيق المعرض المدرسي' },
-    { title: 'القيادة والروح الرياضية', achievement: 'قيادة فريق الفصل في الدوري الرياضي والتحلي بأخلاق الفرسان' },
+    { title: 'عبقري الرياضيات', icon: '📐', achievement: 'حصوله على المركز الأول في أولمبياد الرياضيات وسرعة حل المسائل المعقدة' },
+    { title: 'حفظ جزء من القرآن', icon: '📖', achievement: 'حفظ جزأي عم وتبارك وإتقان الترتيل والتجويد وحسن الأداء' },
+    { title: 'الانضباط والمواظبة', icon: '⏱️', achievement: 'حضور يومي بنسبة 100% دون أي غياب والتزام كامل بالأنظمة المدرسية' },
+    { title: 'الفنان المبدع', icon: '🎨', achievement: 'التميز في الرسم والأنشطة الإبداعية وتنسيق المعرض المدرسي' },
+    { title: 'القيادة والروح الرياضية', icon: '🏆', achievement: 'قيادة فريق الفصل في الدوري الرياضي والتحلي بأخلاق الفرسان' },
   ];
 
   // 1. IMPROVE TEXT HANDLER
@@ -325,194 +334,259 @@ export const AIGeneratorModal: React.FC<Props> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/65 backdrop-blur-xs p-3 sm:p-4 text-right">
-      <div className="bg-white w-full max-w-2xl rounded-2xl sm:rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 backdrop-blur-sm p-2.5 sm:p-4 text-right">
+      <div className="bg-white w-full max-w-3xl rounded-2xl sm:rounded-3xl shadow-2xl border border-slate-200/90 overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in zoom-in-95 duration-200">
         
         {/* Header */}
-        <div className="bg-gradient-to-r from-slate-900 via-amber-950 to-slate-900 text-white p-4 sm:p-5 flex items-center justify-between border-b border-amber-500/20">
+        <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-amber-950 text-white p-4 sm:p-5 flex items-center justify-between border-b border-amber-500/20 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-400/30 flex items-center justify-center text-amber-300 shadow-inner shrink-0">
+            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-amber-400/25 to-amber-600/10 border border-amber-400/40 flex items-center justify-center text-amber-300 shadow-inner shrink-0">
               <Sparkles className="w-5 h-5 animate-pulse" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm sm:text-base font-extrabold text-white">مساعد الذكاء الاصطناعي لصياغة التكريم</h3>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-400/30">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-sm sm:text-base font-black text-white tracking-tight">
+                  مساعد الذكاء الاصطناعي لصياغة التكريم
+                </h3>
+                <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-amber-400/15 text-amber-300 border border-amber-400/30 flex items-center gap-1 font-mono shadow-2xs">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
                   {currentModelOption.name}
                 </span>
               </div>
-              <p className="text-[11px] text-amber-200/80 mt-0.5">
-                صياغة بلاغية فخمة، ضبط السجع والقوافي، وتوليد نصوص تكريم استثنائية
+              <p className="text-[11px] text-slate-300 mt-0.5 leading-snug">
+                صياغة بلاغية رفيعة، ضبط السجع والقوافي، وتوليد نصوص تكريم استثنائية
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-xl transition cursor-pointer"
+            aria-label="إغلاق النافذة"
+            className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/15 rounded-xl transition-all active:scale-95 cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Tab Navigation */}
-        <div className="flex border-b border-slate-200 bg-slate-50/90 px-3 pt-2 gap-1.5 overflow-x-auto">
-          <button
-            onClick={() => setModalTab('improve')}
-            className={`px-4 py-2.5 rounded-t-xl text-xs font-extrabold transition flex items-center gap-2 border-b-2 cursor-pointer ${
-              modalTab === 'improve'
-                ? 'bg-white text-amber-950 border-amber-500 shadow-2xs font-black'
-                : 'text-slate-600 hover:text-slate-900 border-transparent hover:bg-slate-100'
-            }`}
-          >
-            <Wand2 className="w-4 h-4 text-amber-600" />
-            <span>تحسين وبلاغة نصوص التكريم</span>
-          </button>
+        {/* Tab Navigation (Segmented Pill Tabs) */}
+        <div className="bg-slate-100/90 border-b border-slate-200 p-2 sm:p-2.5 shrink-0">
+          <div className="grid grid-cols-3 gap-1.5 sm:gap-2 max-w-full">
+            
+            {/* Tab 1 Button */}
+            <button
+              onClick={() => setModalTab('improve')}
+              className={`relative py-2.5 px-2 sm:px-3.5 rounded-xl sm:rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer select-none text-center ${
+                modalTab === 'improve'
+                  ? 'bg-white text-amber-950 shadow-sm border border-amber-300 ring-1 ring-amber-400/30 font-black'
+                  : 'text-slate-600 hover:text-slate-950 hover:bg-white/60 border border-transparent font-bold'
+              }`}
+            >
+              <div className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
+                modalTab === 'improve' ? 'bg-amber-500 text-slate-950 shadow-xs' : 'bg-slate-200/80 text-slate-600'
+              }`}>
+                <Wand2 className="w-3.5 h-3.5" />
+              </div>
+              <span className="truncate">تحسين وبلاغة الصياغة</span>
+            </button>
 
-          <button
-            onClick={() => setModalTab('full')}
-            className={`px-4 py-2.5 rounded-t-xl text-xs font-extrabold transition flex items-center gap-2 border-b-2 cursor-pointer ${
-              modalTab === 'full'
-                ? 'bg-white text-amber-950 border-amber-500 shadow-2xs font-black'
-                : 'text-slate-600 hover:text-slate-900 border-transparent hover:bg-slate-100'
-            }`}
-          >
-            <Sparkles className="w-4 h-4 text-amber-600" />
-            <span>توليد شهادة متكاملة جديدة</span>
-          </button>
+            {/* Tab 2 Button */}
+            <button
+              onClick={() => setModalTab('full')}
+              className={`relative py-2.5 px-2 sm:px-3.5 rounded-xl sm:rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer select-none text-center ${
+                modalTab === 'full'
+                  ? 'bg-white text-amber-950 shadow-sm border border-amber-300 ring-1 ring-amber-400/30 font-black'
+                  : 'text-slate-600 hover:text-slate-950 hover:bg-white/60 border border-transparent font-bold'
+              }`}
+            >
+              <div className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
+                modalTab === 'full' ? 'bg-amber-500 text-slate-950 shadow-xs' : 'bg-slate-200/80 text-slate-600'
+              }`}>
+                <Sparkles className="w-3.5 h-3.5" />
+              </div>
+              <span className="truncate">توليد شهادة متكاملة</span>
+            </button>
 
-          <button
-            onClick={() => setModalTab('settings')}
-            className={`px-4 py-2.5 rounded-t-xl text-xs font-extrabold transition flex items-center gap-2 border-b-2 cursor-pointer ${
-              modalTab === 'settings'
-                ? 'bg-white text-amber-950 border-amber-500 shadow-2xs font-black'
-                : 'text-slate-600 hover:text-slate-900 border-transparent hover:bg-slate-100'
-            }`}
-          >
-            <Sliders className="w-4 h-4 text-amber-600" />
-            <span>إعدادات الذكاء الاصطناعي (API)</span>
-          </button>
+            {/* Tab 3 Button */}
+            <button
+              onClick={() => setModalTab('settings')}
+              className={`relative py-2.5 px-2 sm:px-3.5 rounded-xl sm:rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer select-none text-center ${
+                modalTab === 'settings'
+                  ? 'bg-white text-amber-950 shadow-sm border border-amber-300 ring-1 ring-amber-400/30 font-black'
+                  : 'text-slate-600 hover:text-slate-950 hover:bg-white/60 border border-transparent font-bold'
+              }`}
+            >
+              <div className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
+                modalTab === 'settings' ? 'bg-amber-500 text-slate-950 shadow-xs' : 'bg-slate-200/80 text-slate-600'
+              }`}>
+                <Sliders className="w-3.5 h-3.5" />
+              </div>
+              <span className="truncate">إعدادات الذكاء (API)</span>
+            </button>
+
+          </div>
         </div>
 
-        {/* Modal Body Container */}
-        <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-4">
+        {/* Modal Body */}
+        <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-5">
 
           {/* ======================= TAB 1: IMPROVE TEXT ======================= */}
           {modalTab === 'improve' && (
-            <div className="space-y-4">
+            <div className="space-y-5">
               
               {/* Field to Improve Selector */}
-              <div>
-                <label className="block text-xs font-bold text-slate-800 mb-2">
-                  اختر الجزء المراد تحسين صياغته وبلاغته:
-                </label>
+              <div className="bg-slate-50/80 p-3.5 sm:p-4 rounded-2xl border border-slate-200/90 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-black text-slate-900 flex items-center gap-1.5">
+                    <Layers className="w-4 h-4 text-amber-600" />
+                    <span>الجزء المراد تحسين صياغته وبلاغته:</span>
+                  </label>
+                  <span className="text-[10px] text-slate-500 font-bold bg-white px-2 py-0.5 rounded-md border border-slate-200">
+                    انقر للتبديل السريع
+                  </span>
+                </div>
+
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {[
-                    { id: 'appreciation', label: 'فقرة التقدير والثناء', icon: '📝' },
-                    { id: 'title', label: 'عنوان الشهادة الرئيسي', icon: '📜' },
-                    { id: 'intro', label: 'عبارة مقدمة التكريم', icon: '🎗️' },
-                    { id: 'poem', label: 'بيت شعر أو حكمة', icon: '✨' },
-                  ].map((field) => (
-                    <button
-                      key={field.id}
-                      type="button"
-                      onClick={() => handleSelectFieldType(field.id as any)}
-                      className={`p-2.5 rounded-xl border text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
-                        improveFieldType === field.id
-                          ? 'border-amber-500 bg-amber-50 text-amber-950 ring-2 ring-amber-400/40 font-black'
-                          : 'border-slate-200 text-slate-700 bg-white hover:bg-slate-50'
-                      }`}
-                    >
-                      <span>{field.icon}</span>
-                      <span>{field.label}</span>
-                    </button>
-                  ))}
+                    { id: 'appreciation', label: 'فقرة التقدير والثناء', icon: FileText },
+                    { id: 'title', label: 'عنوان الشهادة الرئيسي', icon: Award },
+                    { id: 'intro', label: 'عبارة مقدمة التكريم', icon: Ribbon },
+                    { id: 'poem', label: 'بيت شعر أو حكمة', icon: Quote },
+                  ].map((field) => {
+                    const IconComp = field.icon;
+                    const isSelected = improveFieldType === field.id;
+                    return (
+                      <button
+                        key={field.id}
+                        type="button"
+                        onClick={() => handleSelectFieldType(field.id as any)}
+                        className={`p-2.5 rounded-xl border text-xs font-black transition-all flex flex-col items-center justify-center gap-1.5 cursor-pointer relative group ${
+                          isSelected
+                            ? 'border-amber-500 bg-amber-500 text-slate-950 shadow-md ring-2 ring-amber-400/40 scale-[1.02]'
+                            : 'border-slate-200/90 text-slate-700 bg-white hover:bg-amber-50/50 hover:border-amber-300 shadow-2xs'
+                        }`}
+                      >
+                        {isSelected && (
+                          <span className="absolute top-1.5 left-1.5 w-4 h-4 rounded-full bg-slate-950 text-amber-400 flex items-center justify-center">
+                            <Check className="w-2.5 h-2.5 stroke-[3]" />
+                          </span>
+                        )}
+                        <IconComp className={`w-4 h-4 transition-transform group-hover:scale-110 ${isSelected ? 'text-slate-950' : 'text-amber-600'}`} />
+                        <span className="leading-tight text-center">{field.label}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
               {/* Style / Tone Selector */}
-              <div>
-                <label className="block text-xs font-bold text-slate-800 mb-2">
-                  الأسلوب والنبرة البلاغية المطلوبة:
-                </label>
-                <div className="flex flex-wrap gap-2">
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-black text-slate-900 flex items-center gap-1.5">
+                    <Crown className="w-4 h-4 text-amber-600" />
+                    <span>الأسلوب والنبرة البلاغية المطلوبة:</span>
+                  </label>
+                  <span className="text-[10px] text-amber-800 font-bold bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200/80">
+                    {improveStyle}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {[
-                    { id: 'مسجوع وأدبي', label: '📜 مسجوع وبليغ', desc: 'سجع راقٍ وقوافٍ متناغمة' },
-                    { id: 'رسمي وفخم', label: '👑 رسمي وفخم', desc: 'صياغة قيادية ملكية معتمدة' },
-                    { id: 'حماسي ومحفز', label: '🚀 حماسي وملهم', desc: 'يبعث الطاقة ويعزز الهمة' },
-                    { id: 'شاعري وبليغ', label: '✨ شاعري وأدبي', desc: 'ألفاظ عربية أصيلة وعذبة' },
-                    { id: 'لطيف للأطفال', label: '🎈 مرح للصغار', desc: 'مبسط وجذاب للمراحل المبكرة' },
-                    { id: 'موجز ومباشر', label: '⚡ موجز وقوي', desc: 'كلمات معدودة ذات أثر عميق' },
-                  ].map((s) => (
-                    <button
-                      key={s.id}
-                      type="button"
-                      onClick={() => setImproveStyle(s.id)}
-                      className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition cursor-pointer ${
-                        improveStyle === s.id
-                          ? 'border-amber-500 bg-amber-500 text-slate-950 font-black shadow-xs'
-                          : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
-                      }`}
-                    >
-                      {s.label}
-                    </button>
-                  ))}
+                    { id: 'مسجوع وأدبي', label: 'مسجوع وبليغ', icon: ScrollText, desc: 'سجع راقٍ وقوافٍ متناغمة' },
+                    { id: 'رسمي وفخم', label: 'رسمي وفخم', icon: Crown, desc: 'صياغة قيادية ملكية معتمدة' },
+                    { id: 'حماسي ومحفز', label: 'حماسي وملهم', icon: Rocket, desc: 'يبعث الطاقة ويعزز الهمة' },
+                    { id: 'شاعري وبليغ', label: 'شاعري وأدبي', icon: Feather, desc: 'ألفاظ عربية أصيلة وعذبة' },
+                    { id: 'لطيف للأطفال', label: 'مرح للصغار', icon: Smile, desc: 'مبسط وجذاب للمراحل المبكرة' },
+                    { id: 'موجز ومباشر', label: 'موجز وقوي', icon: Zap, desc: 'كلمات معدودة ذات أثر عميق' },
+                  ].map((s) => {
+                    const IconComp = s.icon;
+                    const isSelected = improveStyle === s.id;
+                    return (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => setImproveStyle(s.id)}
+                        className={`p-2.5 rounded-xl border text-right transition-all cursor-pointer flex items-start gap-2.5 relative group ${
+                          isSelected
+                            ? 'border-amber-500 bg-amber-50/90 text-amber-950 ring-2 ring-amber-400/40 shadow-xs'
+                            : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:border-slate-300'
+                        }`}
+                      >
+                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 transition-colors ${
+                          isSelected ? 'bg-amber-500 text-slate-950' : 'bg-slate-100 text-slate-600 group-hover:bg-amber-100 group-hover:text-amber-700'
+                        }`}>
+                          <IconComp className="w-3.5 h-3.5" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs font-black truncate">{s.label}</div>
+                          <div className="text-[10px] text-slate-500 truncate mt-0.5">{s.desc}</div>
+                        </div>
+                        {isSelected && (
+                          <div className="w-3.5 h-3.5 rounded-full bg-amber-500 text-slate-950 flex items-center justify-center shrink-0">
+                            <Check className="w-2.5 h-2.5 stroke-[3]" />
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
-              {/* Recipient Gender Toggle */}
-              <div className="flex items-center justify-between p-3 bg-amber-50/60 rounded-xl border border-amber-200/70">
+              {/* Recipient Gender Toggle Card */}
+              <div className="flex items-center justify-between p-3.5 bg-gradient-to-r from-amber-50/70 to-slate-50/70 rounded-2xl border border-amber-200/80 flex-wrap gap-3">
                 <div className="space-y-0.5">
-                  <span className="text-xs font-bold text-amber-950 block">صيغة المخاطب للتكريم:</span>
-                  <span className="text-[11px] text-amber-800 block">يضمن الذكاء الاصطناعي مطابقة الضمائر وقواعد النحو بدقة</span>
+                  <span className="text-xs font-black text-slate-900 block">صيغة المخاطب للتكريم:</span>
+                  <span className="text-[11px] text-slate-600 block font-medium">يضمن الذكاء الاصطناعي ضبط الضمائر وقواعد النحو بدقة</span>
                 </div>
-                <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-amber-200">
+                <div className="flex items-center gap-1.5 bg-white p-1.5 rounded-xl border border-amber-200 shadow-2xs">
                   <button
                     type="button"
                     onClick={() => setImproveRecipientGender('male')}
-                    className={`px-3 py-1 rounded-md text-xs font-bold transition cursor-pointer ${
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
                       improveRecipientGender === 'male'
-                        ? 'bg-amber-600 text-white font-black'
-                        : 'text-slate-600 hover:bg-slate-100'
+                        ? 'bg-amber-500 text-slate-950 shadow-sm ring-1 ring-amber-400'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                     }`}
                   >
-                    👨‍🎓 طالب (مذكر)
+                    <span>👨‍🎓</span>
+                    <span>طالب (مذكر)</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setImproveRecipientGender('female')}
-                    className={`px-3 py-1 rounded-md text-xs font-bold transition cursor-pointer ${
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
                       improveRecipientGender === 'female'
-                        ? 'bg-pink-600 text-white font-black'
-                        : 'text-slate-600 hover:bg-slate-100'
+                        ? 'bg-pink-600 text-white shadow-sm ring-1 ring-pink-400'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                     }`}
                   >
-                    👩‍🎓 طالبة (مؤنث)
+                    <span>👩‍🎓</span>
+                    <span>طالبة (مؤنث)</span>
                   </button>
                 </div>
               </div>
 
               {/* Original Text Input */}
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-bold text-slate-700">النص الأساسي المراد إعادة صياغته وتطويره:</label>
-                  <span className="text-[11px] text-slate-400">يمكنك تعديله أو كتابة أفكار مبدئية</span>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-black text-slate-900">النص الأساسي المراد إعادة صياغته وتطويره:</label>
+                  <span className="text-[11px] text-slate-400 font-medium">يمكنك تعديله أو تركه لاقتراح أفكار</span>
                 </div>
                 <textarea
                   rows={3}
                   value={improveInputText}
                   onChange={(e) => setImproveInputText(e.target.value)}
                   placeholder="أدخل النص الحالي أو اترك الذكاء الاصطناعي يقترح أفضل الصياغات بناء على بيانات الشهادة..."
-                  className="w-full p-3 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 font-medium leading-relaxed bg-white"
+                  className="w-full p-3 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 font-medium leading-relaxed bg-white shadow-2xs"
                 />
               </div>
 
-              {/* Action Button */}
-              <div className="flex justify-end">
+              {/* Main Action Button */}
+              <div className="flex justify-end pt-1">
                 <button
                   type="button"
                   onClick={handleImproveText}
                   disabled={isImproving}
-                  className="px-6 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black text-xs rounded-xl shadow-md transition flex items-center gap-2 disabled:opacity-50 cursor-pointer"
+                  className="w-full sm:w-auto px-7 py-3 bg-gradient-to-r from-amber-500 via-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs sm:text-sm rounded-xl shadow-lg hover:shadow-xl transition-all active:scale-98 flex items-center justify-center gap-2.5 disabled:opacity-50 cursor-pointer"
                 >
                   {isImproving ? (
                     <>
@@ -521,7 +595,7 @@ export const AIGeneratorModal: React.FC<Props> = ({
                     </>
                   ) : (
                     <>
-                      <Sparkles className="w-4 h-4" />
+                      <Sparkles className="w-4 h-4 animate-bounce" />
                       <span>توليد خيارات الصياغة المحسنة ✨</span>
                     </>
                   )}
@@ -530,48 +604,52 @@ export const AIGeneratorModal: React.FC<Props> = ({
 
               {/* Generated Variations List */}
               {variations.length > 0 && (
-                <div className="space-y-3 pt-3 border-t border-slate-200">
+                <div className="space-y-3 pt-4 border-t border-slate-200">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-extrabold text-slate-800 flex items-center gap-2">
+                    <span className="text-xs font-black text-slate-900 flex items-center gap-2">
                       <Crown className="w-4 h-4 text-amber-600" />
                       الخيارات والبدائل البلاغية المقترحة:
                     </span>
-                    <span className="text-[10px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                    <span className="text-[10px] font-bold text-amber-900 bg-amber-100/80 px-2.5 py-1 rounded-full border border-amber-200 shadow-2xs">
                       {improveSource === 'ai' ? `⚡ تم التوليد بنموذج ${currentModelOption.name}` : '🍃 تم التوليد عبر المحرك اللغوي الفائق'}
                     </span>
                   </div>
 
-                  <div className="space-y-2.5">
+                  <div className="space-y-3">
                     {variations.map((v) => (
                       <div
                         key={v.id}
-                        className={`p-3.5 rounded-2xl border transition-all ${
+                        className={`p-4 rounded-2xl border transition-all ${
                           appliedId === v.id
-                            ? 'bg-emerald-50/90 border-emerald-300 ring-2 ring-emerald-400/40'
-                            : 'bg-white border-slate-200 hover:border-amber-300 hover:shadow-sm'
+                            ? 'bg-emerald-50/95 border-emerald-400 ring-2 ring-emerald-400/40 shadow-sm'
+                            : 'bg-white border-slate-200 hover:border-amber-400 hover:shadow-md'
                         }`}
                       >
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-[11px] font-bold text-amber-900 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
-                            {v.styleLabel || 'صياغة مميزة'}
+                        <div className="flex items-center justify-between mb-2.5 gap-2">
+                          <span className="text-[11px] font-black text-amber-950 bg-amber-100/80 px-2.5 py-0.5 rounded-lg border border-amber-200/80 flex items-center gap-1">
+                            <span>✨</span>
+                            <span>{v.styleLabel || 'صياغة مميزة'}</span>
                           </span>
-                          <div className="flex items-center gap-1.5">
+                          
+                          <div className="flex items-center gap-2">
+                            {/* Copy Button */}
                             <button
                               type="button"
                               onClick={() => handleCopyText(v.text, v.id)}
-                              className="px-2 py-1 text-[11px] font-bold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-lg transition flex items-center gap-1 cursor-pointer"
+                              className="px-2.5 py-1.5 text-[11px] font-bold text-slate-700 hover:text-slate-950 bg-slate-100 hover:bg-slate-200/80 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer border border-slate-200 active:scale-95"
                             >
-                              {copiedId === v.id ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                              {copiedId === v.id ? <Check className="w-3.5 h-3.5 text-emerald-600 stroke-[3]" /> : <Copy className="w-3.5 h-3.5 text-slate-500" />}
                               <span>{copiedId === v.id ? 'تم النسخ!' : 'نسخ'}</span>
                             </button>
 
+                            {/* Apply Button */}
                             <button
                               type="button"
                               onClick={() => handleApplyVariation(v)}
-                              className={`px-3 py-1 text-xs font-extrabold rounded-lg transition flex items-center gap-1.5 cursor-pointer ${
+                              className={`px-3.5 py-1.5 text-xs font-black rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95 ${
                                 appliedId === v.id
-                                  ? 'bg-emerald-600 text-white'
-                                  : 'bg-amber-500 hover:bg-amber-600 text-slate-950'
+                                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                                  : 'bg-amber-500 hover:bg-amber-400 text-slate-950'
                               }`}
                             >
                               {appliedId === v.id ? (
@@ -589,7 +667,7 @@ export const AIGeneratorModal: React.FC<Props> = ({
                           </div>
                         </div>
 
-                        <p className="text-xs text-slate-800 leading-relaxed font-medium">
+                        <p className="text-xs sm:text-sm text-slate-800 leading-relaxed font-semibold bg-slate-50/50 p-2.5 rounded-xl border border-slate-100">
                           {v.text}
                         </p>
                       </div>
@@ -603,12 +681,19 @@ export const AIGeneratorModal: React.FC<Props> = ({
 
           {/* ======================= TAB 2: FULL GENERATOR ======================= */}
           {modalTab === 'full' && (
-            <div className="space-y-4">
+            <div className="space-y-5">
               
-              {/* Quick Presets */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-2">مقترحات ونماذج سريعة جاهزة:</label>
-                <div className="flex flex-wrap gap-1.5">
+              {/* Quick Presets Options */}
+              <div className="bg-slate-50/80 p-3.5 sm:p-4 rounded-2xl border border-slate-200/90 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-black text-slate-900 flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4 text-amber-600" />
+                    <span>نماذج ومقترحات سريعة جاهزة:</span>
+                  </label>
+                  <span className="text-[10px] text-slate-500 font-bold">انقر للتعبئة الفورية</span>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
                   {quickPresets.map((preset, idx) => (
                     <button
                       key={idx}
@@ -617,136 +702,143 @@ export const AIGeneratorModal: React.FC<Props> = ({
                         setSubject(preset.title);
                         setAchievement(preset.achievement);
                       }}
-                      className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-lg text-xs font-bold transition cursor-pointer"
+                      className="px-3 py-1.5 bg-white hover:bg-amber-50 text-slate-800 hover:text-amber-950 border border-slate-200 hover:border-amber-400 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs active:scale-95"
                     >
-                      ⚡ {preset.title}
+                      <span>{preset.icon}</span>
+                      <span>{preset.title}</span>
                     </button>
                   ))}
                 </div>
               </div>
 
               {/* Recipient Gender Selector */}
-              <div className="bg-amber-50/70 p-3 rounded-xl border border-amber-200/80">
-                <label className="block text-xs font-bold text-slate-800 mb-1.5 flex items-center gap-1.5">
-                  <span>🎓</span>
-                  <span>نوع المكرّم (تحديد صيغة الشهادة للذكاء الاصطناعي):</span>
+              <div className="bg-gradient-to-r from-amber-50/70 to-slate-50/70 p-3.5 rounded-2xl border border-amber-200/80 space-y-2">
+                <label className="block text-xs font-black text-slate-900">
+                  نوع المكرّم (تحديد صيغة الشهادة للذكاء الاصطناعي):
                 </label>
-                <div className="grid grid-cols-2 gap-2 bg-white p-1 rounded-xl border border-amber-200/90">
+                <div className="grid grid-cols-2 gap-2 bg-white p-1.5 rounded-xl border border-amber-200">
                   <button
                     type="button"
                     onClick={() => setRecipientGender('male')}
-                    className={`py-2 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition cursor-pointer ${
+                    className={`py-2.5 px-3 rounded-lg text-xs font-black flex items-center justify-center gap-2 transition-all cursor-pointer ${
                       recipientGender === 'male'
-                        ? 'bg-amber-600 text-white shadow-xs font-black'
-                        : 'text-slate-700 hover:bg-slate-100'
+                        ? 'bg-amber-500 text-slate-950 shadow-sm ring-1 ring-amber-400 font-black'
+                        : 'text-slate-600 hover:bg-slate-100'
                     }`}
                   >
-                    <span>👨‍🎓</span>
+                    <span className="text-base">👨‍🎓</span>
                     <span>طالب (مذكر)</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setRecipientGender('female')}
-                    className={`py-2 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition cursor-pointer ${
+                    className={`py-2.5 px-3 rounded-lg text-xs font-black flex items-center justify-center gap-2 transition-all cursor-pointer ${
                       recipientGender === 'female'
-                        ? 'bg-pink-600 text-white shadow-xs font-black'
-                        : 'text-slate-700 hover:bg-slate-100'
+                        ? 'bg-pink-600 text-white shadow-sm ring-1 ring-pink-400 font-black'
+                        : 'text-slate-600 hover:bg-slate-100'
                     }`}
                   >
-                    <span>👩‍🎓</span>
+                    <span className="text-base">👩‍🎓</span>
                     <span>طالبة (مؤنث)</span>
                   </button>
                 </div>
               </div>
 
+              {/* Fields */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">اسم الطالب / الطالبة</label>
+                <div className="space-y-1">
+                  <label className="block text-xs font-black text-slate-800">اسم الطالب / الطالبة</label>
                   <input
                     type="text"
                     value={studentName}
                     onChange={(e) => handleStudentNameChange(e.target.value)}
                     placeholder={recipientGender === 'female' ? 'سارة بنت أحمد الغامدي' : 'أحمد بن علي العتيبي'}
-                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 font-bold"
+                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 font-bold bg-white"
                   />
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">الصف / الفصل</label>
+                <div className="space-y-1">
+                  <label className="block text-xs font-black text-slate-800">الصف / الفصل</label>
                   <input
                     type="text"
                     value={grade}
                     onChange={(e) => setGrade(e.target.value)}
                     placeholder="الصف الخامس - أ"
-                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500"
+                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 font-bold bg-white"
                   />
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">المادة / المجال المكرم فيه</label>
+              <div className="space-y-1">
+                <label className="block text-xs font-black text-slate-800">المادة / المجال المكرم فيه</label>
                 <input
                   type="text"
                   value={subject}
                   onChange={(e) => setSubject(e.target.value)}
                   placeholder="مثال: الرياضيات، حفظ القرآن، الابتكار الرقمي"
-                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500"
+                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 font-bold bg-white"
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">تفاصيل الإنجاز / سبب الشكر</label>
+              <div className="space-y-1">
+                <label className="block text-xs font-black text-slate-800">تفاصيل الإنجاز / سبب الشكر</label>
                 <textarea
                   rows={2}
                   value={achievement}
                   onChange={(e) => setAchievement(e.target.value)}
                   placeholder="مثال: حصل على الدرجة الكاملة في الاختبار النهائي وساعد زملائه باجتهاد"
-                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 leading-relaxed"
+                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 leading-relaxed font-medium bg-white"
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-2">أسلوب ونبرة النص:</label>
+              {/* Tone Buttons */}
+              <div className="space-y-2">
+                <label className="block text-xs font-black text-slate-800">أسلوب ونبرة النص المطلوبة:</label>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {[
-                    { id: 'حماسي ورائع', label: '🚀 حماسي ومحفز' },
-                    { id: 'رسمي وفخم', label: '👑 رسمي وفخم' },
-                    { id: 'لطيف للأطفال', label: '🎈 مرح ولطيف' },
-                    { id: 'شاعري وأدبي', label: '📜 شاعري وبليغ' },
-                  ].map((t) => (
-                    <button
-                      key={t.id}
-                      type="button"
-                      onClick={() => setTone(t.id as any)}
-                      className={`p-2.5 rounded-xl border text-xs font-bold transition cursor-pointer ${
-                        tone === t.id
-                          ? 'border-amber-500 bg-amber-50 text-amber-950 font-black ring-2 ring-amber-400/30'
-                          : 'border-slate-200 text-slate-700 hover:bg-slate-50'
-                      }`}
-                    >
-                      {t.label}
-                    </button>
-                  ))}
+                    { id: 'حماسي ورائع', label: 'حماسي ومحفز', icon: Rocket },
+                    { id: 'رسمي وفخم', label: 'رسمي وفخم', icon: Crown },
+                    { id: 'لطيف للأطفال', label: 'مرح ولطيف', icon: Smile },
+                    { id: 'شاعري وأدبي', label: 'شاعري وبليغ', icon: ScrollText },
+                  ].map((t) => {
+                    const IconComp = t.icon;
+                    const isSelected = tone === t.id;
+                    return (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => setTone(t.id as any)}
+                        className={`p-2.5 rounded-xl border text-xs font-black transition-all flex flex-col items-center justify-center gap-1.5 cursor-pointer relative group ${
+                          isSelected
+                            ? 'border-amber-500 bg-amber-500 text-slate-950 shadow-sm ring-2 ring-amber-400/40 scale-[1.02]'
+                            : 'border-slate-200 text-slate-700 bg-white hover:bg-slate-50 hover:border-slate-300'
+                        }`}
+                      >
+                        <IconComp className={`w-4 h-4 ${isSelected ? 'text-slate-950' : 'text-amber-600'}`} />
+                        <span>{t.label}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
-              {/* Action Button */}
+              {/* Main Action Button */}
               <div className="flex justify-end pt-2">
                 <button
                   type="button"
                   onClick={handleGenerateFull}
                   disabled={isGeneratingFull}
-                  className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black text-xs rounded-xl shadow-md transition disabled:opacity-50 cursor-pointer"
+                  className="w-full sm:w-auto px-7 py-3 bg-gradient-to-r from-amber-500 via-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs sm:text-sm rounded-xl shadow-lg hover:shadow-xl transition-all active:scale-98 flex items-center justify-center gap-2.5 disabled:opacity-50 cursor-pointer"
                 >
                   {isGeneratingFull ? (
                     <>
                       <RefreshCw className="w-4 h-4 animate-spin" />
-                      جاري صياغة وبناء الشهادة المتكاملة...
+                      <span>جاري صياغة وبناء الشهادة المتكاملة بالذكاء الاصطناعي...</span>
                     </>
                   ) : (
                     <>
-                      <Sparkles className="w-4 h-4" />
-                      توليد وتطبيق الشهادة الآن
+                      <Sparkles className="w-4 h-4 animate-bounce" />
+                      <span>توليد وتطبيق الشهادة الآن ✨</span>
                     </>
                   )}
                 </button>
@@ -757,54 +849,64 @@ export const AIGeneratorModal: React.FC<Props> = ({
 
           {/* ======================= TAB 3: QUICK AI SETTINGS ======================= */}
           {modalTab === 'settings' && (
-            <div className="space-y-4">
+            <div className="space-y-5">
               
-              <div className="p-3.5 bg-slate-900 text-white rounded-2xl flex items-center justify-between">
+              <div className="p-4 bg-slate-950 text-white rounded-2xl flex items-center justify-between border border-slate-800 shadow-sm">
                 <div>
-                  <h4 className="text-xs font-extrabold flex items-center gap-2 text-amber-400">
+                  <h4 className="text-xs sm:text-sm font-black flex items-center gap-2 text-amber-400">
                     <Cpu className="w-4 h-4" />
                     التحكم في نماذج الذكاء الاصطناعي والمفاتيح
                   </h4>
-                  <p className="text-[11px] text-slate-300 mt-0.5">
+                  <p className="text-[11px] text-slate-300 mt-0.5 leading-snug">
                     يمكنك تغيير النموذج أو إدخال مفتاح API خاص بك للعمل على أي سيرفر خارجي دون انقطاع
                   </p>
                 </div>
-                <span className="text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full border border-amber-400/30 font-mono">
+                <span className="text-[10px] bg-amber-500/20 text-amber-300 px-3 py-1 rounded-full border border-amber-400/30 font-mono font-bold shrink-0">
                   {tempModel}
                 </span>
               </div>
 
-              {/* Model Selector */}
-              <div>
-                <label className="block text-xs font-bold text-slate-800 mb-2">
+              {/* Model Selector Cards */}
+              <div className="space-y-2.5">
+                <label className="block text-xs font-black text-slate-900">
                   اختر نموذج الذكاء الاصطناعي النشط:
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  {SUPPORTED_AI_MODELS.map((model) => (
-                    <div
-                      key={model.id}
-                      onClick={() => setTempModel(model.id)}
-                      className={`p-3 rounded-xl border transition cursor-pointer ${
-                        tempModel === model.id
-                          ? 'border-amber-500 bg-amber-50/70 ring-2 ring-amber-400/30'
-                          : 'border-slate-200 bg-white hover:bg-slate-50'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs font-bold text-slate-900">{model.name}</span>
-                        <span className="text-[10px] font-bold text-amber-800 bg-amber-100/80 px-2 py-0.5 rounded-full">
-                          {model.badge}
-                        </span>
+                  {SUPPORTED_AI_MODELS.map((model) => {
+                    const isSelected = tempModel === model.id;
+                    return (
+                      <div
+                        key={model.id}
+                        onClick={() => setTempModel(model.id)}
+                        className={`p-3.5 rounded-2xl border transition-all cursor-pointer relative ${
+                          isSelected
+                            ? 'border-amber-500 bg-amber-50/90 ring-2 ring-amber-400/40 shadow-sm'
+                            : 'border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1.5">
+                          <div className="flex items-center gap-2">
+                            <div className={`w-3.5 h-3.5 rounded-full flex items-center justify-center border ${
+                              isSelected ? 'border-amber-600 bg-amber-500' : 'border-slate-300 bg-white'
+                            }`}>
+                              {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-slate-950" />}
+                            </div>
+                            <span className="text-xs font-black text-slate-950">{model.name}</span>
+                          </div>
+                          <span className="text-[10px] font-black text-amber-900 bg-amber-100/90 px-2 py-0.5 rounded-md border border-amber-200/80">
+                            {model.badge}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-600 leading-relaxed font-medium pr-5.5">{model.description}</p>
                       </div>
-                      <p className="text-[11px] text-slate-500 leading-relaxed">{model.description}</p>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 
               {/* Custom API Key Input */}
-              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
-                <label className="block text-xs font-bold text-slate-800">
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/90 space-y-2.5">
+                <label className="block text-xs font-black text-slate-900">
                   مفتاح Gemini API الخاص (اختياري عند الرفع على خادم خارجي):
                 </label>
                 <div className="flex items-center gap-2">
@@ -814,29 +916,30 @@ export const AIGeneratorModal: React.FC<Props> = ({
                       value={tempApiKey}
                       onChange={(e) => setTempApiKey(e.target.value)}
                       placeholder="AIzaSy... أو AQ.Ab... (اتركه فارغاً للاعتماد على مفتاح السيرفر)"
-                      className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl font-mono text-left dir-ltr bg-white focus:ring-2 focus:ring-amber-500"
+                      className="w-full px-3.5 py-2.5 text-xs border border-slate-300 rounded-xl font-mono text-left dir-ltr bg-white focus:ring-2 focus:ring-amber-500 shadow-2xs font-bold"
                     />
                   </div>
                   <button
                     type="button"
                     onClick={() => setShowKey(!showKey)}
-                    className="px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+                    className="px-3.5 py-2.5 bg-white border border-slate-300 hover:border-slate-400 rounded-xl text-xs font-black text-slate-700 hover:bg-slate-100 transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
                   >
-                    {showKey ? 'إخفاء' : 'إظهار'}
+                    {showKey ? <EyeOff className="w-3.5 h-3.5 text-slate-500" /> : <Eye className="w-3.5 h-3.5 text-slate-500" />}
+                    <span>{showKey ? 'إخفاء' : 'إظهار'}</span>
                   </button>
                 </div>
-                <p className="text-[10px] text-slate-500">
+                <p className="text-[10px] text-slate-500 font-medium">
                   * إذا رفعت النظام على سيرفرك الخاص، يمكنك كتابة مفتاحك هنا لضمان عمل كافة الوظائف الذكية باستمرار.
                 </p>
               </div>
 
               {/* Test Connection Button & Status */}
-              <div className="flex items-center justify-between flex-wrap gap-2 pt-2 border-t border-slate-200">
+              <div className="flex items-center justify-between flex-wrap gap-2.5 pt-2 border-t border-slate-200">
                 <button
                   type="button"
                   onClick={handleTestConnection}
                   disabled={isTesting}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-xl transition flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-black text-xs rounded-xl transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 shadow-sm active:scale-95"
                 >
                   {isTesting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />}
                   <span>فحص واختبار الاتصال بالـ API</span>
@@ -845,9 +948,9 @@ export const AIGeneratorModal: React.FC<Props> = ({
                 <button
                   type="button"
                   onClick={handleSaveQuickSettings}
-                  className="px-5 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs rounded-xl shadow-md transition flex items-center gap-1.5 cursor-pointer"
+                  className="px-6 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl shadow-md hover:shadow-lg transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
                 >
-                  <Check className="w-4 h-4" />
+                  <Check className="w-4 h-4 stroke-[3]" />
                   <span>حفظ إعدادات الـ API</span>
                 </button>
               </div>
@@ -855,10 +958,10 @@ export const AIGeneratorModal: React.FC<Props> = ({
               {/* Test Result Message */}
               {testResult && (
                 <div
-                  className={`p-3 rounded-xl border text-xs font-bold flex items-center gap-2 ${
+                  className={`p-3.5 rounded-xl border text-xs font-black flex items-center gap-2.5 ${
                     testResult.success
-                      ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
-                      : 'bg-red-50 border-red-300 text-red-900'
+                      ? 'bg-emerald-50 border-emerald-300 text-emerald-950'
+                      : 'bg-red-50 border-red-300 text-red-950'
                   }`}
                 >
                   {testResult.success ? (
@@ -869,14 +972,14 @@ export const AIGeneratorModal: React.FC<Props> = ({
                   <div className="flex-1">
                     <span>{testResult.message}</span>
                     {testResult.latencyMs && (
-                      <span className="font-mono text-[10px] mr-2">({testResult.latencyMs}ms)</span>
+                      <span className="font-mono text-[10px] mr-2 text-emerald-700">({testResult.latencyMs}ms)</span>
                     )}
                   </div>
                 </div>
               )}
 
               {settingsSavedSuccess && (
-                <div className="p-3 bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs font-bold rounded-xl flex items-center gap-2">
+                <div className="p-3.5 bg-emerald-50 border border-emerald-300 text-emerald-950 text-xs font-black rounded-xl flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                   <span>تم حفظ الإعدادات وتطبيق النموذج بنجاح! 🟢</span>
                 </div>
@@ -886,23 +989,24 @@ export const AIGeneratorModal: React.FC<Props> = ({
           )}
 
           {errorMessage && (
-            <div className="p-3 bg-red-50 border border-red-200 text-red-800 rounded-xl text-xs font-medium">
-              ⚠️ {errorMessage}
+            <div className="p-3.5 bg-red-50 border border-red-200 text-red-900 rounded-xl text-xs font-bold flex items-center gap-2">
+              <span>⚠️</span>
+              <span>{errorMessage}</span>
             </div>
           )}
 
         </div>
 
         {/* Modal Footer */}
-        <div className="bg-slate-50 p-3 sm:p-4 border-t border-slate-200 flex items-center justify-between">
+        <div className="bg-slate-50 p-3.5 sm:p-4 border-t border-slate-200 flex items-center justify-between shrink-0">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-slate-600 hover:text-slate-900 font-bold text-xs cursor-pointer"
+            className="px-4 py-2 text-slate-700 hover:text-slate-950 hover:bg-slate-200/60 rounded-xl font-bold text-xs transition cursor-pointer"
           >
-            إغلاق
+            إغلاق النافذة
           </button>
-          <span className="text-[11px] text-slate-500">
+          <span className="text-[11px] text-slate-500 font-bold">
             نظام تقدير الذكي © 1447 هـ
           </span>
         </div>

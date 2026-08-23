@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { CertificateData } from './types';
 import { TEMPLATE_PRESETS } from './data/templates';
 import { applyDefaultsToCertificate, getSavedDefaultSettings, getFormattedTodayDate } from './utils/defaultSettings';
@@ -142,10 +142,56 @@ const getAutosavedInitialData = (): CertificateData => {
   return INITIAL_CERTIFICATE_DATA;
 };
 
+const getInitialUrlState = () => {
+  if (typeof window === 'undefined') {
+    return { isStandalone: false, code: '', tab: 'editor' as const };
+  }
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const code =
+      params.get('code') ||
+      params.get('verify') ||
+      params.get('id') ||
+      params.get('cert') ||
+      params.get('ref') ||
+      params.get('serial') ||
+      params.get('v');
+    const tab = params.get('tab');
+    const isPortal =
+      params.get('portal') === 'true' ||
+      params.get('standalone') === 'true' ||
+      window.location.pathname.startsWith('/verify') ||
+      window.location.pathname.startsWith('/cert');
+
+    // Also check path parts like /verify/TAQDEER-2026-X89F2A or /cert/TAQDEER-2026-X89F2A
+    let pathCode = '';
+    const pathParts = window.location.pathname.split('/').filter(Boolean);
+    if (pathParts.length >= 2 && ['verify', 'cert', 'd', 'certificate'].includes(pathParts[0].toLowerCase())) {
+      pathCode = pathParts[1];
+    }
+
+    const finalCode = (code || pathCode || '').trim();
+
+    if (isPortal || window.location.pathname.startsWith('/verify')) {
+      return { isStandalone: true, code: finalCode, tab: 'verify' as const };
+    }
+    if (tab === 'verify' || finalCode) {
+      return { isStandalone: false, code: finalCode, tab: 'verify' as const };
+    }
+    if (tab && ['editor', 'batch', 'dashboard', 'cloud', 'verify', 'ai', 'settings'].includes(tab)) {
+      return { isStandalone: false, code: finalCode, tab: tab as any };
+    }
+  } catch (e) {
+    console.error('Error parsing initial URL state:', e);
+  }
+  return { isStandalone: false, code: '', tab: 'editor' as const };
+};
+
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'editor' | 'batch' | 'dashboard' | 'cloud' | 'verify' | 'ai' | 'settings'>('editor');
-  const [urlVerifyCode, setUrlVerifyCode] = useState<string>('');
-  const [isStandalonePortal, setIsStandalonePortal] = useState<boolean>(false);
+  const initialUrlState = useMemo(() => getInitialUrlState(), []);
+  const [activeTab, setActiveTab] = useState<'editor' | 'batch' | 'dashboard' | 'cloud' | 'verify' | 'ai' | 'settings'>(initialUrlState.tab);
+  const [urlVerifyCode, setUrlVerifyCode] = useState<string>(initialUrlState.code);
+  const [isStandalonePortal, setIsStandalonePortal] = useState<boolean>(initialUrlState.isStandalone);
   
   // History State for Undo / Redo - initialized with LocalStorage autosaved draft if present
   const [history, setHistory] = useState<CertificateData[]>(() => [getAutosavedInitialData()]);
@@ -155,20 +201,16 @@ export default function App() {
   // Check URL query parameters for direct verification link or standalone portal mode
   useEffect(() => {
     try {
-      const params = new URLSearchParams(window.location.search);
-      const code = params.get('code') || params.get('verify') || params.get('id');
-      const tab = params.get('tab');
-      const isPortal = params.get('portal') === 'true' || params.get('standalone') === 'true';
-
-      if (isPortal) {
+      const state = getInitialUrlState();
+      if (state.isStandalone) {
         setIsStandalonePortal(true);
         setActiveTab('verify');
-        if (code) {
-          setUrlVerifyCode(code);
+        if (state.code) {
+          setUrlVerifyCode(state.code);
         }
-      } else if (tab === 'verify' || code) {
-        if (code) {
-          setUrlVerifyCode(code);
+      } else if (state.tab === 'verify' || state.code) {
+        if (state.code) {
+          setUrlVerifyCode(state.code);
         }
         setActiveTab('verify');
       }

@@ -199,14 +199,14 @@ export const VerificationPortal: React.FC<Props> = ({
     }, 250);
   };
 
-  // Run on mount if initialCode provided or default to currentCertificate's code
+  // Run on mount if initialCode provided or default to currentCertificate's code (only in embedded mode)
   useEffect(() => {
-    const codeToSearch = initialCode || currentCertificate.verificationCode || currentCertificate.id;
+    const codeToSearch = initialCode || (!isStandalone ? (currentCertificate.verificationCode || currentCertificate.id) : '');
     if (codeToSearch) {
       setSearchQuery(codeToSearch);
       runVerification(codeToSearch);
     }
-  }, [initialCode]);
+  }, [initialCode, isStandalone]);
 
   const handleSearchSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -417,21 +417,21 @@ export const VerificationPortal: React.FC<Props> = ({
           </div>
         </form>
 
-        {/* Sample / Quick Inspect Pills from stored certificates - ONLY in internal app view, NOT in standalone portal */}
-        {!isStandalone && allCertsList.length > 0 && (
+        {/* Sample / Quick Inspect Pills from stored certificates */}
+        {allCertsList.length > 0 && (
           <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center gap-2 text-xs">
             <span className="text-slate-500 font-bold text-[11px] flex items-center gap-1">
               <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-              <span>شهادات مسجلة بالسحابة للفحص السريع:</span>
+              <span>{isStandalone ? 'شهادات مسجلة بالنظام للفحص السريع:' : 'شهادات مسجلة بالسحابة للفحص السريع:'}</span>
             </span>
             <div className="flex flex-wrap gap-1.5 overflow-x-auto no-scrollbar max-h-16 overflow-y-auto">
-              {allCertsList.slice(0, 8).map((item) => {
+              {allCertsList.slice(0, 10).map((item) => {
                 const code = item.cert.verificationCode || item.cert.id;
                 const isCurrent = searchQuery.toUpperCase() === code.toUpperCase();
 
                 return (
                   <button
-                    key={item.cert.id}
+                    key={item.cert.id || code}
                     onClick={() => {
                       setSearchQuery(code);
                       runVerification(code);
@@ -1087,10 +1087,10 @@ export const VerificationPortal: React.FC<Props> = ({
 
       {isDriveRequestModalOpen && result && result.cert && (
         <DriveVerificationRequestModal
+          isOpen={isDriveRequestModalOpen}
           certificate={result.cert}
-          verificationCode={result.verificationCode}
           onClose={() => setIsDriveRequestModalOpen(false)}
-          onShowToast={showToast}
+          onSuccess={showToast}
         />
       )}
 

@@ -3186,9 +3186,9 @@ export const AppSettingsModal: React.FC<Props> = ({
                         </div>
 
                         <div className="bg-white p-2 rounded-lg border border-slate-200 text-[11px] text-slate-700 space-y-1">
-                          <div><span className="text-slate-500">مقدم الطلب:</span> <strong>{req.requesterName}</strong> {req.requesterEmail && `(${req.requesterEmail})`} {req.requesterPhone && `| ${req.requesterPhone}`}</div>
-                          {req.notes && <div><span className="text-slate-500">ملاحظات:</span> <em>"{req.notes}"</em></div>}
-                          <div className="text-[10px] text-slate-400 font-mono">تاريخ الطلب: {new Date(req.createdAt).toLocaleString('ar-SA')}</div>
+                          <div><span className="text-slate-500">مقدم الطلب:</span> <strong>{req.requesterName || 'زائر / ولي أمر'}</strong> {req.requesterContact && `(${req.requesterContact})`}</div>
+                          {req.requesterNotes && <div><span className="text-slate-500">ملاحظات:</span> <em>"{req.requesterNotes}"</em></div>}
+                          <div className="text-[10px] text-slate-400 font-mono">تاريخ الطلب: {new Date(req.requestedAt).toLocaleString('ar-SA')}</div>
                         </div>
 
                         <div className="flex items-center justify-between pt-1">

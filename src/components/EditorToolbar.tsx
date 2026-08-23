@@ -861,7 +861,7 @@ export const EditorToolbar: React.FC<Props> = ({
 
   const handleGenderChange = async (gender: RecipientGender) => {
     // 1. Instant local rule-based conversion so UI updates immediately with smart fallback
-    const updated = adaptCertificateGender(certificateData, gender, { preserveCustomStudentName: true });
+    const updated = adaptCertificateGenderSync(certificateData, gender, { preserveCustomStudentName: true });
     onChange(updated);
 
     // 2. Call AI API in background with active AI settings & headers for ultra-refined AI Arabic phrasing adaptation
@@ -1389,7 +1389,7 @@ export const EditorToolbar: React.FC<Props> = ({
                 </p>
               </div>
               <button
-                onClick={onOpenAiModal}
+                onClick={() => onOpenAiModal('improve', 'appreciation')}
                 className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs rounded-lg transition shadow-2xs whitespace-nowrap cursor-pointer"
               >
                 توليد بـ AI

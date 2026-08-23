@@ -1289,7 +1289,8 @@ export const CertificateCanvas: React.FC<Props> = ({
     style?: React.CSSProperties;
     multiline?: boolean;
     rows?: number;
-  }> = ({ value, onChange, placeholder = '', className = '', style = {}, multiline = false }) => {
+    inline?: boolean;
+  }> = ({ value, onChange, placeholder = '', className = '', style = {}, multiline = false, inline = false }) => {
     // Helper to strip classes that cause text clipping or truncation
     const sanitizeCls = (cls: string) => {
       return cls
@@ -1303,14 +1304,47 @@ export const CertificateCanvas: React.FC<Props> = ({
     const cleanClassName = sanitizeCls(className);
     const customLineHeight = (style as Record<string, unknown>)?.lineHeight as string | undefined;
     const customLetterSpacing = (style as Record<string, unknown>)?.letterSpacing as string | undefined;
-    const styleTextAlign = ((style as Record<string, unknown>)?.textAlign as string | undefined) ||
-      (cleanClassName.includes('text-right') ? 'right' : cleanClassName.includes('text-left') ? 'left' : 'center');
+    const styleTextAlign = (((style as Record<string, unknown>)?.textAlign as React.CSSProperties['textAlign']) ||
+      (cleanClassName.includes('text-right') ? 'right' : cleanClassName.includes('text-left') ? 'left' : 'center')) as React.CSSProperties['textAlign'];
 
     const isEditable = !isExporting && !!onUpdateData;
     const displayValue = value || (isExporting ? placeholder : '');
 
+    // Determine whitespace class based on multiline or caller preferences
+    const whitespaceCls = cleanClassName.includes('whitespace-')
+      ? ''
+      : multiline
+      ? 'whitespace-pre-wrap'
+      : 'whitespace-normal';
+
+    if (!isEditable) {
+      return (
+        <span
+          className={`${cleanClassName} ${whitespaceCls} ${inline ? 'inline-block align-middle' : 'block'} break-words`}
+          style={{
+            textAlign: styleTextAlign,
+            lineHeight: customLineHeight || (multiline ? '1.5' : '1.25'),
+            letterSpacing: customLetterSpacing || 'normal',
+            wordBreak: 'break-word',
+            overflowWrap: 'break-word',
+            ...style,
+          }}
+          dir="auto"
+        >
+          {displayValue || placeholder}
+        </span>
+      );
+    }
+
     return (
-      <div className="relative group/inline w-full max-w-full">
+      <div
+        className={`relative group/inline ${inline ? 'inline-flex items-center align-middle' : 'w-full max-w-full flex flex-col'}`}
+        style={{
+          alignItems: styleTextAlign === 'right' ? 'flex-end' : styleTextAlign === 'left' ? 'flex-start' : 'center',
+          justifyContent: 'center',
+          margin: (style as Record<string, unknown>)?.margin as string | undefined || (inline ? undefined : '0 auto'),
+        }}
+      >
         <div
           contentEditable={isEditable}
           suppressContentEditableWarning
@@ -1325,29 +1359,24 @@ export const CertificateCanvas: React.FC<Props> = ({
             }
           }}
           data-placeholder={placeholder}
-          className={`${cleanClassName} ${
-            isEditable ? 'outline-none hover:ring-1 hover:ring-amber-400/60 focus:ring-2 focus:ring-amber-400/80 rounded transition-all cursor-text' : ''
-          } whitespace-pre-wrap break-words max-w-full`}
+          className={`${cleanClassName} outline-none hover:ring-1 hover:ring-amber-400/60 focus:ring-2 focus:ring-amber-400/80 rounded transition-all cursor-text ${whitespaceCls} break-words ${inline ? 'inline-block' : 'max-w-full'}`}
           style={{
-            ...style,
             textAlign: styleTextAlign,
-            lineHeight: customLineHeight || (multiline ? '1.5' : '1.4'),
+            lineHeight: customLineHeight || (multiline ? '1.5' : '1.25'),
             letterSpacing: customLetterSpacing || 'normal',
-            overflow: 'visible',
-            textOverflow: 'clip',
             wordBreak: 'break-word',
             overflowWrap: 'break-word',
             minHeight: '1em',
+            margin: inline ? undefined : '0 auto',
+            ...style,
           }}
           dir="auto"
         >
-          {displayValue || (!isExporting ? placeholder : '')}
+          {displayValue || placeholder}
         </div>
-        {isEditable && (
-          <span className="opacity-0 group-hover/inline:opacity-100 transition-opacity absolute -top-3.5 left-1/2 -translate-x-1/2 bg-amber-700 text-white text-[10px] px-1.5 py-0.5 rounded shadow pointer-events-none z-30 font-sans font-bold flex items-center gap-1 whitespace-nowrap">
-            <Edit3 className="w-2.5 h-2.5" /> تحرير
-          </span>
-        )}
+        <span className="opacity-0 group-hover/inline:opacity-100 transition-opacity absolute -top-3.5 left-1/2 -translate-x-1/2 bg-amber-700 text-white text-[10px] px-1.5 py-0.5 rounded shadow pointer-events-none z-30 font-sans font-bold flex items-center gap-1 whitespace-nowrap">
+          <Edit3 className="w-2.5 h-2.5" /> تحرير
+        </span>
       </div>
     );
   };
@@ -3269,12 +3298,13 @@ export const CertificateCanvas: React.FC<Props> = ({
                               role="button"
                               className={`text-[9.5px] text-emerald-700 font-bold flex items-center ${dateAlignFlex} gap-1 hover:underline cursor-pointer pt-0.5 max-w-full leading-none`}
                             >
-                              <ShieldCheck className="w-3 h-3 text-emerald-600 shrink-0 me-1 inline-block" />
+                              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0 inline-block align-middle" />
                               <InlineEdit
                                 value={data.verificationBadgeText ?? 'شهادة موثقة رقمياً'}
                                 onChange={(val) => handleFieldChange('verificationBadgeText', val)}
                                 placeholder="عبارة التوثيق"
-                                className="max-w-full break-words whitespace-pre-wrap leading-none"
+                                inline
+                                className="max-w-full whitespace-nowrap leading-none align-middle"
                               />
                             </div>
                           )}
@@ -3469,10 +3499,30 @@ export const CertificateCanvas: React.FC<Props> = ({
               >
                 
                 {/* Left: Badge / Award Icon */}
-                <div data-grid-area="badge" style={{ gridArea: 'badge' }} className="flex justify-center items-center w-full">
+                <div
+                  data-grid-area="badge"
+                  style={{
+                    gridArea: 'badge',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: '100%'
+                  }}
+                  className="flex flex-col justify-center items-center w-full"
+                >
                   {data.showBadge ? (
                     <DraggableItem elementKey="badge">
-                      <div className="flex flex-col items-center transition-all duration-300 max-w-[220px]">
+                      <div
+                        className="flex flex-col items-center justify-center transition-all duration-300 max-w-[220px] w-full"
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          width: '100%'
+                        }}
+                      >
                         {data.badgeType === 'upload' && data.badgeUrl ? (
                           <img
                             src={data.badgeUrl}
@@ -3614,8 +3664,12 @@ export const CertificateCanvas: React.FC<Props> = ({
 
                           return (
                             <div
-                              className="mt-1 transition-transform relative flex items-center justify-center text-center box-border"
+                              className="mt-1 transition-transform relative flex flex-col items-center justify-center text-center box-border max-w-full"
                               style={{
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                justifyContent: 'center',
                                 background: bgFill,
                                 opacity: isNoBg ? 1 : (data.badgeBgOpacity ?? 1),
                                 border: borderWidth > 0 ? `${borderWidth}px ${borderStyle} ${borderColor}` : undefined,
@@ -3624,42 +3678,34 @@ export const CertificateCanvas: React.FC<Props> = ({
                                 width: widthStyle,
                                 minWidth: minWidthStyle,
                                 maxWidth: maxWidthStyle,
-                                padding: `${paddingY}px ${paddingX}px`,
+                                padding: `${Math.max(paddingY, 3.5)}px ${Math.max(paddingX, 10)}px`,
                                 transform: `translate(${totalOffsetX}px, ${totalOffsetY}px)`,
-                                overflow: 'hidden', // Strictly bound inside box to prevent any overflow outside!
+                                boxSizing: 'border-box',
+                                margin: '0 auto',
                               }}
                             >
-                              <div
-                                className="w-full flex items-center justify-center max-w-full overflow-hidden"
+                              <InlineEdit
+                                value={data.badgeTitle}
+                                onChange={(val) => handleFieldChange('badgeTitle', val)}
+                                placeholder="عنوان الوسام"
+                                className="w-full text-center max-w-full block font-bold transition-all break-words"
                                 style={{
-                                  transform: (textOffsetX || textOffsetY) ? `translate(${textOffsetX}px, ${textOffsetY}px)` : undefined,
-                                  textAlign,
-                                  whiteSpace: textWrap === 'wrap' ? 'normal' : 'nowrap',
+                                  color: textColor,
+                                  fontSize,
+                                  fontFamily,
+                                  fontWeight,
+                                  letterSpacing,
+                                  textAlign: 'center',
+                                  margin: '0 auto',
                                   wordBreak: 'break-word',
                                   overflowWrap: 'anywhere',
-                                  textOverflow: textWrap === 'nowrap' ? 'ellipsis' : 'clip',
-                                  lineHeight: 1.25,
+                                  lineHeight: '1.2',
+                                  maxWidth: '100%',
+                                  width: '100%',
+                                  display: 'block',
+                                  transform: (textOffsetX || textOffsetY) ? `translate(${textOffsetX}px, ${textOffsetY}px)` : undefined,
                                 }}
-                              >
-                                <InlineEdit
-                                  value={data.badgeTitle}
-                                  onChange={(val) => handleFieldChange('badgeTitle', val)}
-                                  placeholder="عنوان الوسام"
-                                  className="w-full text-center max-w-full block font-bold transition-all"
-                                  style={{
-                                    color: textColor,
-                                    fontSize,
-                                    fontFamily,
-                                    fontWeight,
-                                    letterSpacing,
-                                    textAlign,
-                                    whiteSpace: textWrap === 'wrap' ? 'normal' : 'nowrap',
-                                    wordBreak: 'break-word',
-                                    overflowWrap: 'anywhere',
-                                    lineHeight: 1.25,
-                                  }}
-                                />
-                              </div>
+                              />
                             </div>
                           );
                         })()}
@@ -3669,18 +3715,44 @@ export const CertificateCanvas: React.FC<Props> = ({
                 </div>
 
                 {/* Middle: Stamp / Wax Seal with Auto-fit Text Shape */}
-                <div data-grid-area="stamp" style={{ gridArea: 'stamp' }} className="flex justify-center items-center w-full">
+                <div
+                  data-grid-area="stamp"
+                  style={{
+                    gridArea: 'stamp',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: '100%'
+                  }}
+                  className="flex flex-col justify-center items-center w-full"
+                >
                   {data.stamp && data.stamp.show ? (
                     <DraggableItem elementKey="stamp">
                       <div
-                        className="flex flex-col items-center transition-all duration-300"
+                        className="flex flex-col items-center justify-center transition-all duration-300 w-full"
                         style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          width: '100%',
                           opacity: data.stamp.opacity ?? 1,
                           transform: `translate(${data.stamp.offsetX || 0}px, ${data.stamp.offsetY || 0}px)`
                         }}
                       >
                         {data.stamp.shape === 'custom' && data.stamp.imageUrl ? (
-                          <div className="flex flex-col items-center">
+                          <div
+                            className="flex flex-col items-center justify-center w-full"
+                            style={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              width: '100%',
+                              margin: '0 auto',
+                            }}
+                          >
                             <img
                               src={data.stamp.imageUrl}
                               alt="Stamp"
@@ -3690,25 +3762,47 @@ export const CertificateCanvas: React.FC<Props> = ({
                               }`}
                             />
                             {data.stamp.title && (
-                              <span
-                                className="text-[9px] font-extrabold mt-0.5 text-amber-900 max-w-[180px] break-words whitespace-pre-wrap block text-center transition-transform"
-                                style={{ transform: `translate(${data.stamp.textOffsetX || 0}px, ${data.stamp.textOffsetY || 0}px)` }}
+                              <div
+                                className="w-full flex flex-col items-center justify-center max-w-[180px] text-center mt-0.5"
+                                style={{
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  width: '100%',
+                                  margin: '0 auto',
+                                  transform: `translate(${data.stamp.textOffsetX || 0}px, ${data.stamp.textOffsetY || 0}px)`,
+                                }}
                               >
-                                {data.stamp.title}
-                              </span>
+                                <InlineEdit
+                                  value={data.stamp.title}
+                                  onChange={(val) => updateStampField('title', val)}
+                                  placeholder="عنوان الختم"
+                                  className="text-[9px] font-extrabold text-amber-900 max-w-[180px] break-words text-center block"
+                                  style={{
+                                    textAlign: 'center',
+                                    margin: '0 auto',
+                                    wordBreak: 'break-word',
+                                    overflowWrap: 'anywhere',
+                                    maxWidth: '100%',
+                                    width: '100%',
+                                    lineHeight: '1.2',
+                                  }}
+                                />
+                              </div>
                             )}
                           </div>
                         ) : (
                           <div
-                            className={`relative flex flex-col items-center justify-center p-1.5 text-center shadow-sm box-border overflow-visible leading-tight transition-all ${
+                            className={`relative flex flex-col items-center justify-center p-2 text-center shadow-sm box-border leading-tight transition-all ${
                               data.stamp.size === 'sm'
-                                ? (data.stamp.shape === 'rectangle' ? 'min-w-[5rem] min-h-[2.5rem] px-3 py-1' : 'min-w-[3.5rem] min-h-[3.5rem] w-14 h-14')
+                                ? (data.stamp.shape === 'rectangle' ? 'min-w-[5rem] min-h-[2.5rem] px-3 py-1' : 'w-16 h-16')
                                 : data.stamp.size === 'lg'
-                                ? (data.stamp.shape === 'rectangle' ? 'min-w-[7.5rem] min-h-[3.75rem] px-5 py-2' : 'min-w-[5.5rem] min-h-[5.5rem] w-22 h-22')
-                                : (data.stamp.shape === 'rectangle' ? 'min-w-[6.25rem] min-h-[3.125rem] px-4 py-1.5' : 'min-w-[4.5rem] min-h-[4.5rem] w-18 h-18')
+                                ? (data.stamp.shape === 'rectangle' ? 'min-w-[7.5rem] min-h-[3.75rem] px-5 py-2' : 'w-24 h-24')
+                                : (data.stamp.shape === 'rectangle' ? 'min-w-[6.25rem] min-h-[3.125rem] px-4 py-1.5' : 'w-20 h-20')
                             } ${
                               data.stamp.shape === 'wax'
-                                ? 'rounded-full bg-gradient-to-br from-amber-600 to-amber-800 text-white border-2 border-yellow-300 rotate-6 shadow-md'
+                                ? 'rounded-full bg-gradient-to-br from-amber-600 to-amber-800 text-white border-2 border-yellow-300 shadow-md'
                                 : data.stamp.shape === 'ribbon'
                                 ? 'rounded-xl bg-indigo-950 text-amber-300 border-2 border-amber-400 shadow-md'
                                 : data.stamp.shape === 'square'
@@ -3718,25 +3812,57 @@ export const CertificateCanvas: React.FC<Props> = ({
                                 : 'rounded-full border-2 border-dashed bg-amber-50/90'
                             }`}
                             style={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              margin: '0 auto',
+                              boxSizing: 'border-box',
                               borderColor: (data.stamp.shape === 'wax' || data.stamp.shape === 'ribbon') ? undefined : (data.stamp.color || '#b45309'),
                               color: (data.stamp.shape === 'wax' || data.stamp.shape === 'ribbon') ? undefined : (data.stamp.color || '#b45309')
                             }}
                           >
                             <div
-                              className="w-full px-1 max-w-full overflow-visible flex flex-col justify-center items-center my-auto min-h-full text-center transition-transform"
-                              style={{ transform: `translate(${data.stamp.textOffsetX || 0}px, ${data.stamp.textOffsetY || 0}px)` }}
+                              className="w-full px-1 max-w-full flex flex-col justify-center items-center text-center transition-transform"
+                              style={{
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                width: '100%',
+                                margin: '0 auto',
+                                transform: `translate(${data.stamp.textOffsetX || 0}px, ${data.stamp.textOffsetY || 0}px)`
+                              }}
                             >
                               <InlineEdit
                                 value={data.stamp.title}
                                 onChange={(val) => updateStampField('title', val)}
                                 placeholder="عنوان الختم"
-                                className="text-[9px] sm:text-[10px] font-black uppercase leading-tight max-w-full block break-words whitespace-pre-wrap"
+                                className="text-[9px] sm:text-[10px] font-black uppercase leading-tight max-w-full block break-words text-center"
+                                style={{
+                                  textAlign: 'center',
+                                  margin: '0 auto',
+                                  wordBreak: 'break-word',
+                                  overflowWrap: 'anywhere',
+                                  maxWidth: '100%',
+                                  width: '100%',
+                                  lineHeight: '1.2',
+                                }}
                               />
                               <InlineEdit
                                 value={data.stamp.subtext}
                                 onChange={(val) => updateStampField('subtext', val)}
                                 placeholder="نص فرعي"
-                                className="text-[7px] opacity-85 mt-0.5 max-w-full block break-words whitespace-pre-wrap"
+                                className="text-[7px] opacity-85 mt-0.5 max-w-full block break-words text-center"
+                                style={{
+                                  textAlign: 'center',
+                                  margin: '0 auto',
+                                  wordBreak: 'break-word',
+                                  overflowWrap: 'anywhere',
+                                  maxWidth: '100%',
+                                  width: '100%',
+                                  lineHeight: '1.2',
+                                }}
                               />
                             </div>
                           </div>

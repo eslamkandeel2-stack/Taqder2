@@ -254,16 +254,47 @@
 #certificate-print-area [data-grid-area="badge"],
 #certificate-print-area .cert-area-badge {
   grid-area: badge;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 100% !important;
+  text-align: center !important;
 }
 
 #certificate-print-area [data-grid-area="stamp"],
 #certificate-print-area .cert-area-stamp {
   grid-area: stamp;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 100% !important;
+  text-align: center !important;
 }
 
 #certificate-print-area [data-grid-area="footer"],
 #certificate-print-area [data-grid-area="verification"],
 #certificate-print-area .cert-area-footer {
   grid-area: footer;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 100% !important;
+}
+
+#certificate-print-area svg {
+  display: inline-block !important;
+  vertical-align: middle !important;
+  flex-shrink: 0 !important;
+}
+
+#certificate-print-area [data-grid-area="badge"] span,
+#certificate-print-area [data-grid-area="badge"] div,
+#certificate-print-area [data-grid-area="stamp"] span,
+#certificate-print-area [data-grid-area="stamp"] div {
+  text-align: center !important;
+  box-sizing: border-box !important;
 }
 

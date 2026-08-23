@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Bot, Send, Sparkles, User, RefreshCw, HelpCircle, Settings2, Cpu } from 'lucide-react';
+import { Bot, Send, Sparkles, User, RefreshCw, HelpCircle, Settings2, Cpu, Lightbulb } from 'lucide-react';
 import { getSavedAISettings, getAIRequestHeaders, AISettings, SUPPORTED_AI_MODELS } from '../utils/aiConfig';
 
 interface Message {
@@ -106,39 +106,46 @@ export const AIAssistantChat: React.FC = () => {
     <div className="max-w-4xl mx-auto space-y-4 text-right">
       
       {/* Header */}
-      <div className="bg-gradient-to-r from-slate-900 via-amber-950 to-slate-900 text-white p-5 rounded-2xl shadow-lg border border-amber-500/20 flex flex-wrap items-center justify-between gap-3">
+      <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-amber-950 text-white p-5 rounded-2xl shadow-lg border border-amber-500/20 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-400/30 flex items-center justify-center text-amber-300 shadow-inner">
+          <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-amber-400/25 to-amber-600/10 border border-amber-400/30 flex items-center justify-center text-amber-300 shadow-inner">
             <Bot className="w-6 h-6" />
           </div>
           <div>
-            <h3 className="font-extrabold text-base">المستشار التربوي واللغوي الذكي (Gemini AI)</h3>
-            <p className="text-xs text-amber-200/80">استشارات بلا حدود في الصياغة، الشعر، والتحفيز الطلابي</p>
+            <h3 className="font-black text-base">المستشار التربوي واللغوي الذكي (Gemini AI)</h3>
+            <p className="text-xs text-amber-200/80 mt-0.5">استشارات بلا حدود في الصياغة، الشعر، والتحفيز الطلابي</p>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 px-3 py-1 bg-amber-500/20 border border-amber-400/30 rounded-full text-xs font-bold text-amber-200">
+          <div className="flex items-center gap-1.5 px-3 py-1 bg-amber-500/20 border border-amber-400/30 rounded-full text-xs font-bold text-amber-200 shadow-2xs">
             <Cpu className="w-3.5 h-3.5 text-amber-400" />
             <span>النموذج النشط: {currentModelOption.name}</span>
           </div>
-          <span className="text-xs bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2.5 py-1 rounded-full font-bold">
+          <span className="text-xs bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-3 py-1 rounded-full font-black shadow-2xs">
             🟢 جاهز
           </span>
         </div>
       </div>
 
       {/* Suggested Quick Prompts */}
-      <div className="flex flex-wrap gap-2">
-        {samplePrompts.map((p, idx) => (
-          <button
-            key={idx}
-            onClick={() => handleSend(p)}
-            className="px-3 py-1.5 bg-white hover:bg-amber-50 text-slate-800 border border-slate-200 rounded-xl text-xs font-medium transition shadow-2xs cursor-pointer"
-          >
-            💡 {p}
-          </button>
-        ))}
+      <div className="space-y-1.5">
+        <div className="text-[11px] font-bold text-slate-500 flex items-center gap-1">
+          <Lightbulb className="w-3.5 h-3.5 text-amber-600" />
+          <span>نماذج مقترحة للاستشارة السريعة:</span>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {samplePrompts.map((p, idx) => (
+            <button
+              key={idx}
+              onClick={() => handleSend(p)}
+              className="px-3.5 py-2 bg-white hover:bg-amber-50 text-slate-800 hover:text-amber-950 border border-slate-200 hover:border-amber-400 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer active:scale-95 text-right flex items-center gap-1.5"
+            >
+              <span>✨</span>
+              <span>{p}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Chat Messages Window */}
@@ -153,7 +160,7 @@ export const AIAssistantChat: React.FC = () => {
             <div
               className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 shadow-xs ${
                 m.sender === 'user'
-                  ? 'bg-slate-800 text-white'
+                  ? 'bg-slate-900 text-white'
                   : 'bg-amber-500 text-slate-950 font-black'
               }`}
             >
@@ -173,7 +180,7 @@ export const AIAssistantChat: React.FC = () => {
                   {m.time}
                 </span>
                 {m.modelUsed && (
-                  <span className="text-[9px] font-mono text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200/60">
+                  <span className="text-[9px] font-mono font-bold text-amber-800 bg-amber-100/80 px-2 py-0.5 rounded-md border border-amber-200/80">
                     ⚡ {m.modelUsed}
                   </span>
                 )}
@@ -183,7 +190,7 @@ export const AIAssistantChat: React.FC = () => {
         ))}
 
         {isLoading && (
-          <div className="flex items-center gap-2 text-slate-500 text-xs p-3 bg-amber-50/50 rounded-xl border border-amber-200/60 w-fit">
+          <div className="flex items-center gap-2.5 text-slate-700 text-xs p-3 bg-amber-50 rounded-xl border border-amber-200 w-fit font-bold">
             <RefreshCw className="w-4 h-4 animate-spin text-amber-600" />
             <span>جاري معالجة الطلب وصياغة الاستشارة الذكية...</span>
           </div>
@@ -191,25 +198,25 @@ export const AIAssistantChat: React.FC = () => {
       </div>
 
       {/* Input Bar */}
-      <div className="flex items-center gap-2 bg-white p-2 rounded-2xl border border-slate-200 shadow-sm">
+      <div className="flex items-center gap-2 bg-white p-2 rounded-2xl border border-slate-200 shadow-sm focus-within:ring-2 focus-within:ring-amber-500">
         <input
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSend()}
           placeholder="اكتب سؤالك أو اطلب صياغة خاصة للشهادة هنا..."
-          className="flex-1 px-4 py-2.5 text-xs focus:outline-none"
+          className="flex-1 px-4 py-2.5 text-xs font-medium focus:outline-none"
         />
         <button
           onClick={() => handleSend()}
           disabled={isLoading || !input.trim()}
-          className="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+          className="px-6 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs rounded-xl shadow-md transition-all flex items-center gap-2 disabled:opacity-50 cursor-pointer active:scale-95"
         >
-          <Send className="w-4 h-4" /> إرسال
+          <Send className="w-4 h-4" />
+          <span>إرسال</span>
         </button>
       </div>
 
     </div>
   );
 };
-

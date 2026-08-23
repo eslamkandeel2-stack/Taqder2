@@ -422,6 +422,10 @@ export interface CertificateData {
   positions?: ElementPositions;
   elementStyles?: ElementStyles;
   isDragModeEnabled?: boolean;
+  certificateId?: string;
+  templateId?: string;
+  reason?: string;
+  courseTitle?: string;
 }
 
 export interface TemplatePreset {
@@ -464,7 +468,7 @@ export interface BatchRecord {
   title: string;
   grade: string;
   subject: string;
-  templateType: 'current' | 'preset' | 'saved-template';
+  templateType: 'current' | 'preset' | 'saved' | 'saved-template';
   templateId?: string;
   templateName?: string;
   createdAt: string;
