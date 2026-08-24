@@ -56,32 +56,18 @@ export const AI_PROVIDERS: AIProviderInfo[] = [
     keyDocsUrl: 'https://aistudio.google.com/app/apikey',
     models: [
       {
-        id: 'gemini-3.7-flash',
-        name: 'Gemini 3.7 Flash',
-        badge: 'الجيل الأحدث 🚀',
-        description: 'أقوى نموذج من جوجل لعام 2026 مع قدرات تفكير متقدمة وصياغة بلاغية فائقة.',
-        provider: 'gemini',
-      },
-      {
         id: 'gemini-3.6-flash',
         name: 'Gemini 3.6 Flash',
         badge: 'الأحدث والموصى به ⚡',
-        description: 'النموذج المعتمد والأسرع لصياغة الشهادات بدقة عالية وبلاغة استثنائية.',
+        description: 'النموذج المعتمد والأسرع لصياغة وتعديل الشهادات وتأنيث/تذكير النصوص بدقة عالية وبلاغة استثنائية.',
         provider: 'gemini',
         recommended: true,
       },
       {
-        id: 'gemini-1.5-flash',
-        name: 'Gemini 1.5 Flash',
-        badge: 'مستقر وخفيف 🌿',
-        description: 'النموذج السريع المستقر، موثوق للاستخدام اليومي وصياغة الشهادات الجماعية.',
-        provider: 'gemini',
-      },
-      {
-        id: 'gemini-1.5-pro',
-        name: 'Gemini 1.5 Pro',
-        badge: 'تحليل وبلاغة عميقة 🧠',
-        description: 'نموذج التفكير العميق والتحليل الأدبي الموسع للشهادات التقديرية الرفيعة.',
+        id: 'gemini-3.7-flash',
+        name: 'Gemini 3.7 Flash',
+        badge: 'الجيل الأحدث 🚀',
+        description: 'أقوى نموذج من جوجل لعام 2026 مع قدرات تفكير متقدمة وصياغة بلاغية فائقة.',
         provider: 'gemini',
       },
     ],
@@ -244,9 +230,21 @@ export function getSavedAISettings(): AISettings {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
+      let model = parsed.model || DEFAULT_AI_SETTINGS.model;
+      if (
+        model === 'gemini-1.5-flash' ||
+        model === 'gemini-1.5-pro' ||
+        model === 'gemini-2.0-flash' ||
+        model === 'gemini-2.5-flash' ||
+        model === 'gemini-2.5-pro' ||
+        model === 'gemini-3.0-flash'
+      ) {
+        model = 'gemini-3.6-flash';
+      }
       return {
         ...DEFAULT_AI_SETTINGS,
         ...parsed,
+        model,
       };
     }
   } catch (err) {

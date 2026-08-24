@@ -68,7 +68,7 @@ export const AIAssistantChat: React.FC = () => {
         body: JSON.stringify({
           prompt: query,
           apiKey: aiSettings.apiKey?.trim() || undefined,
-          model: aiSettings.model || 'gemini-3.7-flash',
+          model: aiSettings.model || 'gemini-3.6-flash',
           temperature: aiSettings.temperature,
           systemInstruction: aiSettings.systemInstruction,
         }),

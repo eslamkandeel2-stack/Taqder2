@@ -90,7 +90,7 @@ export const AIGeneratorModal: React.FC<Props> = ({
 
   // Quick Settings State
   const [tempApiKey, setTempApiKey] = useState(aiSettings.apiKey || '');
-  const [tempModel, setTempModel] = useState(aiSettings.model || 'gemini-2.0-flash');
+  const [tempModel, setTempModel] = useState(aiSettings.model || 'gemini-3.6-flash');
   const [showKey, setShowKey] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string; latencyMs?: number } | null>(null);
@@ -104,7 +104,7 @@ export const AIGeneratorModal: React.FC<Props> = ({
       const saved = getSavedAISettings();
       setAiSettings(saved);
       setTempApiKey(saved.apiKey || '');
-      setTempModel(saved.model || 'gemini-2.0-flash');
+      setTempModel(saved.model || 'gemini-3.6-flash');
       setStudentName(currentData.studentName || '');
       const gender = currentData.recipientGender || (detectGenderFromName(currentData.studentName) === 'female' ? 'female' : 'male');
       setRecipientGender(gender);
@@ -246,7 +246,7 @@ export const AIGeneratorModal: React.FC<Props> = ({
             schoolName: currentData.schoolName,
             teacherName: currentData.signatures?.[0]?.name,
             apiKey: aiSettings.apiKey?.trim() || undefined,
-            model: aiSettings.model || 'gemini-2.0-flash',
+            model: aiSettings.model || 'gemini-3.6-flash',
             temperature: aiSettings.temperature,
             systemInstruction: aiSettings.systemInstruction,
           }),

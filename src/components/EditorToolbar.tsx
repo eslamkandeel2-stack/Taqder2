@@ -15,7 +15,15 @@ import {
 } from '../utils/defaultSettings';
 import { GRADIENT_PRESETS, GRADIENT_COLOR_SWATCHES } from '../utils/gradientUtils';
 import { generateVerificationCode, sanitizeVerificationCode } from '../utils/qrUtils';
-import { adaptCertificateGender, adaptCertificateGenderSync, RecipientGender } from '../utils/genderConverter';
+import {
+  adaptCertificateGender,
+  adaptCertificateGenderSync,
+  RecipientGender,
+  CERTIFICATE_TYPES_LIST,
+  generateCertificateByTypeLocal,
+  generateLocalCertificateFallback,
+  CertificateTypePreset
+} from '../utils/genderConverter';
 import { getSavedAISettings } from '../utils/aiConfig';
 import {
   calculateSafeMargins,
@@ -463,6 +471,9 @@ export const EditorToolbar: React.FC<Props> = ({
   const [isAiTuningBg, setIsAiTuningBg] = useState(false);
   const [aiTuneStatus, setAiTuneStatus] = useState<string | null>(null);
   const [isAdaptingGenderAi, setIsAdaptingGenderAi] = useState(false);
+  const [isGeneratingTypeAi, setIsGeneratingTypeAi] = useState(false);
+  const [genderNotice, setGenderNotice] = useState<{ text: string; type: 'success' | 'info' | 'ai' } | null>(null);
+  const [selectedCertTypeId, setSelectedCertTypeId] = useState<string>('appreciation');
   const [selectedEmojiId, setSelectedEmojiId] = useState<string | null>(null);
   const [isAiOptimizingMargins, setIsAiOptimizingMargins] = useState(false);
   const [marginNotice, setMarginNotice] = useState<string | null>(null);
@@ -861,10 +872,27 @@ export const EditorToolbar: React.FC<Props> = ({
 
   const handleGenderChange = async (gender: RecipientGender) => {
     // 1. Instant local rule-based conversion so UI updates immediately with smart fallback
-    const updated = adaptCertificateGenderSync(certificateData, gender, { preserveCustomStudentName: true });
-    onChange(updated);
+    let updated = adaptCertificateGenderSync(certificateData, gender, { preserveCustomStudentName: true });
 
-    // 2. Call AI API in background with active AI settings & headers for ultra-refined AI Arabic phrasing adaptation
+    // Fallback: If appreciationText or recipientIntro was missing, fill with complete system fallback
+    if (!updated.appreciationText || updated.appreciationText.trim() === '') {
+      const fallback = generateLocalCertificateFallback({
+        studentName: updated.studentName,
+        subject: updated.subject,
+        grade: updated.grade,
+        recipientGender: gender,
+      });
+      updated.appreciationText = fallback.appreciationText;
+      if (!updated.recipientIntro) updated.recipientIntro = fallback.recipientIntro;
+    }
+
+    onChange(updated);
+    setGenderNotice({
+      text: `تم ضبط وتوليد كافة صيغ ونصوص الشهادة لـ (${gender === 'female' ? 'طالبة - مؤنث' : 'طالب - مذكر'}) بنجاح عبر النظام ⚡`,
+      type: 'info',
+    });
+
+    // 2. Call AI API in background with active AI settings & headers with graceful fallback to system generation on failure
     try {
       setIsAdaptingGenderAi(true);
       const aiCfg = getSavedAISettings();
@@ -879,6 +907,7 @@ export const EditorToolbar: React.FC<Props> = ({
       const response = await fetch('/api/adapt-gender-ai', {
         method: 'POST',
         headers,
+        signal: AbortSignal.timeout(3500),
         body: JSON.stringify({
           certificateData: updated,
           targetGender: gender,
@@ -890,13 +919,15 @@ export const EditorToolbar: React.FC<Props> = ({
       });
 
       let json: any = null;
-      try {
-        const text = await response.text();
-        if (text && (text.trim().startsWith('{') || text.trim().startsWith('['))) {
-          json = JSON.parse(text);
+      if (response.ok) {
+        try {
+          const text = await response.text();
+          if (text && (text.trim().startsWith('{') || text.trim().startsWith('['))) {
+            json = JSON.parse(text);
+          }
+        } catch (parseErr) {
+          console.warn('Failed to parse gender AI JSON response:', parseErr);
         }
-      } catch (parseErr) {
-        console.warn('Failed to parse gender AI JSON response:', parseErr);
       }
 
       if (json && json.success && json.result) {
@@ -906,11 +937,115 @@ export const EditorToolbar: React.FC<Props> = ({
           recipientGender: gender,
           updatedAt: new Date().toISOString(),
         });
+        setGenderNotice({
+          text: json.fallbackUsed
+            ? `تم توليد وتعديل كافة الصيغ لغوياً بنجاح عبر محرك النظام الذكي ⚡`
+            : `تمت الصياغة البلاغية وضبط التأنيث/التذكير بالذكاء الاصطناعي بنجاح ✨`,
+          type: json.fallbackUsed ? 'success' : 'ai',
+        });
+      } else {
+        // AI returned error or fallback mode, confirm system adaptation
+        const systemAdapted = adaptCertificateGenderSync(updated, gender, { preserveCustomStudentName: true });
+        onChange({
+          ...systemAdapted,
+          recipientGender: gender,
+          updatedAt: new Date().toISOString(),
+        });
+        setGenderNotice({
+          text: `تم توليد وتعديل كافة الصيغ لغوياً بنجاح عبر محرك النظام الذكي (بديل محلي فوري)`,
+          type: 'success',
+        });
       }
-    } catch (err) {
-      console.warn('AI background gender adaptation failed, using local conversion:', err);
+    } catch (_err) {
+      // Fallback: re-apply deep system conversion smoothly
+      const systemAdapted = adaptCertificateGenderSync(certificateData, gender, { preserveCustomStudentName: true });
+      onChange({
+        ...systemAdapted,
+        recipientGender: gender,
+        updatedAt: new Date().toISOString(),
+      });
+      setGenderNotice({
+        text: `تم توليد وتعديل البيانات بنجاح عبر المحرك اللغوي الداخلي للنظام ⚡`,
+        type: 'success',
+      });
     } finally {
       setIsAdaptingGenderAi(false);
+      setTimeout(() => setGenderNotice(null), 4500);
+    }
+  };
+
+  const handleCertificateTypeSelect = async (typeId: string) => {
+    setSelectedCertTypeId(typeId);
+    const currentGender = certificateData.recipientGender || 'male';
+    const preset = CERTIFICATE_TYPES_LIST.find(t => t.id === typeId) || CERTIFICATE_TYPES_LIST[0];
+
+    // 1. Instant System-Based Generation & Modification tailored to current gender
+    const generatedData = generateCertificateByTypeLocal(typeId, currentGender, certificateData);
+
+    onChange({
+      ...certificateData,
+      ...generatedData,
+      updatedAt: new Date().toISOString()
+    });
+
+    setGenderNotice({
+      text: `تم تعديل وتوليد بيانات الشهادة لنوع (${preset.name}) بنجاح عبر النظام ⚡`,
+      type: 'success'
+    });
+
+    // 2. Background AI call to enhance or refine if available, with robust fallback on failure
+    try {
+      setIsGeneratingTypeAi(true);
+      const aiCfg = getSavedAISettings();
+      if (aiCfg.apiKey || aiCfg.provider) {
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+        };
+        if (aiCfg.provider) headers['x-ai-provider'] = aiCfg.provider;
+        if (aiCfg.apiKey) headers['x-ai-api-key'] = aiCfg.apiKey;
+        if (aiCfg.model) headers['x-ai-model'] = aiCfg.model;
+        if (aiCfg.customApiUrl) headers['x-ai-custom-url'] = aiCfg.customApiUrl;
+
+        const response = await fetch('/api/adapt-gender-ai', {
+          method: 'POST',
+          headers,
+          signal: AbortSignal.timeout(3500),
+          body: JSON.stringify({
+            certificateData: generatedData,
+            targetGender: currentGender,
+            certificateType: preset.name,
+            provider: aiCfg.provider,
+            apiKey: aiCfg.apiKey,
+            model: aiCfg.model,
+            customApiUrl: aiCfg.customApiUrl,
+          }),
+        });
+
+        if (response.ok) {
+          const resJson = await response.json();
+          if (resJson && resJson.success && resJson.result) {
+            onChange({
+              ...certificateData,
+              ...generatedData,
+              ...resJson.result,
+              updatedAt: new Date().toISOString()
+            });
+            setGenderNotice({
+              text: `تم توليد وصياغة عبارات نوع (${preset.name}) بالذكاء الاصطناعي بنجاح ✨`,
+              type: 'ai'
+            });
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('AI type generation failed, system data already generated smoothly:', err);
+      setGenderNotice({
+        text: `تم توليد وتجهيز بيانات (${preset.name}) بنجاح عبر النظام`,
+        type: 'success'
+      });
+    } finally {
+      setIsGeneratingTypeAi(false);
+      setTimeout(() => setGenderNotice(null), 4500);
     }
   };
 
@@ -1908,24 +2043,25 @@ export const EditorToolbar: React.FC<Props> = ({
               </div>
             </div>
 
-            {/* Recipient Gender Selector */}
-            <div className="bg-gradient-to-r from-amber-50/90 via-orange-50/70 to-amber-50/90 border border-amber-200/90 rounded-xl p-3 shadow-2xs">
-              <div className="flex items-center justify-between flex-wrap gap-2">
+            {/* Recipient Gender & Certificate Type Selector Panel */}
+            <div className="bg-gradient-to-r from-amber-50/95 via-orange-50/80 to-amber-50/95 border border-amber-200/90 rounded-2xl p-3.5 shadow-xs space-y-3">
+              {/* Recipient Gender Selector */}
+              <div className="flex items-center justify-between flex-wrap gap-2.5 pb-2.5 border-b border-amber-200/70">
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                       <span className="text-base">🎓</span>
-                      <span>نوع الشهادة والمكرّم (طالب أم طالبة):</span>
+                      <span>المكرّم المستهدف (طالب أم طالبة):</span>
                     </span>
                     {isAdaptingGenderAi && (
                       <span className="text-[11px] text-amber-900 bg-amber-100 px-2.5 py-0.5 rounded-full font-bold animate-pulse border border-amber-300/80 flex items-center gap-1 shadow-2xs">
                         <Sparkles className="w-3.5 h-3.5 text-amber-600 animate-spin" />
-                        جاري ضبط الصيغ بالذكاء الاصطناعي...
+                        جاري ضبط وتوليد الصيغ بالذكاء الاصطناعي...
                       </span>
                     )}
                   </div>
                   <p className="text-[11px] text-slate-500 mt-0.5">
-                    تعديل كافة عبارات ونصوص الشهادة تلقائياً بين المذكر والمؤنث بدقة لغوية مدعومة بالذكاء الاصطناعي
+                    تعديل كافة عبارات ونصوص ومقدمات الشهادة تلقائياً بين المذكر والمؤنث بدقة لغوية مع توليد فوري عبر النظام في حال تعذر الذكاء الاصطناعي
                   </p>
                 </div>
                 <div className="flex items-center gap-1.5 bg-white p-1 rounded-xl border border-amber-200 shadow-2xs">
@@ -1934,7 +2070,7 @@ export const EditorToolbar: React.FC<Props> = ({
                     onClick={() => handleGenderChange('male')}
                     className={`px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
                       (certificateData.recipientGender || 'male') === 'male'
-                        ? 'bg-amber-600 text-white shadow-xs font-black'
+                        ? 'bg-amber-600 text-white shadow-xs font-black ring-2 ring-amber-400'
                         : 'text-slate-600 hover:bg-slate-100'
                     }`}
                   >
@@ -1946,7 +2082,7 @@ export const EditorToolbar: React.FC<Props> = ({
                     onClick={() => handleGenderChange('female')}
                     className={`px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
                       certificateData.recipientGender === 'female'
-                        ? 'bg-pink-600 text-white shadow-xs font-black'
+                        ? 'bg-pink-600 text-white shadow-xs font-black ring-2 ring-pink-400'
                         : 'text-slate-600 hover:bg-slate-100'
                     }`}
                   >
@@ -1955,6 +2091,69 @@ export const EditorToolbar: React.FC<Props> = ({
                   </button>
                 </div>
               </div>
+
+              {/* Certificate Type / Purpose Quick Selector */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <span className="text-base">📜</span>
+                    <span>نوع الشهادة والغرض من التكريم (توليد وتعديل فوري):</span>
+                  </span>
+                  {isGeneratingTypeAi && (
+                    <span className="text-[10px] text-amber-900 bg-amber-100 px-2 py-0.5 rounded-full font-bold animate-pulse border border-amber-300 flex items-center gap-1">
+                      <Sparkles className="w-3 h-3 text-amber-600 animate-spin" />
+                      جاري الصياغة الذكية...
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-1.5">
+                  {CERTIFICATE_TYPES_LIST.map((type) => {
+                    const isSelected = selectedCertTypeId === type.id;
+                    return (
+                      <button
+                        key={type.id}
+                        type="button"
+                        onClick={() => handleCertificateTypeSelect(type.id)}
+                        className={`p-2 rounded-xl text-right transition-all flex flex-col justify-between border cursor-pointer ${
+                          isSelected
+                            ? 'bg-amber-600 text-white border-amber-700 shadow-xs ring-2 ring-amber-400/80 font-black'
+                            : 'bg-white hover:bg-amber-100/60 text-slate-700 border-amber-200/80 hover:border-amber-300'
+                        }`}
+                        title={type.description}
+                      >
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <span className="text-sm">{type.icon}</span>
+                          <span className={`text-[11px] leading-tight truncate ${isSelected ? 'text-white font-black' : 'text-slate-900 font-bold'}`}>
+                            {type.name}
+                          </span>
+                        </div>
+                        <span className={`text-[9px] truncate ${isSelected ? 'text-amber-100' : 'text-slate-400'}`}>
+                          {type.category}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Status Notice Banner */}
+              {genderNotice && (
+                <div
+                  className={`p-2.5 rounded-xl border text-xs flex items-center gap-2 animate-in fade-in transition-all ${
+                    genderNotice.type === 'ai'
+                      ? 'bg-amber-100/90 text-amber-950 border-amber-300 shadow-2xs'
+                      : genderNotice.type === 'success'
+                      ? 'bg-emerald-50 text-emerald-950 border-emerald-300 shadow-2xs'
+                      : 'bg-blue-50 text-blue-950 border-blue-200'
+                  }`}
+                >
+                  <span className="text-base shrink-0">
+                    {genderNotice.type === 'ai' ? '✨' : genderNotice.type === 'success' ? '⚡' : 'ℹ️'}
+                  </span>
+                  <span className="font-semibold flex-1 leading-snug">{genderNotice.text}</span>
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">

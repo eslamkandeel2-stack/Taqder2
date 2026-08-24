@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { CertificateData } from '../types';
 import { detectGenderFromName, convertArabicTextGender } from '../utils/genderConverter';
+import { getSavedAISettings } from '../utils/aiConfig';
 import {
   Sparkles,
   Users,
@@ -285,13 +286,27 @@ export const BatchConfirmReviewModal: React.FC<BatchConfirmReviewModalProps> = (
     setAiNotice('جاري صياغة عبارات التقدير المتطابقة للمذكر والمؤنث بالذكاء الاصطناعي...');
 
     try {
+      const aiCfg = getSavedAISettings();
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (aiCfg.provider) headers['x-ai-provider'] = aiCfg.provider;
+      if (aiCfg.apiKey) headers['x-ai-api-key'] = aiCfg.apiKey;
+      if (aiCfg.model) headers['x-ai-model'] = aiCfg.model;
+      if (aiCfg.customApiUrl) headers['x-ai-custom-url'] = aiCfg.customApiUrl;
+
       const response = await fetch('/api/adapt-gender-ai', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
+        signal: AbortSignal.timeout(3500),
         body: JSON.stringify({
           text: `صغ عبارتين بليغتين لشهادة شكر وتقدير لمجال: ${aiPromptTopic}، واحدة مخصصة للطلاب البنين والأخرى للطالبات البنات مع المحافظة على نفس المعنى والوزن البلاغي.`,
           topic: aiPromptTopic,
-          mode: 'dual-generation'
+          mode: 'dual-generation',
+          provider: aiCfg.provider,
+          apiKey: aiCfg.apiKey,
+          model: aiCfg.model,
+          customApiUrl: aiCfg.customApiUrl,
         })
       });
 
