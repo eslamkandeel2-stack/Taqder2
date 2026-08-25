@@ -520,4 +520,30 @@ export interface StudentGroup {
   color?: string; // Hex color tag e.g. '#f59e0b', '#3b82f6', '#10b981'
 }
 
+export type ExportEngine = 
+  | 'modern-screenshot' // محرك Modern Screenshot السريع وعالي الدقة
+  | 'html2canvas'       // محرك html2canvas الكلاسيكي المستقر
+  | 'html-to-image'     // محرك html-to-image بدقة متناهية عبر SVG ForeignObject
+  | 'html2pdf'          // محرك html2pdf.js المباشر لإنشاء مستندات PDF
+  | 'jspdf'             // محرك jsPDF ذو المعادلات الرياضية المتطابقة للأبعاد الورقية
+  | 'vector-print';     // محرك الطباعة الشعاعية المتجهية (بدون بكسلة)
+
+export type ExportFormat = 'pdf' | 'png' | 'jpeg' | 'webp' | 'svg';
+
+export interface ExportOptions {
+  engine?: ExportEngine;
+  format?: ExportFormat;
+  scale?: number;
+  dpi?: number;
+  quality?: number;
+  backgroundColor?: string;
+  transparentBg?: boolean;
+  fileName?: string;
+  paperSize?: 'A4' | 'A3' | 'Letter';
+  customWidth?: number;
+  customHeight?: number;
+  includeVerificationInExport?: boolean;
+}
+
+
 

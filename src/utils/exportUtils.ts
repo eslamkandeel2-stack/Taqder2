@@ -1,9 +1,282 @@
 import React from 'react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
-import { CertificateData } from '../types';
+import { domToCanvas, domToPng, domToJpeg, domToSvg, domToBlob } from 'modern-screenshot';
+import * as htmlToImage from 'html-to-image';
+// @ts-ignore
+import html2pdf from 'html2pdf.js';
+import { CertificateData, ExportEngine, ExportFormat, ExportOptions } from '../types';
 import { generateCertificatePrintHtml } from './printUtils';
 import { autoArchiveCertificate, autoArchiveBatchCertificates } from './archiveManager';
+
+export interface EngineInfo {
+  id: ExportEngine;
+  name: string;
+  badge: string;
+  badgeColor: string;
+  description: string;
+  features: string[];
+  formats: ExportFormat[];
+  recommendedDpi: number;
+  speed: 'fast' | 'medium' | 'high-res';
+  isDefault?: boolean;
+}
+
+export const EXPORT_ENGINES: EngineInfo[] = [
+  {
+    id: 'html2canvas',
+    name: 'html2canvas 🎨',
+    badge: 'المحرك الكلاسيكي المعتمد للخطوط',
+    badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+    description: 'المحرك الأكثر دقة وثباتاً في معالجة ورسم الخطوط العربية والتشكيلات بدون أي قص أو تغيير في الخط المحدد.',
+    features: ['تطابق تام 100% مع الخطوط العربية', 'دعم كامل للتواقيع والزخارف والشارات', 'معالجة متوافقة مع جميع المتصفحات', 'استقرار فائق ومطابقة تامة للمعاينة'],
+    formats: ['pdf', 'png', 'jpeg'],
+    recommendedDpi: 300,
+    speed: 'fast',
+    isDefault: true
+  },
+  {
+    id: 'modern-screenshot',
+    name: 'Modern Screenshot ⚡',
+    badge: 'فائق السرعة',
+    badgeColor: 'bg-blue-100 text-blue-800 border-blue-300',
+    description: 'محرك لالتقاط عناصر DOM بسرعة فائقة ودعم CSS3.',
+    features: ['دعم كامل للمتغيرات والظلال', 'معالجة فورية فائقة السرعة', 'تصدير PNG و JPEG و SVG و PDF', 'أعلى دقة نقاء للشاشات'],
+    formats: ['pdf', 'png', 'jpeg', 'webp', 'svg'],
+    recommendedDpi: 300,
+    speed: 'fast'
+  },
+  {
+    id: 'html-to-image',
+    name: 'html-to-image 🖼️',
+    badge: 'دقة متناهية SVG ForeignObject',
+    badgeColor: 'bg-blue-100 text-blue-800 border-blue-300',
+    description: 'يقوم بتحويل عناصر الشهادة إلى طبقات SVG شعاعية ثم تحويلها لصورة أو PDF، مما يمنح حواف نصوص ناصعة ووضوحاً فائقاً للزخارف.',
+    features: ['وضوح فائق لحواف الحروف والزخارف', 'دعم الشفافية والتدرجات الملكية', 'تصدير بصيغة SVG متجهة حقيقية', 'دقة مطبعية تصل لـ 600 DPI'],
+    formats: ['pdf', 'png', 'jpeg', 'svg', 'webp'],
+    recommendedDpi: 300,
+    speed: 'fast'
+  },
+  {
+    id: 'jspdf',
+    name: 'jsPDF + الحسابات الهندسية 📐',
+    badge: 'أبعاد ورقية متطابقة 100%',
+    badgeColor: 'bg-purple-100 text-purple-800 border-purple-300',
+    description: 'يعتمد على معادلات رياضية دقيقة لمطابقة مقاسات ورق A4 القياسية بالميليمتر بدون أي تمدد أو قص في الأطراف أو تشوه في النسب.',
+    features: ['تطابق تام مع مقاسات A4 أفقية وعمودية والمربع', 'ضغط ذكي لتقليل حجم الملف مع الحفاظ على النقاء', 'تضمين بيانات الشهادة الوصفية', 'جاهز للأرشفة والطباعة المباشرة'],
+    formats: ['pdf', 'png'],
+    recommendedDpi: 300,
+    speed: 'fast'
+  },
+  {
+    id: 'html2pdf',
+    name: 'html2pdf.js 📄',
+    badge: 'محرك PDF متكامل',
+    badgeColor: 'bg-rose-100 text-rose-800 border-rose-300',
+    description: 'محرك مخصص لتجميع وتجهيز مستندات PDF المباشرة مع تحكم كامل في هوامش الصفحات وجودة الصور المضغوطة.',
+    features: ['توليد مباشر لمستندات PDF', 'تحكم بالهوامش والاتجاه', 'متوافق مع الشهادات متعددة الصفحات', 'تصدير سريع ومباشر'],
+    formats: ['pdf'],
+    recommendedDpi: 300,
+    speed: 'medium'
+  },
+  {
+    id: 'vector-print',
+    name: 'المحرك الشعاعي المتجهي 🖨️',
+    badge: 'طباعة فورية بدون بكسلة',
+    badgeColor: 'bg-slate-100 text-slate-800 border-slate-300',
+    description: 'يرسل نصوص الشهادة وزخارفها ككائنات متجهة مباشرة لمحرك الطباعة بالمتصفح أو الطابعة الليزرية بدقة لا متناهية بدون أي تحويل نقطي.',
+    features: ['نقاء لا نهائي للخطوط العربية', 'صفر بكسلة عند التكبير للوحات الضخمة', 'طباعة فورية أو حفظ PDF عبر نظام التشغيل', 'توفير استهلاك الحبر والذاكرة'],
+    formats: ['pdf'],
+    recommendedDpi: 600,
+    speed: 'fast'
+  }
+];
+
+export const GOOGLE_FONTS_URL =
+  'https://fonts.googleapis.com/css2?family=Alex+Brush&family=Almarai:wght@300;400;700;800&family=Amiri:ital,wght@0,400;0,700;1,400&family=Aref+Ruqaa+Ink:wght@400;700&family=Aref+Ruqaa:wght@400;700&family=Cairo:wght@300;400;600;700;800;900&family=Caveat:wght@600;700&family=Changa:wght@400;600;700&family=Dancing+Script:wght@600;700&family=El+Messiri:wght@400;600;700&family=Great+Vibes&family=Harmattan:wght@400;700&family=Kufam:ital,wght@0,400..900;1,400..900&family=Lalezar&family=Lateef:wght@400;700&family=Marhey:wght@400;600;700&family=Rakkas&family=Reem+Kufi:wght@400;600;700&family=Ruwudu:wght@500;600;700&family=Scheherazade+New:wght@400;700&family=Tajawal:wght@300;400;500;700;900&family=Vazirmatn:wght@400;600;700;800&display=swap';
+
+let cachedGoogleFontsCss: string | null = null;
+const fontUrlCache = new Map<string, string>();
+const embeddedCssCache = new Map<string, string>();
+
+/**
+ * Fetches and caches the Google Fonts @font-face CSS definitions directly
+ * to guarantee 100% vector typography fidelity across all export engines.
+ */
+export async function getGoogleFontsCss(): Promise<string> {
+  if (cachedGoogleFontsCss) return cachedGoogleFontsCss;
+  try {
+    const res = await fetch(GOOGLE_FONTS_URL, { mode: 'cors' });
+    if (res.ok) {
+      cachedGoogleFontsCss = await res.text();
+      return cachedGoogleFontsCss;
+    }
+  } catch (e) {
+    console.warn('Google Fonts stylesheet fetch error, using fallback:', e);
+  }
+  return '';
+}
+
+/**
+ * Converts a font file URL (e.g. woff2 from gstatic) into a base64 Data URI.
+ * This is crucial for SVG foreignObject renderers (like html-to-image and modern-screenshot)
+ * because sandboxed SVGs are blocked by browser security from loading external URLs.
+ */
+export async function urlToFontDataUri(url: string): Promise<string> {
+  if (fontUrlCache.has(url)) return fontUrlCache.get(url)!;
+  try {
+    const res = await fetch(url, { mode: 'cors' });
+    if (res.ok) {
+      const blob = await res.blob();
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+      fontUrlCache.set(url, base64);
+      return base64;
+    }
+  } catch (e) {
+    console.warn(`Font conversion to data URI failed for ${url}:`, e);
+  }
+  return url;
+}
+
+/**
+ * Extracts all font family names used anywhere across the certificate.
+ */
+export function getCertificateUsedFonts(certificateData: CertificateData): string[] {
+  const fonts = new Set<string>();
+  if (certificateData.fontFamily) fonts.add(certificateData.fontFamily);
+  if (certificateData.headerFontFamily) fonts.add(certificateData.headerFontFamily);
+  if (certificateData.badgeTextFontFamily) fonts.add(certificateData.badgeTextFontFamily);
+
+  if (certificateData.elementStyles) {
+    Object.values(certificateData.elementStyles).forEach((style: any) => {
+      if (style?.fontFamily) fonts.add(style.fontFamily);
+    });
+  }
+
+  if (certificateData.signatures && Array.isArray(certificateData.signatures)) {
+    certificateData.signatures.forEach((sig) => {
+      if (sig?.fontFamily) fonts.add(sig.fontFamily);
+    });
+  }
+
+  // Always include staple fonts and common Arabic cursive signatures
+  fonts.add('Cairo');
+  fonts.add('Amiri');
+  fonts.add('Aref Ruqaa');
+  fonts.add('Tajawal');
+  fonts.add('Almarai');
+
+  return Array.from(fonts);
+}
+
+/**
+ * Generates an embedded @font-face CSS string where font files are directly converted
+ * to inline base64 Data URIs (data:font/woff2;base64,...).
+ * This ensures that html-to-image renders all Arabic fonts without any fallback or CORS blocking.
+ */
+export async function getBase64EmbeddedFontCss(usedFontFamilies?: string[]): Promise<string> {
+  const cacheKey = usedFontFamilies ? [...usedFontFamilies].sort().join('|') : '__ALL__';
+  if (embeddedCssCache.has(cacheKey)) {
+    return embeddedCssCache.get(cacheKey)!;
+  }
+
+  const rawCss = await getGoogleFontsCss();
+  if (!rawCss) return '';
+
+  const fontFaceBlocks: { full: string; family: string; url: string | null }[] = [];
+  const regex = /@font-face\s*\{([^}]+)\}/gi;
+  let m;
+
+  while ((m = regex.exec(rawCss)) !== null) {
+    const fullBlock = m[0];
+    const body = m[1];
+    const famMatch = body.match(/font-family\s*:\s*['"]?([^'";]+)['"]?/i);
+    const urlMatch = body.match(/url\s*\(\s*['"]?([^'")]+)['"]?\s*\)/i);
+    const family = famMatch ? famMatch[1].trim() : '';
+    const url = urlMatch ? urlMatch[1].trim() : null;
+
+    fontFaceBlocks.push({
+      full: fullBlock,
+      family,
+      url
+    });
+  }
+
+  const targetBlocks = (usedFontFamilies && usedFontFamilies.length > 0)
+    ? fontFaceBlocks.filter((b) => usedFontFamilies.some((f) => f.toLowerCase() === b.family.toLowerCase()))
+    : fontFaceBlocks;
+
+  const convertedBlocks = await Promise.all(
+    targetBlocks.map(async (b) => {
+      if (!b.url || !b.url.startsWith('http')) return b.full;
+      const dataUri = await urlToFontDataUri(b.url);
+      if (dataUri && dataUri.startsWith('data:')) {
+        return b.full.replace(b.url, dataUri);
+      }
+      return b.full;
+    })
+  );
+
+  const resultCss = convertedBlocks.join('\n');
+  embeddedCssCache.set(cacheKey, resultCss);
+  return resultCss;
+}
+
+/**
+ * Ensures all Arabic and Latin font families used in certificates are fully loaded in the browser.
+ */
+export async function ensureAllFontsLoaded(): Promise<void> {
+  if (typeof document !== 'undefined' && document.fonts) {
+    try {
+      await document.fonts.ready;
+      const fontList = [
+        'Cairo',
+        'Amiri',
+        'Tajawal',
+        'Almarai',
+        'Aref Ruqaa',
+        'Reem Kufi',
+        'Changa',
+        'El Messiri',
+        'Lalezar',
+        'Kufam',
+        'Scheherazade New',
+        'Vazirmatn',
+        'Harmattan',
+        'Marhey',
+        'Aref Ruqaa Ink',
+        'Ruwudu',
+        'Rakkas',
+        'Lateef',
+        'Great Vibes',
+        'Dancing Script',
+        'Caveat',
+        'Alex Brush'
+      ];
+      const fontPromises: Promise<FontFace[]>[] = [];
+      for (const f of fontList) {
+        fontPromises.push(document.fonts.load(`400 16px "${f}"`));
+        fontPromises.push(document.fonts.load(`700 16px "${f}"`));
+        fontPromises.push(document.fonts.load(`bold 24px "${f}"`));
+      }
+      await Promise.allSettled(fontPromises);
+      await document.fonts.ready;
+    } catch (e) {}
+  }
+}
+
+// Pre-fetch fonts on initialization
+if (typeof window !== 'undefined') {
+  setTimeout(() => {
+    getGoogleFontsCss().catch(() => {});
+    ensureAllFontsLoaded().catch(() => {});
+  }, 100);
+}
 
 export interface CertificateDimensionConfig {
   baseWidth: number;
@@ -391,6 +664,17 @@ export function sanitizeOklchInDoc(clonedDoc: Document, certData?: CertificateDa
     });
   }
 
+  // Inject inlined @font-face rules directly into clonedDoc head to guarantee font rendering without CORS blocking
+  if (cachedGoogleFontsCss) {
+    const existingStyle = clonedDoc.getElementById('export-inlined-fonts');
+    if (!existingStyle) {
+      const fontStyleEl = clonedDoc.createElement('style');
+      fontStyleEl.id = 'export-inlined-fonts';
+      fontStyleEl.textContent = cachedGoogleFontsCss;
+      clonedDoc.head?.appendChild(fontStyleEl);
+    }
+  }
+
   // 2. Sanitize all <style> elements in clonedDoc
   const styleElements = Array.from(clonedDoc.querySelectorAll('style'));
   styleElements.forEach((styleEl) => {
@@ -545,15 +829,43 @@ export function sanitizeOklchInDoc(clonedDoc: Document, certData?: CertificateDa
         }
 
         // Copy typography & alignment (essential for Arabic text formatting, alignment & line breaks)
-        if (cs.fontFamily) clonedNode.style.fontFamily = cs.fontFamily;
-        if (cs.fontSize) clonedNode.style.fontSize = cs.fontSize;
-        if (cs.fontWeight) clonedNode.style.fontWeight = cs.fontWeight;
+        if (origNode.style && origNode.style.fontFamily) {
+          clonedNode.style.fontFamily = origNode.style.fontFamily;
+        } else if (cs.fontFamily) {
+          clonedNode.style.fontFamily = cs.fontFamily;
+        }
+
+        if (origNode.style && origNode.style.fontSize) {
+          clonedNode.style.fontSize = origNode.style.fontSize;
+        } else if (cs.fontSize) {
+          clonedNode.style.fontSize = cs.fontSize;
+        }
+
+        if (origNode.style && origNode.style.fontWeight) {
+          clonedNode.style.fontWeight = origNode.style.fontWeight;
+        } else if (cs.fontWeight) {
+          clonedNode.style.fontWeight = cs.fontWeight;
+        }
+
         if (cs.fontStyle) clonedNode.style.fontStyle = cs.fontStyle;
         if (cs.lineHeight) clonedNode.style.lineHeight = cs.lineHeight;
         if (cs.textAlign) clonedNode.style.textAlign = cs.textAlign;
         if (cs.textDecorationLine) clonedNode.style.textDecorationLine = cs.textDecorationLine;
         if (cs.textTransform) clonedNode.style.textTransform = cs.textTransform;
-        if (cs.whiteSpace) clonedNode.style.whiteSpace = cs.whiteSpace;
+
+        if (origNode.style && origNode.style.whiteSpace) {
+          clonedNode.style.whiteSpace = origNode.style.whiteSpace;
+        } else if (cs.whiteSpace) {
+          clonedNode.style.whiteSpace = cs.whiteSpace;
+        }
+
+        if (origNode.style && origNode.style.wordBreak) {
+          clonedNode.style.wordBreak = origNode.style.wordBreak;
+        }
+        if (origNode.style && origNode.style.overflowWrap) {
+          clonedNode.style.overflowWrap = origNode.style.overflowWrap;
+        }
+
         if (cs.direction) clonedNode.style.direction = cs.direction;
 
         // Force letterSpacing and wordSpacing to normal for Arabic connected text
@@ -789,11 +1101,8 @@ export async function captureCertificateCanvas(
   const targetHeight = options.customHeight || dims.baseHeight;
   const scale = options.scale ?? 3.0;
 
-  if (typeof document !== 'undefined' && document.fonts) {
-    try {
-      await document.fonts.ready;
-    } catch (e) {}
-  }
+  await ensureAllFontsLoaded();
+  await getGoogleFontsCss();
   await waitForImagesToLoad(targetElement);
 
   // Direct precision html2canvas capture with exact coordinate isolation
@@ -1056,4 +1365,309 @@ export async function exportBatchCertificatesAsSinglePdf(
     }
   }
 }
+
+/**
+ * Capture with Modern Screenshot Library (Ultra fast, modern CSS3 & SVG support)
+ */
+export async function captureWithModernScreenshot(
+  element: HTMLElement,
+  certificateData: CertificateData,
+  options: ExportOptions = {}
+): Promise<HTMLCanvasElement> {
+  const dims = getCertificateDimensions(certificateData.aspectRatio);
+  const targetWidth = options.customWidth || dims.baseWidth;
+  const targetHeight = options.customHeight || dims.baseHeight;
+  const scale = options.scale ?? (options.dpi ? options.dpi / 100 : 3.0);
+
+  await ensureAllFontsLoaded();
+  const usedFonts = getCertificateUsedFonts(certificateData);
+  const fontCss = await getBase64EmbeddedFontCss(usedFonts);
+  await waitForImagesToLoad(element);
+
+  const canvas = await domToCanvas(element, {
+    scale,
+    width: targetWidth,
+    height: targetHeight,
+    backgroundColor: options.transparentBg ? 'transparent' : (options.backgroundColor || certificateData.backgroundColor || '#ffffff'),
+    font: fontCss ? { cssText: fontCss } : undefined,
+    filter: (node: Node) => {
+      if (node instanceof HTMLElement) {
+        if (node.classList.contains('drag-handle') || node.hasAttribute('data-editor-control')) {
+          return false;
+        }
+      }
+      return true;
+    }
+  });
+
+  return canvas;
+}
+
+/**
+ * Capture with html-to-image Library (SVG ForeignObject High-Fidelity)
+ */
+export async function captureWithHtmlToImage(
+  element: HTMLElement,
+  certificateData: CertificateData,
+  options: ExportOptions = {}
+): Promise<HTMLCanvasElement> {
+  const dims = getCertificateDimensions(certificateData.aspectRatio);
+  const targetWidth = options.customWidth || dims.baseWidth;
+  const targetHeight = options.customHeight || dims.baseHeight;
+  const scale = options.scale ?? (options.dpi ? options.dpi / 100 : 3.0);
+
+  await ensureAllFontsLoaded();
+  const usedFonts = getCertificateUsedFonts(certificateData);
+  const base64FontCss = await getBase64EmbeddedFontCss(usedFonts);
+  await waitForImagesToLoad(element);
+
+  const canvas = await htmlToImage.toCanvas(element, {
+    pixelRatio: scale,
+    width: targetWidth,
+    height: targetHeight,
+    backgroundColor: options.transparentBg ? 'transparent' : (options.backgroundColor || certificateData.backgroundColor || '#ffffff'),
+    skipFonts: false,
+    fontEmbedCSS: base64FontCss || undefined,
+    filter: (node: Node) => {
+      if (node instanceof HTMLElement) {
+        if (node.classList.contains('drag-handle') || node.hasAttribute('data-editor-control')) {
+          return false;
+        }
+      }
+      return true;
+    },
+    cacheBust: false,
+  });
+
+  return canvas;
+}
+
+/**
+ * Export directly with html2pdf.js
+ */
+export async function exportWithHtml2Pdf(
+  element: HTMLElement,
+  certificateData: CertificateData,
+  options: ExportOptions = {}
+): Promise<void> {
+  const dims = getCertificateDimensions(certificateData.aspectRatio);
+  const isLandscape = dims.orientation === 'landscape';
+  const fileName = options.fileName || getCleanStudentFileName(certificateData.studentName, 'شهادة_تقدير', 'pdf');
+
+  await ensureAllFontsLoaded();
+  await getGoogleFontsCss();
+
+  // @ts-ignore
+  const html2pdfFn = typeof html2pdf === 'function' ? html2pdf : (window as any).html2pdf;
+  
+  if (html2pdfFn) {
+    const opt = {
+      margin: 0,
+      filename: fileName,
+      image: { type: 'jpeg', quality: options.quality ?? 0.98 },
+      html2canvas: {
+        scale: options.scale ?? 2.8,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: options.backgroundColor || certificateData.backgroundColor || '#ffffff',
+        onclone: (clonedDoc: Document) => {
+          sanitizeOklchInDoc(clonedDoc, certificateData, element);
+        }
+      },
+      jsPDF: {
+        unit: 'mm',
+        format: certificateData.aspectRatio === 'square' ? [dims.widthMm, dims.heightMm] : 'a4',
+        orientation: isLandscape ? 'landscape' : 'portrait'
+      }
+    };
+
+    await html2pdfFn().set(opt).from(element).save();
+    try {
+      autoArchiveCertificate(certificateData, { event: 'export_pdf' });
+    } catch (e) {}
+  } else {
+    // Graceful fallback to jsPDF
+    const canvas = await captureCertificateCanvas(element, certificateData, { scale: options.scale ?? 2.8 });
+    const pdf = createProportionalPdf(canvas, certificateData);
+    pdf.save(fileName);
+    try {
+      autoArchiveCertificate(certificateData, { event: 'export_pdf' });
+    } catch (e) {}
+  }
+}
+
+/**
+ * Unified Canvas Capture Function: routes through selected engine with auto-fallback
+ */
+export async function captureCertificateCanvasUnified(
+  element: HTMLElement,
+  certificateData: CertificateData,
+  options: ExportOptions = {}
+): Promise<HTMLCanvasElement> {
+  const engine = options.engine || 'html2canvas';
+
+  try {
+    if (engine === 'modern-screenshot') {
+      return await captureWithModernScreenshot(element, certificateData, options);
+    }
+    if (engine === 'html-to-image') {
+      return await captureWithHtmlToImage(element, certificateData, options);
+    }
+    if (engine === 'html2canvas' || engine === 'jspdf') {
+      return await captureCertificateCanvas(element, certificateData, {
+        scale: options.scale ?? (options.dpi ? options.dpi / 100 : 3.0),
+        backgroundColor: options.transparentBg ? 'transparent' : options.backgroundColor,
+        customWidth: options.customWidth,
+        customHeight: options.customHeight,
+      });
+    }
+  } catch (err) {
+    console.warn(`[Export Engine] Engine ${engine} encountered a warning, attempting fallback to html2canvas:`, err);
+  }
+
+  // Guaranteed fallback
+  return await captureCertificateCanvas(element, certificateData, {
+    scale: options.scale ?? 3.0,
+    backgroundColor: options.transparentBg ? 'transparent' : options.backgroundColor,
+    customWidth: options.customWidth,
+    customHeight: options.customHeight,
+  });
+}
+
+/**
+ * Unified Export Function: handles all engines (modern-screenshot, html2canvas, html-to-image, html2pdf, jsPDF, vector-print)
+ * and all formats (PDF, PNG, JPEG, WebP, SVG) with full quality options.
+ */
+export async function exportCertificateUnified(
+  element: HTMLElement,
+  certificateData: CertificateData,
+  options: ExportOptions = {}
+): Promise<{ success: boolean; fileName: string; format: ExportFormat }> {
+  const format = options.format || 'pdf';
+  const engine = options.engine || 'html2canvas';
+  const studentName = certificateData.studentName;
+
+  let ext = format;
+  const fileName = options.fileName || getCleanStudentFileName(studentName, 'شهادة_تقدير', ext);
+
+  if (format === 'pdf') {
+    if (engine === 'html2pdf') {
+      await exportWithHtml2Pdf(element, certificateData, { ...options, fileName });
+      return { success: true, fileName, format };
+    }
+    if (engine === 'vector-print') {
+      // Vector print direct execution
+      window.print();
+      return { success: true, fileName: 'طباعة_متجهة_مباشرة', format };
+    }
+    // High-resolution raster canvas via chosen engine -> proportional jsPDF
+    const canvas = await captureCertificateCanvasUnified(element, certificateData, options);
+    const pdf = createProportionalPdf(canvas, certificateData);
+    pdf.save(fileName);
+    try {
+      autoArchiveCertificate(certificateData, { event: 'export_pdf' });
+    } catch (e) {}
+    return { success: true, fileName, format };
+  }
+
+  if (format === 'svg') {
+    let svgDataUrl = '';
+    try {
+      const usedFonts = getCertificateUsedFonts(certificateData);
+      const fontCss = await getBase64EmbeddedFontCss(usedFonts);
+      await ensureAllFontsLoaded();
+
+      if (engine === 'modern-screenshot') {
+        svgDataUrl = await domToSvg(element, {
+          width: options.customWidth,
+          height: options.customHeight,
+          font: fontCss ? { cssText: fontCss } : undefined,
+          filter: (node: Node) => {
+            if (node instanceof HTMLElement && (node.classList.contains('drag-handle') || node.hasAttribute('data-editor-control'))) return false;
+            return true;
+          }
+        });
+      } else {
+        svgDataUrl = await htmlToImage.toSvg(element, {
+          skipFonts: false,
+          fontEmbedCSS: fontCss || undefined,
+          filter: (node: Node) => {
+            if (node instanceof HTMLElement && (node.classList.contains('drag-handle') || node.hasAttribute('data-editor-control'))) return false;
+            return true;
+          }
+        });
+      }
+    } catch (e) {
+      console.warn('SVG export fallback to canvas data', e);
+      const canvas = await captureCertificateCanvasUnified(element, certificateData, options);
+      svgDataUrl = canvas.toDataURL('image/png');
+    }
+
+    const link = document.createElement('a');
+    link.download = fileName;
+    link.href = svgDataUrl;
+    link.click();
+    try {
+      autoArchiveCertificate(certificateData, { event: 'export_png' });
+    } catch (e) {}
+    return { success: true, fileName, format };
+  }
+
+  // Image Formats: PNG, JPEG, WEBP
+  const canvas = await captureCertificateCanvasUnified(element, certificateData, options);
+  let mimeType = 'image/png';
+  let quality = 1.0;
+
+  if (format === 'jpeg') {
+    mimeType = 'image/jpeg';
+    quality = options.quality ?? 0.95;
+  } else if (format === 'webp') {
+    mimeType = 'image/webp';
+    quality = options.quality ?? 0.95;
+  }
+
+  const dataUrl = canvas.toDataURL(mimeType, quality);
+  const link = document.createElement('a');
+  link.download = fileName;
+  link.href = dataUrl;
+  link.click();
+
+  try {
+    autoArchiveCertificate(certificateData, { event: 'export_png' });
+  } catch (e) {}
+
+  return { success: true, fileName, format };
+}
+
+/**
+ * Copies high-resolution certificate image to user clipboard
+ */
+export async function copyCertificateToClipboard(
+  element: HTMLElement,
+  certificateData: CertificateData,
+  options: ExportOptions = {}
+): Promise<boolean> {
+  const canvas = await captureCertificateCanvasUnified(element, certificateData, { ...options, scale: 2.5 });
+  return new Promise<boolean>((resolve, reject) => {
+    canvas.toBlob(async (blob) => {
+      if (!blob) {
+        reject(new Error('فشل إنشاء ملف الصورة'));
+        return;
+      }
+      try {
+        if (navigator.clipboard && window.ClipboardItem) {
+          await navigator.clipboard.write([
+            new ClipboardItem({ 'image/png': blob })
+          ]);
+          resolve(true);
+        } else {
+          throw new Error('خاصية النسخ المباشر للحافظة غير مدعومة بالمتصفح');
+        }
+      } catch (err) {
+        reject(err);
+      }
+    }, 'image/png', 1.0);
+  });
+}
+
 

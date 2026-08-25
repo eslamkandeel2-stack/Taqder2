@@ -795,21 +795,21 @@ export const CertificateCanvas: React.FC<Props> = ({
   };
 
   const fontClass = {
-    'Cairo': "font-['Cairo',sans-serif]",
-    'Amiri': "font-['Amiri',serif]",
-    'Tajawal': "font-['Tajawal',sans-serif]",
-    'Almarai': "font-['Almarai',sans-serif]",
-    'Aref Ruqaa': "font-['Aref_Ruqaa',serif]",
-    'Reem Kufi': "font-['Reem_Kufi',sans-serif]",
-    'Changa': "font-['Changa',sans-serif]",
-    'El Messiri': "font-['El_Messiri',serif]",
-    'Lalezar': "font-['Lalezar',cursive]",
-    'Kufam': "font-['Kufam',sans-serif]",
-    'Scheherazade New': "font-['Scheherazade_New',serif]",
-    'Vazirmatn': "font-['Vazirmatn',sans-serif]",
-    'Harmattan': "font-['Harmattan',sans-serif]",
-    'Marhey': "font-['Marhey',cursive]",
-  }[data.fontFamily] || "font-['Cairo',sans-serif]";
+    'Cairo': "font-cairo font-['Cairo',sans-serif]",
+    'Amiri': "font-amiri font-['Amiri',serif]",
+    'Tajawal': "font-tajawal font-['Tajawal',sans-serif]",
+    'Almarai': "font-almarai font-['Almarai',sans-serif]",
+    'Aref Ruqaa': "font-aref-ruqaa font-['Aref_Ruqaa',serif]",
+    'Reem Kufi': "font-reem-kufi font-['Reem_Kufi',sans-serif]",
+    'Changa': "font-changa font-['Changa',sans-serif]",
+    'El Messiri': "font-el-messiri font-['El_Messiri',serif]",
+    'Lalezar': "font-lalezar font-['Lalezar',cursive]",
+    'Kufam': "font-kufam font-['Kufam',sans-serif]",
+    'Scheherazade New': "font-scheherazade-new font-['Scheherazade_New',serif]",
+    'Vazirmatn': "font-vazirmatn font-['Vazirmatn',sans-serif]",
+    'Harmattan': "font-harmattan font-['Harmattan',sans-serif]",
+    'Marhey': "font-marhey font-['Marhey',cursive]",
+  }[data.fontFamily] || "font-cairo font-['Cairo',sans-serif]";
 
   const getElementFontClass = (fieldKey: keyof ElementStyles) => {
     const isHeaderField = fieldKey === 'schoolHeader' || fieldKey === 'schoolName' || fieldKey === 'dateLocation';
@@ -822,42 +822,65 @@ export const CertificateCanvas: React.FC<Props> = ({
     }
     if (!customFont) return '';
     return {
-      'Cairo': "font-['Cairo',sans-serif]",
-      'Amiri': "font-['Amiri',serif]",
-      'Tajawal': "font-['Tajawal',sans-serif]",
-      'Almarai': "font-['Almarai',sans-serif]",
-      'Aref Ruqaa': "font-['Aref_Ruqaa',serif]",
-      'Reem Kufi': "font-['Reem_Kufi',sans-serif]",
-      'Changa': "font-['Changa',sans-serif]",
-      'El Messiri': "font-['El_Messiri',serif]",
-      'Lalezar': "font-['Lalezar',cursive]",
-      'Kufam': "font-['Kufam',sans-serif]",
-      'Scheherazade New': "font-['Scheherazade_New',serif]",
-      'Vazirmatn': "font-['Vazirmatn',sans-serif]",
-      'Harmattan': "font-['Harmattan',sans-serif]",
-      'Marhey': "font-['Marhey',cursive]",
+      'Cairo': "font-cairo font-['Cairo',sans-serif]",
+      'Amiri': "font-amiri font-['Amiri',serif]",
+      'Tajawal': "font-tajawal font-['Tajawal',sans-serif]",
+      'Almarai': "font-almarai font-['Almarai',sans-serif]",
+      'Aref Ruqaa': "font-aref-ruqaa font-['Aref_Ruqaa',serif]",
+      'Reem Kufi': "font-reem-kufi font-['Reem_Kufi',sans-serif]",
+      'Changa': "font-changa font-['Changa',sans-serif]",
+      'El Messiri': "font-el-messiri font-['El_Messiri',serif]",
+      'Lalezar': "font-lalezar font-['Lalezar',cursive]",
+      'Kufam': "font-kufam font-['Kufam',sans-serif]",
+      'Scheherazade New': "font-scheherazade-new font-['Scheherazade_New',serif]",
+      'Vazirmatn': "font-vazirmatn font-['Vazirmatn',sans-serif]",
+      'Harmattan': "font-harmattan font-['Harmattan',sans-serif]",
+      'Marhey': "font-marhey font-['Marhey',cursive]",
     }[customFont] || '';
   };
 
   const getSignatureFontClass = (fontFamily?: string) => {
-    if (!fontFamily) return "font-['Aref_Ruqaa',serif]";
+    if (!fontFamily) return "font-aref-ruqaa font-['Aref_Ruqaa',serif]";
     return {
-      'Aref Ruqaa': "font-['Aref_Ruqaa',serif]",
-      'Aref Ruqaa Ink': "font-['Aref_Ruqaa_Ink',serif]",
-      'Ruwudu': "font-['Ruwudu',serif]",
-      'Rakkas': "font-['Rakkas',cursive]",
-      'Lateef': "font-['Lateef',cursive]",
-      'Scheherazade New': "font-['Scheherazade_New',serif]",
-      'Marhey': "font-['Marhey',cursive]",
-      'Reem Kufi': "font-['Reem_Kufi',sans-serif]",
-      'Lalezar': "font-['Lalezar',cursive]",
-      'El Messiri': "font-['El_Messiri',sans-serif]",
-      'Amiri': "font-['Amiri',serif]",
-      'Great Vibes': "font-['Great_Vibes',cursive]",
-      'Dancing Script': "font-['Dancing_Script',cursive]",
-      'Caveat': "font-['Caveat',cursive]",
-      'Alex Brush': "font-['Alex_Brush',cursive]",
-    }[fontFamily] || "font-['Aref_Ruqaa',serif]";
+      'Aref Ruqaa': "font-aref-ruqaa font-['Aref_Ruqaa',serif]",
+      'Aref Ruqaa Ink': "font-aref-ruqaa-ink font-['Aref_Ruqaa_Ink',serif]",
+      'Ruwudu': "font-ruwudu font-['Ruwudu',serif]",
+      'Rakkas': "font-rakkas font-['Rakkas',cursive]",
+      'Lateef': "font-lateef font-['Lateef',cursive]",
+      'Scheherazade New': "font-scheherazade-new font-['Scheherazade_New',serif]",
+      'Marhey': "font-marhey font-['Marhey',cursive]",
+      'Reem Kufi': "font-reem-kufi font-['Reem_Kufi',sans-serif]",
+      'Lalezar': "font-lalezar font-['Lalezar',cursive]",
+      'El Messiri': "font-el-messiri font-['El_Messiri',sans-serif]",
+      'Amiri': "font-amiri font-['Amiri',serif]",
+      'Great Vibes': "font-great-vibes font-['Great_Vibes',cursive]",
+      'Dancing Script': "font-dancing-script font-['Dancing_Script',cursive]",
+      'Caveat': "font-caveat font-['Caveat',cursive]",
+      'Alex Brush': "font-alex-brush font-['Alex_Brush',cursive]",
+    }[fontFamily] || "font-aref-ruqaa font-['Aref_Ruqaa',serif]";
+  };
+
+  // Helper to construct guaranteed explicit inline font-family CSS strings for html2canvas and export engines
+  const getExplicitFontFamily = (fieldKey?: keyof ElementStyles, customFontOverride?: string): string => {
+    const isHeaderField = fieldKey === 'schoolHeader' || fieldKey === 'schoolName' || fieldKey === 'dateLocation';
+    const headerFont = data.headerFontFamily || 'Cairo';
+    const baseFont = data.fontFamily || 'Cairo';
+    
+    let targetFont = customFontOverride;
+    if (!targetFont && fieldKey) {
+      targetFont = data.elementStyles?.[fieldKey]?.fontFamily;
+      if (!targetFont && fieldKey === 'schoolName') {
+        targetFont = data.elementStyles?.schoolHeader?.fontFamily;
+      }
+      if (!targetFont) {
+        targetFont = isHeaderField ? headerFont : baseFont;
+      }
+    }
+    if (!targetFont) {
+      targetFont = baseFont;
+    }
+
+    return `'${targetFont}', '${targetFont.replace(/\s+/g, '')}', '${baseFont}', Cairo, Tajawal, Almarai, sans-serif, serif`;
   };
 
   const BASE_FONT_SIZES: Record<string, number> = {
@@ -1024,14 +1047,17 @@ export const CertificateCanvas: React.FC<Props> = ({
       : undefined;
 
     const headerFont = data.headerFontFamily || 'Cairo';
+    const baseFont = data.fontFamily || 'Cairo';
     const fontFam = style?.fontFamily 
       || (fieldKey === 'schoolName' ? data.elementStyles?.schoolHeader?.fontFamily : undefined) 
-      || (isHeaderField ? headerFont : data.fontFamily);
+      || (isHeaderField ? headerFont : baseFont);
+
+    const explicitFontFamily = `'${fontFam}', '${fontFam.replace(/\s+/g, '')}', '${baseFont}', Cairo, Tajawal, Almarai, sans-serif, serif`;
 
     return {
       color: style?.color || defaultColor,
       fontSize: `${finalPx}px`,
-      fontFamily: fontFam ? `'${fontFam}', sans-serif, serif` : undefined,
+      fontFamily: explicitFontFamily,
       textAlign: style?.align || undefined,
       fontWeight: fw !== undefined ? fw : undefined,
       marginTop: style?.marginTop !== undefined ? `${style.marginTop}px` : undefined,
@@ -1315,19 +1341,25 @@ export const CertificateCanvas: React.FC<Props> = ({
       ? ''
       : multiline
       ? 'whitespace-pre-wrap'
-      : 'whitespace-normal';
+      : 'whitespace-nowrap';
+
+    const baseCertFont = data.fontFamily || 'Cairo';
+    const explicitFontFamily = (style as React.CSSProperties | undefined)?.fontFamily ||
+      `'${baseCertFont}', '${baseCertFont.replace(/\s+/g, '')}', Cairo, Tajawal, Almarai, sans-serif, serif`;
 
     if (!isEditable) {
       return (
         <span
-          className={`${cleanClassName} ${whitespaceCls} ${inline ? 'inline-block align-middle' : 'block'} break-words`}
+          className={`${cleanClassName} ${whitespaceCls} ${inline ? 'inline-block align-middle' : 'block'}`}
           style={{
             textAlign: styleTextAlign,
             lineHeight: customLineHeight || (multiline ? '1.5' : '1.25'),
             letterSpacing: customLetterSpacing || 'normal',
-            wordBreak: 'break-word',
-            overflowWrap: 'break-word',
+            wordBreak: multiline ? 'break-word' : 'normal',
+            overflowWrap: multiline ? 'break-word' : 'normal',
+            whiteSpace: multiline ? 'pre-wrap' : (cleanClassName.includes('whitespace-') ? undefined : 'nowrap'),
             ...style,
+            fontFamily: (style as React.CSSProperties | undefined)?.fontFamily || explicitFontFamily,
           }}
           dir="auto"
         >
@@ -1359,16 +1391,18 @@ export const CertificateCanvas: React.FC<Props> = ({
             }
           }}
           data-placeholder={placeholder}
-          className={`${cleanClassName} outline-none hover:ring-1 hover:ring-amber-400/60 focus:ring-2 focus:ring-amber-400/80 rounded transition-all cursor-text ${whitespaceCls} break-words ${inline ? 'inline-block' : 'max-w-full'}`}
+          className={`${cleanClassName} outline-none hover:ring-1 hover:ring-amber-400/60 focus:ring-2 focus:ring-amber-400/80 rounded transition-all cursor-text ${whitespaceCls} ${inline ? 'inline-block' : 'max-w-full'}`}
           style={{
             textAlign: styleTextAlign,
             lineHeight: customLineHeight || (multiline ? '1.5' : '1.25'),
             letterSpacing: customLetterSpacing || 'normal',
-            wordBreak: 'break-word',
-            overflowWrap: 'break-word',
+            wordBreak: multiline ? 'break-word' : 'normal',
+            overflowWrap: multiline ? 'break-word' : 'normal',
+            whiteSpace: multiline ? 'pre-wrap' : (cleanClassName.includes('whitespace-') ? undefined : 'nowrap'),
             minHeight: '1em',
             margin: inline ? undefined : '0 auto',
             ...style,
+            fontFamily: (style as React.CSSProperties | undefined)?.fontFamily || explicitFontFamily,
           }}
           dir="auto"
         >
@@ -2635,6 +2669,7 @@ export const CertificateCanvas: React.FC<Props> = ({
               style={{
                 boxSizing: 'border-box',
                 position: 'relative',
+                fontFamily: `'${data.fontFamily || 'Cairo'}', 'Cairo', Tajawal, Almarai, sans-serif, serif`,
                 width: `${aspectInfo.baseWidth}px`,
                 height: `${aspectInfo.baseHeight}px`,
                 minWidth: `${aspectInfo.baseWidth}px`,
@@ -2956,7 +2991,7 @@ export const CertificateCanvas: React.FC<Props> = ({
                         >
                           {(data.showHeaderLine1 ?? true) && (
                             <div
-                              className={`w-full max-w-full break-words whitespace-pre-wrap transition-transform ${headerAlignClass} ${getElementFontClass('schoolHeader')}`}
+                              className={`w-full max-w-full whitespace-nowrap transition-transform ${headerAlignClass} ${getElementFontClass('schoolHeader')}`}
                               style={{
                                 ...schoolHeaderCss,
                                 transform: `translate(${data.headerLine1OffsetX || 0}px, ${data.headerLine1OffsetY || 0}px)`
@@ -2973,7 +3008,7 @@ export const CertificateCanvas: React.FC<Props> = ({
                           )}
                           {(data.showHeaderLine2 ?? true) && (
                             <div
-                              className={`w-full max-w-full break-words whitespace-pre-wrap transition-transform ${headerAlignClass} ${getElementFontClass('schoolHeader')}`}
+                              className={`w-full max-w-full whitespace-nowrap transition-transform ${headerAlignClass} ${getElementFontClass('schoolHeader')}`}
                               style={{
                                 ...schoolHeaderCss,
                                 transform: `translate(${data.headerLine2OffsetX || 0}px, ${data.headerLine2OffsetY || 0}px)`
@@ -2990,7 +3025,7 @@ export const CertificateCanvas: React.FC<Props> = ({
                           )}
                           {data.showHeaderLine3 && (
                             <div
-                              className={`w-full max-w-full break-words whitespace-pre-wrap transition-transform ${headerAlignClass} ${getElementFontClass('schoolHeader')}`}
+                              className={`w-full max-w-full whitespace-nowrap transition-transform ${headerAlignClass} ${getElementFontClass('schoolHeader')}`}
                               style={{
                                 ...schoolHeaderCss,
                                 transform: `translate(${data.headerLine3OffsetX || 0}px, ${data.headerLine3OffsetY || 0}px)`
@@ -3007,7 +3042,7 @@ export const CertificateCanvas: React.FC<Props> = ({
                           )}
                           {data.showHeaderRightExtra && (
                             <div
-                              className={`w-full max-w-full break-words whitespace-pre-wrap transition-transform ${headerAlignClass} ${getElementFontClass('schoolHeader')}`}
+                              className={`w-full max-w-full whitespace-nowrap transition-transform ${headerAlignClass} ${getElementFontClass('schoolHeader')}`}
                               style={{
                                 ...schoolHeaderCss,
                                 transform: `translate(${data.headerRightExtraOffsetX || 0}px, ${data.headerRightExtraOffsetY || 0}px)`
@@ -3024,7 +3059,7 @@ export const CertificateCanvas: React.FC<Props> = ({
                           )}
                           {(data.showHeaderSchoolName ?? true) && (
                             <div
-                              className={`w-full max-w-full break-words whitespace-pre-wrap transition-transform ${headerAlignClass} ${getElementFontClass('schoolName')}`}
+                              className={`w-full max-w-full whitespace-nowrap transition-transform ${headerAlignClass} ${getElementFontClass('schoolName')}`}
                               style={{
                                 ...getElementCssStyle('schoolName', data.primaryColor || '#1e293b'),
                                 transform: `translate(${data.headerSchoolNameOffsetX || 0}px, ${data.headerSchoolNameOffsetY || 0}px)`
@@ -3252,7 +3287,7 @@ export const CertificateCanvas: React.FC<Props> = ({
                                 value={data.issuePlace}
                                 onChange={(val) => handleFieldChange('issuePlace', val)}
                                 placeholder="المكان"
-                                className="font-medium text-slate-800 max-w-full break-words whitespace-pre-wrap"
+                                className="font-medium text-slate-800 max-w-full whitespace-nowrap"
                               />
                             </div>
                           )}
@@ -3268,7 +3303,7 @@ export const CertificateCanvas: React.FC<Props> = ({
                                 value={data.certNumber || data.verificationCode || data.certificateId || 'REF-1447/0892'}
                                 onChange={(val) => handleFieldChange('certNumber', val)}
                                 placeholder="رقم القيد / المرجع"
-                                className="font-medium text-slate-800 tracking-wide max-w-full break-words whitespace-pre-wrap"
+                                className="font-medium text-slate-800 tracking-wide max-w-full whitespace-nowrap"
                               />
                             </div>
                           )}
@@ -3278,7 +3313,7 @@ export const CertificateCanvas: React.FC<Props> = ({
                                 value={data.headerLeftExtra1 ?? 'نوع الشهادة: معتمدة'}
                                 onChange={(val) => handleFieldChange('headerLeftExtra1', val)}
                                 placeholder="سطر إضافي يسار 1"
-                                className="font-medium text-slate-700 max-w-full break-words whitespace-pre-wrap"
+                                className="font-medium text-slate-700 max-w-full whitespace-nowrap"
                               />
                             </div>
                           )}
@@ -3288,7 +3323,7 @@ export const CertificateCanvas: React.FC<Props> = ({
                                 value={data.headerLeftExtra2 ?? 'الكود: AC-2026'}
                                 onChange={(val) => handleFieldChange('headerLeftExtra2', val)}
                                 placeholder="سطر إضافي يسار 2"
-                                className="font-medium text-slate-700 max-w-full break-words whitespace-pre-wrap"
+                                className="font-medium text-slate-700 max-w-full whitespace-nowrap"
                               />
                             </div>
                           )}
@@ -3332,7 +3367,7 @@ export const CertificateCanvas: React.FC<Props> = ({
                 <DraggableItem elementKey="titleBlock" className="my-1 transition-all duration-300 max-w-full overflow-visible">
                   <div className="space-y-1.5 max-w-full">
                     <h1
-                      className="text-3xl sm:text-4xl font-black leading-tight max-w-full overflow-visible break-words transition-transform"
+                      className="text-3xl sm:text-4xl font-black leading-tight max-w-full overflow-visible whitespace-nowrap transition-transform"
                       style={{
                         transform: `translate(${data.titleOffsetX || 0}px, ${data.titleOffsetY || 0}px)`
                       }}
@@ -3346,7 +3381,7 @@ export const CertificateCanvas: React.FC<Props> = ({
                       />
                     </h1>
                     <div
-                      className="text-sm sm:text-base font-medium opacity-85 leading-relaxed max-w-full overflow-visible break-words transition-transform"
+                      className="text-sm sm:text-base font-medium opacity-85 leading-relaxed max-w-full overflow-visible whitespace-nowrap transition-transform"
                       style={{
                         transform: `translate(${data.subtitleOffsetX || 0}px, ${data.subtitleOffsetY || 0}px)`
                       }}
@@ -3378,7 +3413,7 @@ export const CertificateCanvas: React.FC<Props> = ({
               >
                 {/* Recipient Introduction */}
                 <div
-                  className={`text-sm sm:text-base font-semibold opacity-90 transition-all duration-300 max-w-full overflow-visible ${getElementFontClass('recipientIntro')}`}
+                  className={`text-sm sm:text-base font-semibold opacity-90 transition-all duration-300 max-w-full overflow-visible whitespace-nowrap ${getElementFontClass('recipientIntro')}`}
                   style={{
                     ...getElementCssStyle('recipientIntro'),
                     transform: `translate(${data.recipientIntroOffsetX || 0}px, ${data.recipientIntroOffsetY || 0}px)`
@@ -3411,7 +3446,7 @@ export const CertificateCanvas: React.FC<Props> = ({
                     }
                   >
                     <h2
-                      className="text-2xl sm:text-3xl font-extrabold drop-shadow-xs leading-snug max-w-full overflow-visible break-words transition-transform"
+                      className="text-2xl sm:text-3xl font-extrabold drop-shadow-xs leading-snug max-w-full overflow-visible whitespace-nowrap transition-transform"
                       style={{
                         transform: `translate(${data.studentNameOffsetX || 0}px, ${data.studentNameOffsetY || 0}px)`
                       }}
@@ -3425,7 +3460,7 @@ export const CertificateCanvas: React.FC<Props> = ({
                       />
                     </h2>
                     <div
-                      className="text-xs sm:text-sm font-bold opacity-90 max-w-full overflow-visible break-words whitespace-pre-wrap transition-transform"
+                      className="text-xs sm:text-sm font-bold opacity-90 max-w-full overflow-visible whitespace-nowrap transition-transform"
                       style={{
                         marginTop: `${data.recipientSpacing ?? 4}px`,
                         transform: `translate(${data.gradeOffsetX || 0}px, ${data.gradeOffsetY || 0}px)`
@@ -4141,12 +4176,12 @@ export const CertificateCanvas: React.FC<Props> = ({
                   >
                     {data.signatures && data.signatures.filter(s => s.show).map((sig) => (
                       <div key={sig.id} className="text-center space-y-0.5 min-w-[110px] max-w-[210px] transition-all duration-300 overflow-hidden shrink-0">
-                        <div className="text-[11px] font-bold text-slate-700 max-w-full overflow-visible break-words">
+                        <div className="text-[11px] font-bold text-slate-700 max-w-full overflow-visible whitespace-nowrap">
                           <InlineEdit
                             value={sig.title}
                             onChange={(val) => updateSignatureField(sig.id, 'title', val)}
                             placeholder="المسمى الوظيفي"
-                            className="font-bold text-slate-700 max-w-full break-words whitespace-pre-wrap"
+                            className="font-bold text-slate-700 max-w-full whitespace-nowrap"
                           />
                         </div>
                         
@@ -4160,25 +4195,31 @@ export const CertificateCanvas: React.FC<Props> = ({
                           ) : (
                             <span
                               className={`text-lg sm:text-xl font-bold transition-all ${getSignatureFontClass(sig.fontFamily)}`}
-                              style={{ color: sig.color || data.primaryColor || '#0f172a' }}
+                              style={{
+                                color: sig.color || data.primaryColor || '#0f172a',
+                                fontFamily: sig.fontFamily ? `'${sig.fontFamily}', 'Aref Ruqaa', cursive, serif` : "'Aref Ruqaa', cursive, serif"
+                              }}
                             >
                               <InlineEdit
                                 value={sig.signatureText || sig.name}
                                 onChange={(val) => updateSignatureField(sig.id, 'signatureText', val)}
                                 placeholder="التوقيع بخط اليد"
-                                className={`text-lg sm:text-xl font-bold max-w-full break-words whitespace-pre-wrap ${getSignatureFontClass(sig.fontFamily)}`}
-                                style={{ color: sig.color || data.primaryColor || '#0f172a' }}
+                                className={`text-lg sm:text-xl font-bold max-w-full whitespace-nowrap ${getSignatureFontClass(sig.fontFamily)}`}
+                                style={{
+                                  color: sig.color || data.primaryColor || '#0f172a',
+                                  fontFamily: sig.fontFamily ? `'${sig.fontFamily}', 'Aref Ruqaa', cursive, serif` : "'Aref Ruqaa', cursive, serif"
+                                }}
                               />
                             </span>
                           )}
                         </div>
 
-                        <div className="text-xs font-semibold max-w-full overflow-visible break-words" style={{ color: data.primaryColor }}>
+                        <div className="text-xs font-semibold max-w-full overflow-visible whitespace-nowrap" style={{ color: data.primaryColor }}>
                           <InlineEdit
                             value={sig.name}
                             onChange={(val) => updateSignatureField(sig.id, 'name', val)}
                             placeholder="اسم الموقع"
-                            className="font-semibold max-w-full break-words whitespace-pre-wrap"
+                            className="font-semibold max-w-full whitespace-nowrap"
                             style={{ color: data.primaryColor }}
                           />
                         </div>

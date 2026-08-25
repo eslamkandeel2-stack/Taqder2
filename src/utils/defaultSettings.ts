@@ -8,7 +8,9 @@ import {
   VerificationCodePattern,
   BadgeIconType,
   BadgeBgShape,
-  AspectRatioOption
+  AspectRatioOption,
+  ExportEngine,
+  ExportFormat
 } from '../types';
 
 export interface DefaultCertificateSettings {
@@ -141,8 +143,11 @@ export interface DefaultCertificateSettings {
   verificationDocPrimaryColor: string;
 
   // 9. Export & Print Settings
-  exportFormat: 'pdf' | 'png' | 'svg';
-  exportDpi: 150 | 300 | 600;
+  exportFormat: ExportFormat;
+  defaultExportEngine: ExportEngine;
+  exportDpi: 72 | 150 | 300 | 400 | 600;
+  exportImageQuality: number; // 0.1 to 1.0 (default: 0.95)
+  showExportPreviewModal: boolean;
   printPaperSize: 'A4' | 'A3' | 'Letter';
   crispVectorPdf: boolean;
   includeVerificationInExport: boolean;
@@ -277,7 +282,10 @@ export const FALLBACK_DEFAULT_SETTINGS: DefaultCertificateSettings = {
 
   // 9. Export & Print Settings
   exportFormat: 'pdf',
+  defaultExportEngine: 'html2canvas',
   exportDpi: 300,
+  exportImageQuality: 0.95,
+  showExportPreviewModal: true,
   printPaperSize: 'A4',
   crispVectorPdf: true,
   includeVerificationInExport: true,

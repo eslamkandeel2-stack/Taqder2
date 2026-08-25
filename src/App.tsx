@@ -19,6 +19,8 @@ import { PrintPreviewModal } from './components/PrintPreviewModal';
 import { DirectShareModal } from './components/DirectShareModal';
 import { DraftsManagerModal } from './components/DraftsManagerModal';
 import { HistoryManagerModal } from './components/HistoryManagerModal';
+import { ExportPreviewModal } from './components/ExportPreviewModal';
+import { ExportFormat } from './types';
 import {
   sanitizeOklchInDoc,
   waitForImagesToLoad,
@@ -336,6 +338,8 @@ export default function App() {
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [isDraftsModalOpen, setIsDraftsModalOpen] = useState(false);
   const [isHistoryManagerOpen, setIsHistoryManagerOpen] = useState(false);
+  const [isExportPreviewModalOpen, setIsExportPreviewModalOpen] = useState(false);
+  const [exportPreviewFormat, setExportPreviewFormat] = useState<ExportFormat>('pdf');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
 
@@ -343,30 +347,43 @@ export default function App() {
 
   // Automatically switch to editor tab when opening modals that capture/export certificate canvas
   useEffect(() => {
-    if (isDriveModalOpen || isShareModalOpen || isPrintModalOpen) {
+    if (isDriveModalOpen || isShareModalOpen || isPrintModalOpen || isExportPreviewModalOpen) {
       if (activeTab !== 'editor') {
         setActiveTab('editor');
       }
     }
-  }, [isDriveModalOpen, isShareModalOpen, isPrintModalOpen, activeTab]);
+  }, [isDriveModalOpen, isShareModalOpen, isPrintModalOpen, isExportPreviewModalOpen, activeTab]);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3000);
   };
 
-  // Export Certificate to PDF
-  const handleExportPDF = async () => {
+  // Open Export Preview & Configuration Modal or Direct Export
+  const handleOpenExportPreview = (format: ExportFormat = 'pdf') => {
+    const defaults = getSavedDefaultSettings();
+    if (defaults.showExportPreviewModal !== false) {
+      setExportPreviewFormat(format);
+      setIsExportPreviewModalOpen(true);
+      return;
+    }
+
+    if (format === 'pdf') {
+      handleDirectExportPDF();
+    } else {
+      handleDirectExportImage();
+    }
+  };
+
+  // Export Certificate to PDF (Direct fallback)
+  const handleDirectExportPDF = async () => {
     setIsExporting(true);
     showToast('جاري تحضير ملف PDF عالي الدقة بحسابات النسبة المتطابقة...');
 
     try {
-      // Wait for React re-render so scale transform & UI controls are removed
       await new Promise((resolve) => setTimeout(resolve, 250));
-
       const element = await findCertificateCanvasElement(canvasRef, 15, 100);
       await exportCertificateAsPdf(element, certificateData);
-
       showToast('تم تحميل شهادة PDF بنجاح مع تطابق كامل للأبعاد! ✨');
     } catch (err) {
       console.error('PDF Export Error:', err);
@@ -377,18 +394,15 @@ export default function App() {
     }
   };
 
-  // Export Certificate to PNG Image
-  const handleExportImage = async () => {
+  // Export Certificate to PNG Image (Direct fallback)
+  const handleDirectExportImage = async () => {
     setIsExporting(true);
     showToast('جاري توليد صورة PNG فائقة الجودة بتطابق تام...');
 
     try {
-      // Wait for React re-render so scale transform & UI controls are removed
       await new Promise((resolve) => setTimeout(resolve, 250));
-
       const element = await findCertificateCanvasElement(canvasRef, 15, 100);
       await exportCertificateAsPng(element, certificateData);
-
       showToast('تمت حفظ صورة الشهادة بنجاح بدقة متطابقة! 🖼️');
     } catch (err) {
       console.error('Image Export Error:', err);
@@ -397,6 +411,9 @@ export default function App() {
       setIsExporting(false);
     }
   };
+
+  const handleExportPDF = () => handleOpenExportPreview('pdf');
+  const handleExportImage = () => handleOpenExportPreview('png');
 
   const handleApplyAiContent = (data: Partial<CertificateData>) => {
     updateCertificateData(data);
@@ -927,6 +944,16 @@ export default function App() {
         }}
         onUndo={handleUndo}
         onRedo={handleRedo}
+        onShowToast={showToast}
+      />
+
+      {/* Ultra High-Fidelity Multi-Engine Export & Preview Modal */}
+      <ExportPreviewModal
+        isOpen={isExportPreviewModalOpen}
+        onClose={() => setIsExportPreviewModalOpen(false)}
+        certificateData={certificateData}
+        initialFormat={exportPreviewFormat}
+        canvasRef={canvasRef}
         onShowToast={showToast}
       />
 

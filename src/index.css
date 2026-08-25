@@ -298,3 +298,27 @@
   box-sizing: border-box !important;
 }
 
+/* Explicit Arabic & Signature Font Utilities */
+.font-cairo { font-family: 'Cairo', sans-serif !important; }
+.font-amiri { font-family: 'Amiri', serif !important; }
+.font-tajawal { font-family: 'Tajawal', sans-serif !important; }
+.font-almarai { font-family: 'Almarai', sans-serif !important; }
+.font-aref-ruqaa { font-family: 'Aref Ruqaa', serif !important; }
+.font-reem-kufi { font-family: 'Reem Kufi', sans-serif !important; }
+.font-changa { font-family: 'Changa', sans-serif !important; }
+.font-el-messiri { font-family: 'El Messiri', serif !important; }
+.font-lalezar { font-family: 'Lalezar', cursive !important; }
+.font-kufam { font-family: 'Kufam', sans-serif !important; }
+.font-scheherazade-new { font-family: 'Scheherazade New', serif !important; }
+.font-vazirmatn { font-family: 'Vazirmatn', sans-serif !important; }
+.font-harmattan { font-family: 'Harmattan', sans-serif !important; }
+.font-marhey { font-family: 'Marhey', cursive !important; }
+.font-aref-ruqaa-ink { font-family: 'Aref Ruqaa Ink', serif !important; }
+.font-ruwudu { font-family: 'Ruwudu', serif !important; }
+.font-rakkas { font-family: 'Rakkas', cursive !important; }
+.font-lateef { font-family: 'Lateef', cursive !important; }
+.font-great-vibes { font-family: 'Great Vibes', cursive !important; }
+.font-dancing-script { font-family: 'Dancing Script', cursive !important; }
+.font-caveat { font-family: 'Caveat', cursive !important; }
+.font-alex-brush { font-family: 'Alex Brush', cursive !important; }
+

@@ -1,12 +1,12 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { CertificateData, BatchRecord, BatchVerificationReportItem } from '../types';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { CertificateData, BatchRecord, BatchVerificationReportItem, ExportFormat } from '../types';
 import { CertificateCanvas } from './CertificateCanvas';
+import { ExportPreviewModal } from './ExportPreviewModal';
 import {
   exportBatchCertificatesAsSinglePdf,
   exportCertificateAsPdf,
   exportCertificateAsPng,
   captureCertificateCanvasBlob,
-  findCertificateCanvasElement,
   getCertificateDimensions
 } from '../utils/exportUtils';
 import { printCertificateViaIframe } from '../utils/printUtils';
@@ -16,14 +16,13 @@ import {
   uploadCertificateToDrive,
   getAccessToken
 } from '../services/googleDriveService';
-import { generateVerificationCode, generateQRCodeDataUrl } from '../utils/qrUtils';
+import { generateVerificationCode } from '../utils/qrUtils';
 import { saveBatchRecord, deleteBatchRecord } from '../utils/batchManager';
 import { User } from 'firebase/auth';
 import {
   X,
   Printer,
   Download,
-  Cloud,
   HardDrive,
   CheckCircle2,
   ShieldCheck,
@@ -36,7 +35,6 @@ import {
   Check,
   ExternalLink,
   Sparkles,
-  RefreshCw,
   FileText,
   Grid,
   Table as TableIcon,
@@ -44,12 +42,10 @@ import {
   AlertCircle,
   Loader2,
   FileSpreadsheet,
-  CheckCheck,
-  Share2,
-  ChevronLeft,
-  ChevronRight,
-  Maximize2,
-  Image as ImageIcon
+  Image as ImageIcon,
+  SlidersHorizontal,
+  Zap,
+  ArrowRight
 } from 'lucide-react';
 
 interface Props {
@@ -79,8 +75,14 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
 }) => {
   const [viewMode, setViewMode] = useState<'grid' | 'table' | 'preview'>('grid');
   const [searchQuery, setSearchQuery] = useState('');
+  const [genderFilter, setGenderFilter] = useState<'all' | 'male' | 'female' | 'verified' | 'unverified'>('all');
   const [selectedCertId, setSelectedCertId] = useState<string>(batch.certificates?.[0]?.id || '');
   const [editingCert, setEditingCert] = useState<CertificateData | null>(null);
+
+  // Single Certificate Export Modal Integration
+  const [exportModalCert, setExportModalCert] = useState<CertificateData | null>(null);
+  const [exportModalFormat, setExportModalFormat] = useState<ExportFormat>('pdf');
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
 
   // Deletion & Cancel Confirmation States
   const [certToDelete, setCertToDelete] = useState<CertificateData | null>(null);
@@ -125,22 +127,31 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
     }
   }, [isOpen, batch, selectedCertId]);
 
-  if (!isOpen) return null;
-
   const certificates = batch.certificates || [];
 
-  const filteredCertificates = certificates.filter(cert => {
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase().trim();
-    return (
-      cert.studentName.toLowerCase().includes(q) ||
-      (cert.verificationCode && cert.verificationCode.toLowerCase().includes(q)) ||
-      cert.grade.toLowerCase().includes(q) ||
-      cert.subject.toLowerCase().includes(q)
-    );
-  });
+  const girlsCount = useMemo(() => certificates.filter(c => c.recipientGender === 'female').length, [certificates]);
+  const boysCount = useMemo(() => certificates.length - girlsCount, [certificates, girlsCount]);
+  const verifiedCount = useMemo(() => certificates.filter(c => Boolean(c.driveFileWebViewLink)).length, [certificates]);
 
-  const selectedCertificate = certificates.find(c => c.id === selectedCertId) || certificates[0];
+  const filteredCertificates = useMemo(() => {
+    return certificates.filter(cert => {
+      if (genderFilter === 'male' && cert.recipientGender === 'female') return false;
+      if (genderFilter === 'female' && cert.recipientGender !== 'female') return false;
+      if (genderFilter === 'verified' && !cert.driveFileWebViewLink) return false;
+      if (genderFilter === 'unverified' && cert.driveFileWebViewLink) return false;
+
+      if (!searchQuery.trim()) return true;
+      const q = searchQuery.toLowerCase().trim();
+      return (
+        cert.studentName.toLowerCase().includes(q) ||
+        (cert.verificationCode && cert.verificationCode.toLowerCase().includes(q)) ||
+        cert.grade.toLowerCase().includes(q) ||
+        cert.subject.toLowerCase().includes(q)
+      );
+    });
+  }, [certificates, genderFilter, searchQuery]);
+
+  const selectedCertificate = certificates.find(c => c.id === selectedCertId) || certificates[0] || null;
 
   // Helper to render certificate to DOM for headless capture with high fidelity
   const renderCertificateToDom = async (cert: CertificateData): Promise<HTMLElement> => {
@@ -156,6 +167,13 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
     }
     if (hiddenRenderRef.current) return hiddenRenderRef.current as HTMLElement;
     return (document.getElementById('certificate-print-area') || document.body) as HTMLElement;
+  };
+
+  // Launch unified high-fidelity export preview modal for single certificate
+  const handleOpenSingleExportModal = (cert: CertificateData, format: ExportFormat = 'pdf') => {
+    setExportModalCert(cert);
+    setExportModalFormat(format);
+    setIsExportModalOpen(true);
   };
 
   // 1. Export Batch as Combined Multi-Page PDF
@@ -191,35 +209,7 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
     }
   };
 
-  // 2. Export Single Certificate with exact layout fidelity
-  const handleExportSinglePdf = async (cert: CertificateData) => {
-    try {
-      onShowToast(`جاري تصدير شهادة ${cert.studentName}...`);
-      const el = await renderCertificateToDom(cert);
-      await exportCertificateAsPdf(el, cert);
-      onShowToast(`تم تحميل شهادة ${cert.studentName} بنجاح! 📥`);
-    } catch (e) {
-      console.error(e);
-      onShowToast('فشل تصدير الشهادة الفردية.');
-    } finally {
-      setTimeout(() => setRenderCertTarget(null), 150);
-    }
-  };
-
-  const handleExportSinglePng = async (cert: CertificateData) => {
-    try {
-      onShowToast(`جاري حفظ صورة شهادة ${cert.studentName}...`);
-      const el = await renderCertificateToDom(cert);
-      await exportCertificateAsPng(el, cert);
-      onShowToast(`تم تحميل صورة شهادة ${cert.studentName} بنجاح! 🖼️`);
-    } catch (e) {
-      console.error(e);
-      onShowToast('فشل حفظ صورة الشهادة.');
-    } finally {
-      setTimeout(() => setRenderCertTarget(null), 150);
-    }
-  };
-
+  // 2. Direct single print
   const handlePrintSingleCert = async (cert: CertificateData) => {
     try {
       onShowToast(`جاري فتح نافذة الطباعة لشهادة ${cert.studentName}...`);
@@ -334,7 +324,6 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
       };
 
       try {
-        // Render certificate to capture Blob
         const certWithCode: CertificateData = {
           ...origCert,
           verificationCode: vCode,
@@ -384,7 +373,6 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
       setVerificationReport([...report]);
     }
 
-    // Update the whole batch with verified certificates
     const fullyVerifiedBatch: BatchRecord = {
       ...batch,
       isVerifiedOnDrive: true,
@@ -446,72 +434,92 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
     onShowToast('تم تصدير كشف التوثيق بصيغة Excel/CSV بنجاح! 📊');
   };
 
+  if (!isOpen) return null;
+
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
-      <div className="bg-slate-900 border border-slate-700/80 rounded-3xl w-full max-w-7xl max-h-[96vh] flex flex-col shadow-2xl text-slate-100 overflow-hidden text-right">
+    <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 overflow-y-auto animate-in fade-in duration-200" dir="rtl">
+      <div className="bg-slate-900 border border-slate-700/80 rounded-3xl w-full max-w-7xl max-h-[96vh] flex flex-col shadow-2xl text-slate-100 overflow-hidden text-right font-['Cairo',sans-serif]">
         
-        {/* Modal Top Header */}
-        <div className="p-4 sm:p-6 bg-gradient-to-r from-slate-900 via-slate-800 to-amber-950 border-b border-slate-700/70 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shrink-0">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2.5">
-              <span className="p-2 bg-amber-500/20 text-amber-300 rounded-xl border border-amber-500/30">
-                <Users className="w-5 h-5" />
-              </span>
-              <div>
-                <h3 className="text-lg sm:text-xl font-black text-white flex items-center gap-2">
-                  {batch.title || 'دفعة شهادات الفصل'}
-                  {batch.isVerifiedOnDrive && (
-                    <span className="text-[11px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1">
-                      <ShieldCheck className="w-3.5 h-3.5" /> موثقة على Google Drive
-                    </span>
-                  )}
+        {/* Top Header */}
+        <div className="px-3.5 py-2 sm:px-5 sm:py-2.5 bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border-b border-slate-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-2.5 shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-amber-500/20 to-amber-600/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0 shadow-inner">
+              <Users className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-sm sm:text-base font-black text-white">
+                  {batch.title || 'دفعة شهادات تقدير مجمعة'}
                 </h3>
-                <p className="text-xs text-slate-400">
-                  {batch.grade} • {batch.subject} • إجمالي: <span className="text-amber-300 font-bold">{certificates.length} شهادة</span>
-                </p>
+                {batch.isVerifiedOnDrive ? (
+                  <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                    <ShieldCheck className="w-3 h-3" /> موثقة على Google Drive
+                  </span>
+                ) : (
+                  <span className="text-[10px] bg-slate-800 text-slate-300 border border-slate-700 px-2 py-0.5 rounded-full font-mono">
+                    {certificates.length} شهادة
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mt-0.5 flex-wrap">
+                <span>{batch.grade}</span>
+                <span>•</span>
+                <span>{batch.subject}</span>
+                <span>•</span>
+                <span className="text-sky-300 font-mono">👦 {boysCount} بنين</span>
+                <span>•</span>
+                <span className="text-rose-300 font-mono">👧 {girlsCount} بنات</span>
+                {verifiedCount > 0 && (
+                  <>
+                    <span>•</span>
+                    <span className="text-emerald-300 font-mono">🛡️ {verifiedCount} موثقة</span>
+                  </>
+                )}
               </div>
             </div>
           </div>
 
           {/* Top Quick Actions Bar */}
-          <div className="flex flex-wrap items-center gap-2 w-full md:w-auto justify-end">
+          <div className="flex flex-wrap items-center gap-1.5 w-full md:w-auto justify-end">
             
             {/* Export Multi-Page Combined PDF */}
             <button
+              type="button"
               onClick={handleExportBatchCombinedPdf}
               disabled={isExportingPdf || certificates.length === 0}
-              className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-extrabold text-xs rounded-xl shadow-md transition flex items-center gap-1.5 cursor-pointer"
+              className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-xs rounded-lg shadow-sm transition flex items-center gap-1.5 cursor-pointer"
               title="تجميع كافة شهادات الدفعة في ملف PDF واحد عالي الدقة للطباعة الفورية"
             >
               {isExportingPdf ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin text-white" />
-                  <span>جاري معالجة PDF ({exportProgress?.current}/{exportProgress?.total})...</span>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+                  <span>معالجة ({exportProgress?.current}/{exportProgress?.total})...</span>
                 </>
               ) : (
                 <>
-                  <Download className="w-4 h-4" />
-                  <span>تصدير ملف PDF مجمع (A4)</span>
+                  <Download className="w-3.5 h-3.5" />
+                  <span className="whitespace-nowrap">تصدير PDF مجمع ({certificates.length})</span>
                 </>
               )}
             </button>
 
             {/* Google Drive Batch Verify */}
             <button
+              type="button"
               onClick={handleStartBatchDriveVerification}
               disabled={isUploadingToDrive || certificates.length === 0}
-              className="px-3.5 py-2 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 disabled:opacity-50 text-slate-950 font-black text-xs rounded-xl shadow-md transition flex items-center gap-1.5 cursor-pointer"
+              className="px-2.5 py-1.5 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 disabled:opacity-50 text-slate-950 font-black text-xs rounded-lg shadow-sm transition flex items-center gap-1.5 cursor-pointer"
               title="توثيق الدفعة بالكامل على Google Drive وإنشاء باركود ورابط منفصل لكل طالب"
             >
               {isUploadingToDrive ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
-                  <span>جاري الرفع ({driveProgress?.current}/{driveProgress?.total})...</span>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-950" />
+                  <span>رفع ({driveProgress?.current}/{driveProgress?.total})...</span>
                 </>
               ) : (
                 <>
-                  <HardDrive className="w-4 h-4" />
-                  <span>توثيق الدفعة على درايف</span>
+                  <HardDrive className="w-3.5 h-3.5" />
+                  <span className="whitespace-nowrap">توثيق على درايف</span>
                 </>
               )}
             </button>
@@ -519,167 +527,222 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
             {/* View Links Report */}
             {certificates.some(c => c.driveFileWebViewLink) && (
               <button
+                type="button"
                 onClick={() => setIsDriveModalOpen(true)}
-                className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-sky-300 font-bold text-xs rounded-xl border border-slate-600 transition flex items-center gap-1 cursor-pointer"
+                className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-sky-300 font-bold text-xs rounded-lg border border-slate-700 transition flex items-center gap-1 cursor-pointer"
                 title="عرض جدول روابط التوثيق المباشرة"
               >
-                <FileSpreadsheet className="w-4 h-4" />
-                <span>تقرير الروابط</span>
+                <FileSpreadsheet className="w-3.5 h-3.5" />
+                <span className="whitespace-nowrap">تقرير الروابط</span>
               </button>
             )}
 
-            {/* Delete Batch Button */}
-            <button
-              onClick={() => setShowDeleteBatchConfirm(true)}
-              className="p-2 text-rose-400 hover:text-rose-200 hover:bg-rose-950/50 rounded-xl transition cursor-pointer"
-              title="حذف هذه الدفعة بالكامل"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
+            {/* Delete Batch Button (if not pending) */}
+            {!isPendingSave && (
+              <button
+                type="button"
+                onClick={() => setShowDeleteBatchConfirm(true)}
+                className="p-1.5 text-rose-400 hover:text-rose-200 hover:bg-rose-950/50 rounded-lg transition cursor-pointer"
+                title="حذف هذه الدفعة بالكامل"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            )}
 
             {/* Close Button */}
             <button
+              type="button"
               onClick={isPendingSave ? () => setShowCancelPendingConfirm(true) : onClose}
-              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition cursor-pointer"
+              className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition cursor-pointer"
               title="إغلاق النافذة"
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4" />
             </button>
           </div>
         </div>
 
         {/* BATCH SAVE CONFIRMATION & WORKFLOW BANNER */}
         {isPendingSave ? (
-          <div className="bg-gradient-to-r from-amber-950/50 via-slate-900 to-amber-950/40 border-b border-amber-500/30 p-3 sm:p-4 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 text-right shrink-0">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-amber-500/20 text-amber-300 rounded-2xl shrink-0 border border-amber-500/40 animate-pulse">
-                <Sparkles className="w-5 h-5 text-amber-400" />
+          <div className="bg-gradient-to-r from-amber-950/50 via-slate-900 to-amber-950/40 border-b border-amber-500/30 px-3.5 py-2 sm:px-5 sm:py-2.5 flex flex-col md:flex-row items-start md:items-center justify-between gap-2.5 text-right shrink-0">
+            <div className="flex items-center gap-2.5">
+              <div className="p-1.5 bg-amber-500/20 text-amber-300 rounded-xl shrink-0 border border-amber-500/30">
+                <Sparkles className="w-4 h-4 text-amber-400" />
               </div>
               <div className="space-y-0.5">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h4 className="text-sm sm:text-base font-black text-amber-300">
+                  <h4 className="text-xs sm:text-sm font-black text-amber-300">
                     مراجعة وتأكيد حفظ الشهادات الجماعية
                   </h4>
-                  <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] sm:text-[11px] font-extrabold px-2.5 py-0.5 rounded-full">
-                    ⏳ مسودة قيد المعاينة (لم تُحفظ في السجل بعد)
+                  <span className="bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-bold px-2 py-0.2 rounded-full">
+                    ⏳ مسودة قيد المعاينة ({certificates.length} شهادة)
                   </span>
                 </div>
-                <p className="text-xs text-slate-300 leading-relaxed">
-                  تم توليد ({certificates.length}) شهادة بنجاح. عاين الشهادات أدناه، ثم اختر حفظها نهائياً في سجل الدفعات، أو العودة للتعديل لتصحيح أي أخطاء، أو إلغاء الحفظ.
+                <p className="text-[11px] text-slate-300 leading-normal">
+                  تأكد من صحة الشهادات أدناه، ثم اختر تأكيد الحفظ في السجل، أو العودة للتعديل، أو إلغاء الحفظ.
                 </p>
               </div>
             </div>
 
-            {/* 3 Explicit Action Buttons */}
-            <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full lg:w-auto justify-end shrink-0 pt-1 lg:pt-0">
+            {/* 3 Explicit Action Buttons - Compact and Balanced */}
+            <div className="flex flex-wrap items-center gap-1.5 w-full md:w-auto justify-end shrink-0">
               
               {/* 1. Confirm and Save to History */}
               <button
                 type="button"
                 onClick={() => onConfirmSaveBatch && onConfirmSaveBatch(batch)}
-                className="flex-1 sm:flex-none px-4 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs rounded-xl shadow-lg shadow-emerald-500/20 hover:scale-[1.02] active:scale-[0.98] transition flex items-center justify-center gap-2 cursor-pointer"
+                className="px-3 py-1.5 bg-gradient-to-r from-emerald-500 to-emerald-400 hover:brightness-110 active:scale-95 text-slate-950 font-black text-xs rounded-lg shadow-sm transition flex items-center justify-center gap-1.5 cursor-pointer"
                 title="تأكيد حفظ واعتماد الدفعة في سجل الدفعات المحفوظة والمكتبة السحابية"
               >
-                <CheckCircle2 className="w-4 h-4 text-slate-950" />
-                <span className="whitespace-nowrap">تأكيد حفظ الشهادات في السجل</span>
+                <CheckCircle2 className="w-3.5 h-3.5 text-slate-950" />
+                <span className="whitespace-nowrap">تأكيد حفظ الشهادات في السجل ✓</span>
               </button>
 
               {/* 2. Return to Edit Form to Fix Errors */}
               <button
                 type="button"
                 onClick={() => onReturnToEdit && onReturnToEdit(batch)}
-                className="flex-1 sm:flex-none px-3.5 py-2.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-bold text-xs rounded-xl border border-amber-500/40 hover:border-amber-400 transition flex items-center justify-center gap-2 cursor-pointer"
+                className="px-2.5 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-bold text-xs rounded-lg border border-amber-500/40 hover:border-amber-400 transition flex items-center justify-center gap-1.5 cursor-pointer"
                 title="العودة لمحرر الدفعة لتعديل أسماء الطلاب أو الصيغ وتصحيح الأخطاء"
               >
-                <Edit3 className="w-4 h-4 text-amber-400" />
-                <span className="whitespace-nowrap">العودة للتعديل وتصحيح الأخطاء</span>
+                <Edit3 className="w-3.5 h-3.5 text-amber-400" />
+                <span className="whitespace-nowrap">العودة للتعديل</span>
               </button>
 
               {/* 3. Cancel and Discard */}
               <button
                 type="button"
                 onClick={() => setShowCancelPendingConfirm(true)}
-                className="flex-1 sm:flex-none px-3.5 py-2.5 bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 font-bold text-xs rounded-xl border border-rose-500/30 hover:border-rose-400 transition flex items-center justify-center gap-2 cursor-pointer"
+                className="px-2.5 py-1.5 bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 font-bold text-xs rounded-lg border border-rose-500/30 hover:border-rose-400 transition flex items-center justify-center gap-1.5 cursor-pointer"
                 title="إلغاء الحفظ وتجاهل الشهادات المولدة بدون حفظها"
               >
-                <X className="w-4 h-4 text-rose-400" />
-                <span className="whitespace-nowrap">إلغاء الحفظ وعدم الحفظ</span>
+                <X className="w-3.5 h-3.5 text-rose-400" />
+                <span className="whitespace-nowrap">إلغاء وتجاهل</span>
               </button>
             </div>
           </div>
         ) : (
-          <div className="bg-slate-900/90 border-b border-slate-800 p-2.5 sm:p-3 flex flex-wrap items-center justify-between gap-3 text-right shrink-0 text-xs">
-            <div className="flex items-center gap-2 text-slate-300">
+          <div className="bg-slate-900/95 border-b border-slate-800 px-3.5 py-1.5 sm:px-5 sm:py-2 flex flex-wrap items-center justify-between gap-2 text-right shrink-0 text-xs">
+            <div className="flex items-center gap-2 text-slate-300 text-[11px] sm:text-xs">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span>هذه الدفعة محفوظة رسمياً في <strong>سجل الدفعات المحفوظة</strong> وتاريخ الإنشاء: {new Date(batch.createdAt).toLocaleDateString('ar-SA')}</span>
+              <span>هذه الدفعة معتمدة ومحفوظة في <strong>سجل الدفعات والمكتبة السحابية</strong> • تاريخ الإنشاء: {new Date(batch.createdAt).toLocaleDateString('ar-SA')}</span>
             </div>
             {onReturnToEdit && (
               <button
                 type="button"
                 onClick={() => onReturnToEdit(batch)}
-                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-300 hover:text-amber-200 font-bold text-xs rounded-xl border border-amber-500/30 transition flex items-center gap-1.5 cursor-pointer"
+                className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-amber-300 hover:text-amber-200 font-bold text-xs rounded-lg border border-amber-500/30 transition flex items-center gap-1 cursor-pointer"
                 title="نسخ وتحميل بيانات هذه الدفعة في محرر الدفعات للتعديل وإعادة التوليد"
               >
-                <Edit3 className="w-3.5 h-3.5" />
-                <span>العودة لتعديل بيانات الدفعة في المحرر</span>
+                <Edit3 className="w-3 h-3" />
+                <span>العودة لتعديل بيانات الدفعة</span>
               </button>
             )}
           </div>
         )}
 
-        {/* Search & View Switcher Bar */}
-        <div className="p-3 bg-slate-800/80 border-b border-slate-700/60 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
-          <div className="relative w-full sm:w-80">
-            <Search className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="ابحث باسم الطالب أو رمز التوثيق..."
-              className="w-full pl-3 pr-9 py-1.5 bg-slate-900 border border-slate-700 text-xs rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs"
-              >
-                ✕
-              </button>
-            )}
-          </div>
+        {/* Filter, Search & View Switcher Bar */}
+        <div className="px-3.5 py-1.5 sm:px-5 sm:py-2 bg-slate-800/80 border-b border-slate-700/60 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2 shrink-0">
+          
+          {/* Search and Filters */}
+          <div className="flex flex-wrap items-center gap-2 flex-1">
+            <div className="relative flex-1 min-w-[180px] max-w-xs">
+              <Search className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="ابحث باسم الطالب أو رمز التوثيق..."
+                className="w-full pl-2 pr-8 py-1 bg-slate-900 border border-slate-700 text-xs rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs cursor-pointer"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
-            <span className="text-xs text-slate-400 font-medium">
-              النتائج: <span className="text-white font-bold">{filteredCertificates.length}</span> من {certificates.length}
-            </span>
-
-            <div className="flex items-center bg-slate-900 p-1 rounded-xl border border-slate-700">
+            {/* Quick Gender & Status Filter Pills */}
+            <div className="flex items-center gap-1 bg-slate-900 p-0.5 rounded-lg border border-slate-700 text-xs">
               <button
-                onClick={() => setViewMode('grid')}
-                className={`px-2.5 py-1 text-xs rounded-lg font-bold flex items-center gap-1 transition ${
-                  viewMode === 'grid' ? 'bg-amber-500 text-slate-950 shadow' : 'text-slate-400 hover:text-white'
+                type="button"
+                onClick={() => setGenderFilter('all')}
+                className={`px-2 py-0.5 rounded-md font-bold text-[11px] transition cursor-pointer ${
+                  genderFilter === 'all' ? 'bg-amber-500 text-slate-950 font-black' : 'text-slate-400 hover:text-white'
                 }`}
               >
-                <Grid className="w-3.5 h-3.5" />
+                الكل ({certificates.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setGenderFilter('male')}
+                className={`px-2 py-0.5 rounded-md font-bold text-[11px] transition cursor-pointer ${
+                  genderFilter === 'male' ? 'bg-sky-500 text-slate-950 font-black' : 'text-sky-300 hover:text-white'
+                }`}
+              >
+                👦 بنين ({boysCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setGenderFilter('female')}
+                className={`px-2 py-0.5 rounded-md font-bold text-[11px] transition cursor-pointer ${
+                  genderFilter === 'female' ? 'bg-rose-500 text-slate-950 font-black' : 'text-rose-300 hover:text-white'
+                }`}
+              >
+                👧 بنات ({girlsCount})
+              </button>
+              {verifiedCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setGenderFilter('verified')}
+                  className={`px-2 py-0.5 rounded-md font-bold text-[11px] transition cursor-pointer ${
+                    genderFilter === 'verified' ? 'bg-emerald-500 text-slate-950 font-black' : 'text-emerald-300 hover:text-white'
+                  }`}
+                >
+                  🛡️ موثقة ({verifiedCount})
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* View Mode Switcher */}
+          <div className="flex items-center gap-2 justify-between md:justify-end">
+            <span className="text-[11px] text-slate-400 font-medium hidden sm:inline">
+              عرض: <strong className="text-white">{filteredCertificates.length}</strong> من {certificates.length}
+            </span>
+
+            <div className="flex items-center bg-slate-900 p-0.5 rounded-lg border border-slate-700">
+              <button
+                type="button"
+                onClick={() => setViewMode('grid')}
+                className={`px-2.5 py-1 text-xs rounded-md font-bold flex items-center gap-1 transition cursor-pointer ${
+                  viewMode === 'grid' ? 'bg-amber-500 text-slate-950 shadow-xs font-black' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Grid className="w-3 h-3" />
                 <span>بطاقات</span>
               </button>
               <button
+                type="button"
                 onClick={() => setViewMode('table')}
-                className={`px-2.5 py-1 text-xs rounded-lg font-bold flex items-center gap-1 transition ${
-                  viewMode === 'table' ? 'bg-amber-500 text-slate-950 shadow' : 'text-slate-400 hover:text-white'
+                className={`px-2.5 py-1 text-xs rounded-md font-bold flex items-center gap-1 transition cursor-pointer ${
+                  viewMode === 'table' ? 'bg-amber-500 text-slate-950 shadow-xs font-black' : 'text-slate-400 hover:text-white'
                 }`}
               >
-                <TableIcon className="w-3.5 h-3.5" />
+                <TableIcon className="w-3 h-3" />
                 <span>جدول</span>
               </button>
               <button
+                type="button"
                 onClick={() => setViewMode('preview')}
-                className={`px-2.5 py-1 text-xs rounded-lg font-bold flex items-center gap-1 transition ${
-                  viewMode === 'preview' ? 'bg-amber-500 text-slate-950 shadow' : 'text-slate-400 hover:text-white'
+                className={`px-2.5 py-1 text-xs rounded-md font-bold flex items-center gap-1 transition cursor-pointer ${
+                  viewMode === 'preview' ? 'bg-amber-500 text-slate-950 shadow-xs font-black' : 'text-slate-400 hover:text-white'
                 }`}
               >
-                <Eye className="w-3.5 h-3.5" />
-                <span>معاينة وتعديل</span>
+                <Eye className="w-3 h-3" />
+                <span>معاينة حية</span>
               </button>
             </div>
           </div>
@@ -687,16 +750,16 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
 
         {/* Progress Banner during Multi-page PDF or Drive Upload */}
         {(isExportingPdf || isUploadingToDrive) && (
-          <div className="bg-amber-500/10 border-b border-amber-500/30 p-3 flex items-center justify-between gap-4 px-6 text-xs text-amber-200">
+          <div className="bg-amber-500/15 border-b border-amber-500/30 py-2 px-4 flex items-center justify-between gap-4 text-xs text-amber-200 shrink-0">
             <div className="flex items-center gap-2">
-              <Loader2 className="w-4 h-4 animate-spin text-amber-400" />
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />
               <span>
                 {isExportingPdf
                   ? `جاري تجهيز الشهادة رقم (${exportProgress?.current} من ${exportProgress?.total}) - ${exportProgress?.name}...`
                   : `جاري رفع وتوثيق الشهادة رقم (${driveProgress?.current} من ${driveProgress?.total}) - ${driveProgress?.name} على Google Drive...`}
               </span>
             </div>
-            <div className="w-48 bg-slate-800 rounded-full h-2 overflow-hidden border border-slate-700">
+            <div className="w-40 bg-slate-800 rounded-full h-1.5 overflow-hidden border border-slate-700">
               <div
                 className="bg-amber-400 h-full transition-all duration-300"
                 style={{
@@ -712,70 +775,81 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
         )}
 
         {/* Main Content Area */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+        <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3">
           
           {/* VIEW MODE 1: GRID CARDS */}
           {viewMode === 'grid' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {filteredCertificates.map((cert, index) => {
                 const isSelected = cert.id === selectedCertId;
                 const isDriveUploaded = Boolean(cert.driveFileWebViewLink);
+                const isFemale = cert.recipientGender === 'female';
 
                 return (
                   <div
                     key={cert.id}
                     className={`bg-slate-800/90 border ${
-                      isSelected ? 'border-amber-400 ring-2 ring-amber-400/30' : 'border-slate-700 hover:border-slate-600'
-                    } rounded-2xl p-4 flex flex-col justify-between gap-3 shadow-sm transition relative group`}
+                      isSelected ? 'border-amber-400 ring-2 ring-amber-400/30 shadow-md shadow-amber-500/10' : 'border-slate-700/80 hover:border-slate-600'
+                    } rounded-xl p-3 flex flex-col justify-between gap-2.5 transition relative group`}
                   >
-                    {/* Card Top */}
-                    <div className="flex items-center justify-between gap-2 border-b border-slate-700/80 pb-2.5">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-black bg-amber-500/20 text-amber-300 px-2.5 py-0.5 rounded-lg border border-amber-500/30">
+                    {/* Card Header */}
+                    <div className="flex items-center justify-between gap-2 border-b border-slate-700/80 pb-2">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[11px] font-black bg-amber-500/20 text-amber-300 px-1.5 py-0.2 rounded-md border border-amber-500/30 font-mono">
                           #{index + 1}
                         </span>
-                        <span className="text-[11px] font-mono text-slate-400">
-                          {cert.verificationCode || 'غير موثق'}
+                        <span className={`text-[10px] font-extrabold px-1.5 py-0.2 rounded border ${
+                          isFemale ? 'bg-rose-950/70 text-rose-300 border-rose-500/30' : 'bg-sky-950/70 text-sky-300 border-sky-500/30'
+                        }`}>
+                          {isFemale ? '👧 طالبة' : '👦 طالب'}
                         </span>
+                        {cert.verificationCode && (
+                          <span className="text-[10px] font-mono text-slate-400 hidden sm:inline">
+                            {cert.verificationCode}
+                          </span>
+                        )}
                       </div>
 
                       {isDriveUploaded ? (
-                        <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full font-bold flex items-center gap-1 border border-emerald-500/30">
-                          <CheckCircle2 className="w-3 h-3" /> تم التوثيق
+                        <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.2 rounded-full font-bold flex items-center gap-1 border border-emerald-500/30">
+                          <CheckCircle2 className="w-3 h-3" /> موثقة
                         </span>
                       ) : (
-                        <span className="text-[10px] bg-slate-700 text-slate-400 px-2 py-0.5 rounded-full font-medium">
-                          دفعة محلية
+                        <span className="text-[10px] bg-slate-700/80 text-slate-400 px-1.5 py-0.2 rounded-full font-medium">
+                          جاهزة للتصدير
                         </span>
                       )}
                     </div>
 
                     {/* Student Info */}
-                    <div className="space-y-1 py-1">
-                      <h4 className="font-black text-base text-white hover:text-amber-300 transition">
-                        {cert.studentName}
-                      </h4>
-                      <p className="text-xs text-slate-400">
+                    <div className="space-y-1 py-0.5">
+                      <div className="flex items-start justify-between gap-2">
+                        <h4 className="font-black text-sm sm:text-base text-white hover:text-amber-300 transition">
+                          {cert.studentName}
+                        </h4>
+                      </div>
+                      <p className="text-[11px] text-slate-400">
                         {cert.grade} • {cert.subject}
                       </p>
-                      <p className="text-[11px] text-amber-200/80 italic line-clamp-2 mt-1">
+                      <p className="text-[11px] text-amber-200/85 italic line-clamp-2 leading-relaxed bg-slate-900/60 p-1.5 rounded-lg border border-slate-800">
                         "{cert.appreciationText}"
                       </p>
                     </div>
 
                     {/* Drive Link if available */}
                     {cert.driveFileWebViewLink && (
-                      <div className="bg-slate-900/90 p-2 rounded-xl border border-slate-700/60 flex items-center justify-between text-[11px] text-sky-300">
-                        <span className="truncate max-w-[170px] font-mono text-[10px]">
+                      <div className="bg-slate-900 p-1.5 rounded-lg border border-slate-700/60 flex items-center justify-between text-[10px] text-sky-300">
+                        <span className="truncate max-w-[150px] font-mono text-[10px]">
                           {cert.driveFileWebViewLink}
                         </span>
                         <div className="flex items-center gap-1">
                           <button
+                            type="button"
                             onClick={() => copyToClipboard(cert.driveFileWebViewLink!, cert.id)}
-                            className="p-1 hover:bg-slate-800 rounded text-slate-300 hover:text-white"
+                            className="p-1 hover:bg-slate-800 rounded text-slate-300 hover:text-white cursor-pointer"
                             title="نسخ رابط درايف"
                           >
-                            {copiedCode === cert.id ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                            {copiedCode === cert.id ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
                           </button>
                           <a
                             href={cert.driveFileWebViewLink}
@@ -784,73 +858,96 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
                             className="p-1 hover:bg-slate-800 rounded text-slate-300 hover:text-white"
                             title="فتح على Google Drive"
                           >
-                            <ExternalLink className="w-3.5 h-3.5" />
+                            <ExternalLink className="w-3 h-3" />
                           </a>
                         </div>
                       </div>
                     )}
 
                     {/* Card Actions */}
-                    <div className="pt-2 border-t border-slate-700/80 flex items-center justify-between gap-1 text-xs">
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => {
-                            setSelectedCertId(cert.id);
-                            setViewMode('preview');
-                          }}
-                          className="px-2.5 py-1 bg-slate-700 hover:bg-slate-600 text-slate-200 font-bold rounded-lg transition flex items-center gap-1 cursor-pointer"
-                          title="معاينة حية"
-                        >
-                          <Eye className="w-3 h-3" /> معاينة
-                        </button>
-                        <button
-                          onClick={() => setEditingCert(cert)}
-                          className="px-2 py-1 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg transition cursor-pointer"
-                          title="تعديل البيانات"
-                        >
-                          <Edit3 className="w-3 h-3" />
-                        </button>
-                      </div>
+                    <div className="pt-2 border-t border-slate-700/80 flex flex-col gap-1.5">
+                      
+                      {/* Primary Single Certificate Export Button linking to Export Preview Modal */}
+                      <button
+                        type="button"
+                        onClick={() => handleOpenSingleExportModal(cert, 'pdf')}
+                        className="w-full py-1.5 bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-black text-xs rounded-lg shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
+                        title="فتح نافذة المعاينة والتصدير فائق الدقة لهذه الشهادة بصيغ PDF / PNG / SVG"
+                      >
+                        <Sparkles className="w-3.5 h-3.5 text-slate-950" />
+                        <span>مركز تصدير الشهادة فائق الدقة 🚀</span>
+                      </button>
 
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => handlePrintSingleCert(cert)}
-                          className="p-1.5 bg-indigo-600/30 hover:bg-indigo-600 text-indigo-300 hover:text-white rounded-lg transition cursor-pointer"
-                          title="طباعة الشهادة مباشرة"
-                        >
-                          <Printer className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => handleExportSinglePdf(cert)}
-                          className="p-1.5 bg-emerald-600/30 hover:bg-emerald-600 text-emerald-300 hover:text-white rounded-lg transition cursor-pointer"
-                          title="تصدير PDF فردي"
-                        >
-                          <FileText className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => handleExportSinglePng(cert)}
-                          className="p-1.5 bg-sky-600/30 hover:bg-sky-600 text-sky-300 hover:text-white rounded-lg transition cursor-pointer"
-                          title="تصدير صورة PNG"
-                        >
-                          <Download className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => {
-                            onApplySingleToEditor(cert);
-                            onClose();
-                          }}
-                          className="p-1.5 bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-slate-950 rounded-lg transition cursor-pointer"
-                          title="فتح في المحرر الرئيسي"
-                        >
-                          <Sparkles className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => confirmDeleteCert(cert)}
-                          className="p-1.5 bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white rounded-lg transition cursor-pointer"
-                          title="حذف من الدفعة"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                      {/* Secondary Quick Action Icon Buttons */}
+                      <div className="flex items-center justify-between gap-1 text-xs">
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedCertId(cert.id);
+                              setViewMode('preview');
+                            }}
+                            className="px-2 py-1 bg-slate-700 hover:bg-slate-600 text-slate-200 font-bold rounded-md text-[11px] transition flex items-center gap-1 cursor-pointer"
+                            title="معاينة الشهادة مباشرة"
+                          >
+                            <Eye className="w-3 h-3" />
+                            <span>معاينة</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditingCert(cert)}
+                            className="p-1 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-md transition cursor-pointer"
+                            title="تعديل بيانات هذه الشهادة"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handlePrintSingleCert(cert)}
+                            className="p-1 bg-indigo-600/30 hover:bg-indigo-600 text-indigo-300 hover:text-white rounded-md transition cursor-pointer"
+                            title="طباعة الشهادة مباشرة"
+                          >
+                            <Printer className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenSingleExportModal(cert, 'pdf')}
+                            className="p-1 bg-emerald-600/30 hover:bg-emerald-600 text-emerald-300 hover:text-white rounded-md transition cursor-pointer"
+                            title="تصدير PDF عبر نافذة التصدير"
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenSingleExportModal(cert, 'png')}
+                            className="p-1 bg-sky-600/30 hover:bg-sky-600 text-sky-300 hover:text-white rounded-md transition cursor-pointer"
+                            title="تصدير صورة PNG عبر نافذة التصدير"
+                          >
+                            <ImageIcon className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onApplySingleToEditor(cert);
+                              onClose();
+                            }}
+                            className="p-1 bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-slate-950 rounded-md transition cursor-pointer"
+                            title="فتح في محرر الشهادات الرئيسي"
+                          >
+                            <Sparkles className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => confirmDeleteCert(cert)}
+                            className="p-1 bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white rounded-md transition cursor-pointer"
+                            title="حذف الشهادة من الدفعة"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -861,23 +958,25 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
 
           {/* VIEW MODE 2: TABLE VIEW */}
           {viewMode === 'table' && (
-            <div className="bg-slate-800/80 border border-slate-700 rounded-2xl overflow-hidden shadow">
-              <div className="p-3 bg-slate-900 border-b border-slate-700 flex items-center justify-between">
+            <div className="bg-slate-800/80 border border-slate-700 rounded-xl overflow-hidden shadow">
+              <div className="p-2.5 bg-slate-900 border-b border-slate-700 flex items-center justify-between">
                 <h4 className="font-extrabold text-xs text-slate-300 flex items-center gap-2">
-                  <TableIcon className="w-4 h-4 text-amber-400" />
+                  <TableIcon className="w-3.5 h-3.5 text-amber-400" />
                   جدول شهادات الدفعة التفصيلي
                 </h4>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
                   <button
+                    type="button"
                     onClick={handleDownloadCsv}
-                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs text-amber-300 font-bold rounded-xl border border-slate-700 flex items-center gap-1 transition"
+                    className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-xs text-amber-300 font-bold rounded-lg border border-slate-700 flex items-center gap-1 transition cursor-pointer"
                   >
                     <FileSpreadsheet className="w-3.5 h-3.5" />
                     تصدير Excel/CSV
                   </button>
                   <button
+                    type="button"
                     onClick={handleCopyAllLinksSheet}
-                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs text-sky-300 font-bold rounded-xl border border-slate-700 flex items-center gap-1 transition"
+                    className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-xs text-sky-300 font-bold rounded-lg border border-slate-700 flex items-center gap-1 transition cursor-pointer"
                   >
                     <Copy className="w-3.5 h-3.5" />
                     نسخ كشف الروابط
@@ -889,74 +988,95 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
                 <table className="w-full text-right text-xs">
                   <thead className="bg-slate-900/90 text-slate-400 border-b border-slate-700 font-bold">
                     <tr>
-                      <th className="p-3 text-center w-12">#</th>
-                      <th className="p-3">اسم الطالب / الطالبة</th>
-                      <th className="p-3">الصف</th>
-                      <th className="p-3">المادة / المجال</th>
-                      <th className="p-3">رمز التحقق (الباركود)</th>
-                      <th className="p-3">رابط التوثيق على درايف</th>
-                      <th className="p-3 text-center">إجراءات</th>
+                      <th className="p-2.5 text-center w-10">#</th>
+                      <th className="p-2.5">اسم الطالب / الطالبة</th>
+                      <th className="p-2.5">الصف</th>
+                      <th className="p-2.5">المادة / المجال</th>
+                      <th className="p-2.5">رمز التحقق (الباركود)</th>
+                      <th className="p-2.5">رابط التوثيق على درايف</th>
+                      <th className="p-2.5 text-center">إجراءات وتصدير</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-700/60">
                     {filteredCertificates.map((cert, idx) => (
                       <tr key={cert.id} className="hover:bg-slate-700/30 transition">
-                        <td className="p-3 text-center font-mono font-bold text-amber-400">{idx + 1}</td>
-                        <td className="p-3 font-extrabold text-white">{cert.studentName}</td>
-                        <td className="p-3 text-slate-300">{cert.grade}</td>
-                        <td className="p-3 text-slate-300">{cert.subject}</td>
-                        <td className="p-3 font-mono text-amber-200">{cert.verificationCode}</td>
-                        <td className="p-3">
+                        <td className="p-2.5 text-center font-mono font-bold text-amber-400">{idx + 1}</td>
+                        <td className="p-2.5 font-extrabold text-white">
+                          <div className="flex items-center gap-1.5">
+                            <span>{cert.studentName}</span>
+                            <span className={`text-[10px] px-1 py-0.2 rounded ${
+                              cert.recipientGender === 'female' ? 'bg-rose-950 text-rose-300' : 'bg-sky-950 text-sky-300'
+                            }`}>
+                              {cert.recipientGender === 'female' ? '👧' : '👦'}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="p-2.5 text-slate-300">{cert.grade}</td>
+                        <td className="p-2.5 text-slate-300">{cert.subject}</td>
+                        <td className="p-2.5 font-mono text-amber-200">{cert.verificationCode}</td>
+                        <td className="p-2.5">
                           {cert.driveFileWebViewLink ? (
                             <div className="flex items-center gap-1 text-sky-300">
-                              <span className="font-mono text-[11px] truncate max-w-[160px]">{cert.driveFileWebViewLink}</span>
+                              <span className="font-mono text-[11px] truncate max-w-[140px]">{cert.driveFileWebViewLink}</span>
                               <button
+                                type="button"
                                 onClick={() => copyToClipboard(cert.driveFileWebViewLink!, cert.id)}
-                                className="p-1 hover:bg-slate-800 rounded"
+                                className="p-1 hover:bg-slate-800 rounded cursor-pointer"
                                 title="نسخ"
                               >
-                                {copiedCode === cert.id ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                                {copiedCode === cert.id ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
                               </button>
                               <a href={cert.driveFileWebViewLink} target="_blank" rel="noreferrer" className="p-1 hover:bg-slate-800 rounded">
-                                <ExternalLink className="w-3.5 h-3.5" />
+                                <ExternalLink className="w-3 h-3" />
                               </a>
                             </div>
                           ) : (
-                            <span className="text-slate-500 text-[11px]">غير مرفوع بعد</span>
+                            <span className="text-slate-500 text-[11px]">جاهز للتصدير</span>
                           )}
                         </td>
-                        <td className="p-3 text-center">
+                        <td className="p-2.5 text-center">
                           <div className="flex items-center justify-center gap-1">
+                            {/* Open Export Preview Modal for this individual cert */}
                             <button
+                              type="button"
+                              onClick={() => handleOpenSingleExportModal(cert, 'pdf')}
+                              className="px-2 py-0.5 bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-slate-950 font-bold text-[11px] rounded-md transition flex items-center gap-1 cursor-pointer"
+                              title="مركز التصدير فائق الدقة (PDF/صور)"
+                            >
+                              <Sparkles className="w-3 h-3" />
+                              <span>تصدير</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handlePrintSingleCert(cert)}
+                              className="p-1 hover:bg-slate-700 text-indigo-300 rounded cursor-pointer"
+                              title="طباعة مباشرة"
+                            >
+                              <Printer className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
                               onClick={() => {
                                 setSelectedCertId(cert.id);
                                 setViewMode('preview');
                               }}
-                              className="p-1.5 hover:bg-slate-700 text-slate-300 hover:text-white rounded"
+                              className="p-1 hover:bg-slate-700 text-slate-300 hover:text-white rounded cursor-pointer"
                               title="معاينة"
                             >
                               <Eye className="w-3.5 h-3.5" />
                             </button>
                             <button
-                              onClick={() => handleExportSinglePdf(cert)}
-                              className="p-1.5 hover:bg-slate-700 text-emerald-400 rounded"
-                              title="تصدير PDF"
+                              type="button"
+                              onClick={() => setEditingCert(cert)}
+                              className="p-1 hover:bg-slate-700 text-slate-300 rounded cursor-pointer"
+                              title="تعديل"
                             >
-                              <FileText className="w-3.5 h-3.5" />
+                              <Edit3 className="w-3.5 h-3.5" />
                             </button>
                             <button
-                              onClick={() => {
-                                onApplySingleToEditor(cert);
-                                onClose();
-                              }}
-                              className="p-1.5 hover:bg-slate-700 text-amber-400 rounded cursor-pointer"
-                              title="تعديل بالمحرر"
-                            >
-                              <Sparkles className="w-3.5 h-3.5" />
-                            </button>
-                            <button
+                              type="button"
                               onClick={() => confirmDeleteCert(cert)}
-                              className="p-1.5 hover:bg-rose-950/50 text-rose-400 hover:text-rose-300 rounded cursor-pointer"
+                              className="p-1 hover:bg-rose-950/50 text-rose-400 hover:text-rose-300 rounded cursor-pointer"
                               title="حذف الشهادة"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
@@ -972,33 +1092,39 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
           )}
 
           {/* VIEW MODE 3: FULL LIVE PREVIEW & INSPECTOR */}
-          {viewMode === 'preview' && (
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          {viewMode === 'preview' && selectedCertificate && (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
               
               {/* Left Column: Student Selector List (4 Cols) */}
-              <div className="lg:col-span-4 bg-slate-800/90 border border-slate-700 rounded-2xl p-3 space-y-2 max-h-[600px] overflow-y-auto">
-                <h5 className="font-extrabold text-xs text-slate-300 pb-2 border-b border-slate-700">
-                  قائمة طلاب الدفعة ({certificates.length})
-                </h5>
-                <div className="space-y-1.5">
-                  {certificates.map((cert, idx) => {
+              <div className="lg:col-span-4 bg-slate-800/90 border border-slate-700 rounded-xl p-2.5 space-y-1.5 max-h-[560px] overflow-y-auto">
+                <div className="flex items-center justify-between pb-1.5 border-b border-slate-700">
+                  <h5 className="font-extrabold text-xs text-slate-300">
+                    قائمة طلاب الدفعة ({filteredCertificates.length})
+                  </h5>
+                  <span className="text-[10px] text-slate-400">انقر للتبديل</span>
+                </div>
+                <div className="space-y-1">
+                  {filteredCertificates.map((cert, idx) => {
                     const isSelected = cert.id === selectedCertId;
+                    const isFemale = cert.recipientGender === 'female';
                     return (
                       <button
                         key={cert.id}
+                        type="button"
                         onClick={() => setSelectedCertId(cert.id)}
-                        className={`w-full text-right p-2.5 rounded-xl text-xs transition flex items-center justify-between cursor-pointer ${
+                        className={`w-full text-right p-2 rounded-lg text-xs transition flex items-center justify-between cursor-pointer ${
                           isSelected
-                            ? 'bg-amber-500 text-slate-950 font-black shadow-md'
+                            ? 'bg-amber-500 text-slate-950 font-black shadow-sm'
                             : 'bg-slate-900/80 hover:bg-slate-700 text-slate-200'
                         }`}
                       >
-                        <div className="truncate">
-                          <span className="font-mono ml-1.5 opacity-70">#{idx + 1}</span>
-                          <span>{cert.studentName}</span>
+                        <div className="truncate flex items-center gap-1.5">
+                          <span className="font-mono opacity-70 text-[11px]">#{idx + 1}</span>
+                          <span>{isFemale ? '👧' : '👦'}</span>
+                          <span className="font-bold truncate">{cert.studentName}</span>
                         </div>
                         {cert.driveFileWebViewLink && (
-                          <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded font-bold">
+                          <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.2 rounded font-bold shrink-0">
                             موثق
                           </span>
                         )}
@@ -1009,55 +1135,73 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
               </div>
 
               {/* Right Column: Live Certificate Canvas Preview (8 Cols) */}
-              <div className="lg:col-span-8 bg-slate-800/60 border border-slate-700 rounded-2xl p-4 flex flex-col items-center justify-center min-h-[500px] relative">
-                <div className="w-full flex items-center justify-between mb-3 pb-2 border-b border-slate-700">
+              <div className="lg:col-span-8 bg-slate-800/60 border border-slate-700 rounded-xl p-3 flex flex-col items-center justify-center min-h-[460px] relative">
+                <div className="w-full flex flex-wrap items-center justify-between mb-2 pb-2 border-b border-slate-700 gap-1.5">
                   <div className="flex items-center gap-2">
                     <span className="font-black text-sm text-amber-300">{selectedCertificate.studentName}</span>
-                    <span className="text-xs text-slate-400">({selectedCertificate.grade})</span>
+                    <span className="text-xs text-slate-400">({selectedCertificate.grade} • {selectedCertificate.subject})</span>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  {/* Inspector Action Buttons including Export Preview Modal */}
+                  <div className="flex flex-wrap items-center gap-1">
+                    
+                    {/* Main Export Preview Trigger for Current Certificate */}
                     <button
+                      type="button"
+                      onClick={() => handleOpenSingleExportModal(selectedCertificate, 'pdf')}
+                      className="px-2.5 py-1 bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-black text-xs rounded-lg shadow-xs transition flex items-center gap-1 cursor-pointer"
+                      title="فتح نافذة المعاينة والتصدير فائق الدقة لهذه الشهادة"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-slate-950" />
+                      <span>مركز التصدير 🚀</span>
+                    </button>
+
+                    <button
+                      type="button"
                       onClick={() => handlePrintSingleCert(selectedCertificate)}
-                      className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow transition flex items-center gap-1 cursor-pointer"
+                      className="px-2 py-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-lg shadow-xs transition flex items-center gap-1 cursor-pointer"
                       title="طباعة الشهادة الحالية مباشرة"
                     >
-                      <Printer className="w-3.5 h-3.5" /> طباعة
+                      <Printer className="w-3.5 h-3.5" />
+                      <span>طباعة</span>
                     </button>
+
                     <button
-                      onClick={() => handleExportSinglePdf(selectedCertificate)}
-                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow transition flex items-center gap-1 cursor-pointer"
-                      title="تحميل كملف PDF"
+                      type="button"
+                      onClick={() => setEditingCert(selectedCertificate)}
+                      className="px-2 py-1 bg-slate-700 hover:bg-slate-600 text-slate-200 font-bold text-xs rounded-lg transition flex items-center gap-1 cursor-pointer"
+                      title="تعديل بيانات الشهادة"
                     >
-                      <Download className="w-3.5 h-3.5" /> PDF
+                      <Edit3 className="w-3.5 h-3.5" />
+                      <span>تعديل</span>
                     </button>
+
                     <button
-                      onClick={() => handleExportSinglePng(selectedCertificate)}
-                      className="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs rounded-xl shadow transition flex items-center gap-1 cursor-pointer"
-                      title="تحميل كصورة PNG"
-                    >
-                      <ImageIcon className="w-3.5 h-3.5" /> PNG
-                    </button>
-                    <button
+                      type="button"
                       onClick={() => {
                         onApplySingleToEditor(selectedCertificate);
                         onClose();
                       }}
-                      className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl shadow transition flex items-center gap-1 cursor-pointer"
+                      className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-xs rounded-lg border border-amber-500/30 transition flex items-center gap-1 cursor-pointer"
+                      title="فتح في المحرر الرئيسي"
                     >
-                      <Sparkles className="w-3.5 h-3.5" /> فتح بالمحرر
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>بالمحرر</span>
                     </button>
+
                     <button
+                      type="button"
                       onClick={() => confirmDeleteCert(selectedCertificate)}
-                      className="p-1.5 bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white rounded-xl transition cursor-pointer"
+                      className="p-1 bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white rounded-lg transition cursor-pointer"
                       title="حذف هذه الشهادة"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 </div>
 
-                <div className="w-full overflow-hidden flex items-center justify-center">
+                {/* Certificate Canvas Render */}
+                <div className="w-full overflow-hidden flex items-center justify-center p-1.5">
                   <CertificateCanvas
                     data={selectedCertificate}
                     isExporting={false}
@@ -1075,9 +1219,9 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
         </div>
 
         {/* Modal Bottom Footer */}
-        <div className="p-4 bg-slate-900 border-t border-slate-700/80 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-400 shrink-0">
+        <div className="px-4 py-2 sm:py-2.5 bg-slate-900 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-2.5 text-xs text-slate-400 shrink-0">
           <div>
-            <span>تاريخ إنشاء الدفعة: {new Date(batch.createdAt).toLocaleDateString('ar-SA')}</span>
+            <span>تاريخ الإنشاء: {new Date(batch.createdAt).toLocaleDateString('ar-SA')}</span>
             {batch.updatedAt && (
               <span className="mr-3">آخر تحديث: {new Date(batch.updatedAt).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}</span>
             )}
@@ -1085,16 +1229,18 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
 
           <div className="flex items-center gap-2">
             <button
+              type="button"
               onClick={handleExportBatchCombinedPdf}
               disabled={isExportingPdf}
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow"
+              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg transition flex items-center gap-1.5 cursor-pointer shadow-xs text-xs"
             >
-              <Download className="w-4 h-4" />
-              تصدير ملف PDF مجمع لكافة الشهادات ({certificates.length})
+              <Download className="w-3.5 h-3.5" />
+              <span>تصدير PDF مجمع ({certificates.length})</span>
             </button>
             <button
+              type="button"
               onClick={onClose}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-xl transition cursor-pointer"
+              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-lg transition cursor-pointer text-xs"
             >
               إغلاق
             </button>
@@ -1103,22 +1249,36 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
 
       </div>
 
+      {/* ULTRA HIGH-FIDELITY EXPORT PREVIEW MODAL FOR INDIVIDUAL CERTIFICATE */}
+      {exportModalCert && (
+        <ExportPreviewModal
+          isOpen={isExportModalOpen}
+          onClose={() => {
+            setIsExportModalOpen(false);
+            setExportModalCert(null);
+          }}
+          certificateData={exportModalCert}
+          initialFormat={exportModalFormat}
+          onShowToast={onShowToast}
+        />
+      )}
+
       {/* QUICK EDIT MODAL FOR SINGLE STUDENT IN BATCH */}
       {editingCert && (
-        <div className="fixed inset-0 z-60 bg-black/80 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[80] bg-black/80 flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 max-w-md w-full text-right space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-700 pb-3">
               <h4 className="font-extrabold text-sm text-white flex items-center gap-2">
                 <Edit3 className="w-4 h-4 text-amber-400" />
                 تعديل بيانات شهادة الطالب
               </h4>
-              <button onClick={() => setEditingCert(null)} className="text-slate-400 hover:text-white">
+              <button onClick={() => setEditingCert(null)} className="text-slate-400 hover:text-white cursor-pointer">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-300 mb-1">اسم الطالب:</label>
+              <label className="block text-xs font-bold text-slate-300 mb-1">اسم الطالب / الطالبة:</label>
               <input
                 type="text"
                 value={editingCert.studentName}
@@ -1127,14 +1287,27 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
               />
             </div>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-300 mb-1">الصف الدراسي:</label>
-              <input
-                type="text"
-                value={editingCert.grade}
-                onChange={(e) => setEditingCert({ ...editingCert, grade: e.target.value })}
-                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 text-xs rounded-xl text-white"
-              />
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1">الجنس:</label>
+                <select
+                  value={editingCert.recipientGender || 'male'}
+                  onChange={(e) => setEditingCert({ ...editingCert, recipientGender: e.target.value as 'male' | 'female' })}
+                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 text-xs rounded-xl text-white"
+                >
+                  <option value="male">👦 طالب (مذكر)</option>
+                  <option value="female">👧 طالبة (مؤنث)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1">الصف الدراسي:</label>
+                <input
+                  type="text"
+                  value={editingCert.grade}
+                  onChange={(e) => setEditingCert({ ...editingCert, grade: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 text-xs rounded-xl text-white"
+                />
+              </div>
             </div>
 
             <div>
@@ -1159,14 +1332,16 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
 
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-700">
               <button
+                type="button"
                 onClick={() => setEditingCert(null)}
-                className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-xl"
+                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-lg cursor-pointer transition"
               >
                 إلغاء
               </button>
               <button
+                type="button"
                 onClick={() => handleSaveCertEdit(editingCert)}
-                className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black rounded-xl shadow"
+                className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black rounded-lg shadow-xs cursor-pointer transition"
               >
                 حفظ التعديل
               </button>
@@ -1177,40 +1352,42 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
 
       {/* DRIVE VERIFICATION REPORT MODAL */}
       {isDriveModalOpen && (
-        <div className="fixed inset-0 z-60 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-slate-900 border border-slate-700 rounded-3xl p-6 max-w-4xl w-full text-right space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-700 pb-3">
+        <div className="fixed inset-0 z-[80] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-5 max-w-4xl w-full text-right space-y-3 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-700 pb-2.5">
               <div className="flex items-center gap-2">
-                <span className="p-2 bg-emerald-500/20 text-emerald-300 rounded-xl">
-                  <ShieldCheck className="w-5 h-5" />
+                <span className="p-1.5 bg-emerald-500/20 text-emerald-300 rounded-xl">
+                  <ShieldCheck className="w-4 h-4" />
                 </span>
                 <div>
-                  <h4 className="font-extrabold text-base text-white">تقرير توثيق الدفعة على Google Drive</h4>
-                  <p className="text-xs text-slate-400">تم إنشاء روابط وبراكودات التوثيق الفردية لكل طالب في الدفعة</p>
+                  <h4 className="font-extrabold text-sm sm:text-base text-white">تقرير توثيق الدفعة على Google Drive</h4>
+                  <p className="text-[11px] text-slate-400">تم إنشاء روابط وبراكودات التوثيق الفردية لكل طالب في الدفعة</p>
                 </div>
               </div>
-              <button onClick={() => setIsDriveModalOpen(false)} className="text-slate-400 hover:text-white">
-                <X className="w-5 h-5" />
+              <button onClick={() => setIsDriveModalOpen(false)} className="text-slate-400 hover:text-white cursor-pointer">
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="flex items-center justify-between gap-3 bg-slate-800/80 p-3 rounded-2xl border border-slate-700 text-xs">
+            <div className="flex items-center justify-between gap-3 bg-slate-800/80 p-2.5 rounded-xl border border-slate-700 text-xs">
               <div className="flex items-center gap-2 text-slate-300">
-                <HardDrive className="w-4 h-4 text-amber-400" />
+                <HardDrive className="w-3.5 h-3.5 text-amber-400" />
                 <span>إجمالي الشهادات الموثقة: <strong className="text-white">{certificates.filter(c => c.driveFileWebViewLink).length}</strong> من {certificates.length}</span>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 <button
+                  type="button"
                   onClick={handleCopyAllLinksSheet}
-                  className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-xl flex items-center gap-1 transition"
+                  className="px-2.5 py-1.5 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-lg flex items-center gap-1 transition cursor-pointer text-xs"
                 >
                   <Copy className="w-3.5 h-3.5" />
-                  {copiedAllLinks ? 'تم نسخ الكشف!' : 'نسخ كشف الروابط بالكامل'}
+                  {copiedAllLinks ? 'تم نسخ الكشف!' : 'نسخ كشف الروابط'}
                 </button>
                 <button
+                  type="button"
                   onClick={handleDownloadCsv}
-                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl flex items-center gap-1 transition"
+                  className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg flex items-center gap-1 transition cursor-pointer text-xs"
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5" />
                   تصدير ملف Excel
@@ -1218,32 +1395,33 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
               </div>
             </div>
 
-            <div className="max-h-96 overflow-y-auto border border-slate-700 rounded-2xl">
+            <div className="max-h-80 overflow-y-auto border border-slate-700 rounded-xl">
               <table className="w-full text-right text-xs">
                 <thead className="bg-slate-950 text-slate-400 border-b border-slate-700 font-bold sticky top-0">
                   <tr>
-                    <th className="p-3 text-center w-12">#</th>
-                    <th className="p-3">اسم الطالب</th>
-                    <th className="p-3">رمز التوثيق / الباركود</th>
-                    <th className="p-3">رابط التوثيق المباشر</th>
-                    <th className="p-3 text-center">الإجراءات</th>
+                    <th className="p-2.5 text-center w-10">#</th>
+                    <th className="p-2.5">اسم الطالب</th>
+                    <th className="p-2.5">رمز التوثيق / الباركود</th>
+                    <th className="p-2.5">رابط التوثيق المباشر</th>
+                    <th className="p-2.5 text-center">الإجراءات</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800">
                   {certificates.map((cert, idx) => (
                     <tr key={cert.id} className="hover:bg-slate-800/40">
-                      <td className="p-3 text-center font-mono text-amber-400 font-bold">{idx + 1}</td>
-                      <td className="p-3 font-bold text-white">{cert.studentName}</td>
-                      <td className="p-3 font-mono text-amber-200">{cert.verificationCode}</td>
-                      <td className="p-3 font-mono text-sky-300 text-[11px] truncate max-w-xs">
+                      <td className="p-2.5 text-center font-mono text-amber-400 font-bold">{idx + 1}</td>
+                      <td className="p-2.5 font-bold text-white">{cert.studentName}</td>
+                      <td className="p-2.5 font-mono text-amber-200">{cert.verificationCode}</td>
+                      <td className="p-2.5 font-mono text-sky-300 text-[11px] truncate max-w-xs">
                         {cert.driveFileWebViewLink || 'غير متوفر'}
                       </td>
-                      <td className="p-3 text-center">
+                      <td className="p-2.5 text-center">
                         {cert.driveFileWebViewLink && (
                           <div className="flex items-center justify-center gap-1">
                             <button
+                              type="button"
                               onClick={() => copyToClipboard(cert.driveFileWebViewLink!, cert.id)}
-                              className="p-1 hover:bg-slate-800 rounded text-slate-300"
+                              className="p-1 hover:bg-slate-800 rounded text-slate-300 cursor-pointer"
                               title="نسخ الرابط"
                             >
                               <Copy className="w-3.5 h-3.5" />
@@ -1266,10 +1444,11 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
               </table>
             </div>
 
-            <div className="flex justify-end pt-2">
+            <div className="flex justify-end pt-1.5">
               <button
+                type="button"
                 onClick={() => setIsDriveModalOpen(false)}
-                className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl"
+                className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg cursor-pointer transition"
               >
                 تم
               </button>
@@ -1281,18 +1460,18 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
       {/* SINGLE CERTIFICATE DELETE CONFIRMATION MODAL */}
       {certToDelete && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-700 max-w-md w-full rounded-2xl p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center gap-3 text-rose-400">
-              <div className="p-3 bg-rose-500/20 rounded-xl">
-                <Trash2 className="w-6 h-6 text-rose-400" />
+          <div className="bg-slate-900 border border-slate-700 max-w-md w-full rounded-2xl p-5 shadow-2xl space-y-3 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-2.5 text-rose-400">
+              <div className="p-2 bg-rose-500/20 rounded-xl">
+                <Trash2 className="w-5 h-5 text-rose-400" />
               </div>
               <div>
-                <h4 className="font-extrabold text-base text-white">تأكيد حذف الشهادة</h4>
-                <p className="text-xs text-slate-400">هذا الإجراء سيقوم بحذف الشهادة من هذه الدفعة</p>
+                <h4 className="font-extrabold text-sm sm:text-base text-white">تأكيد حذف الشهادة</h4>
+                <p className="text-[11px] text-slate-400">هذا الإجراء سيقوم بحذف الشهادة من هذه الدفعة</p>
               </div>
             </div>
 
-            <div className="p-3 bg-slate-800/80 rounded-xl border border-slate-700/80 text-xs space-y-1">
+            <div className="p-2.5 bg-slate-800/80 rounded-xl border border-slate-700/80 text-xs space-y-1">
               <div className="flex justify-between">
                 <span className="text-slate-400">اسم الطالب:</span>
                 <span className="font-bold text-white">{certToDelete.studentName}</span>
@@ -1315,14 +1494,16 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
 
             <div className="flex items-center justify-end gap-2 pt-2">
               <button
+                type="button"
                 onClick={() => setCertToDelete(null)}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl transition cursor-pointer"
+                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-lg transition cursor-pointer"
               >
                 إلغاء
               </button>
               <button
+                type="button"
                 onClick={() => executeDeleteCert(certToDelete.id)}
-                className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white font-black text-xs rounded-xl shadow-lg shadow-rose-600/30 transition flex items-center gap-1.5 cursor-pointer"
+                className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-500 text-white font-black text-xs rounded-lg shadow-sm transition flex items-center gap-1.5 cursor-pointer"
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 <span>تأكيد الحذف</span>
@@ -1335,18 +1516,18 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
       {/* CANCEL / DISCARD PENDING BATCH CONFIRMATION MODAL */}
       {showCancelPendingConfirm && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-700 max-w-md w-full rounded-2xl p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-200 text-right">
-            <div className="flex items-center gap-3 text-rose-400">
-              <div className="p-3 bg-rose-500/20 rounded-xl">
-                <AlertCircle className="w-6 h-6 text-rose-400" />
+          <div className="bg-slate-900 border border-slate-700 max-w-md w-full rounded-2xl p-5 shadow-2xl space-y-3 animate-in fade-in zoom-in-95 duration-200 text-right">
+            <div className="flex items-center gap-2.5 text-rose-400">
+              <div className="p-2 bg-rose-500/20 rounded-xl">
+                <AlertCircle className="w-5 h-5 text-rose-400" />
               </div>
               <div>
-                <h4 className="font-extrabold text-base text-white">إلغاء حفظ الشهادات وتجاهل الدفعة</h4>
-                <p className="text-xs text-slate-400">لن يتم حفظ هذه الشهادات في سجل الدفعات أو السحابة</p>
+                <h4 className="font-extrabold text-sm sm:text-base text-white">إلغاء حفظ الشهادات وتجاهل الدفعة</h4>
+                <p className="text-[11px] text-slate-400">لن يتم حفظ هذه الشهادات في سجل الدفعات أو السحابة</p>
               </div>
             </div>
 
-            <div className="p-3 bg-slate-800/80 rounded-xl border border-slate-700/80 text-xs space-y-1">
+            <div className="p-2.5 bg-slate-800/80 rounded-xl border border-slate-700/80 text-xs space-y-1">
               <div className="flex justify-between">
                 <span className="text-slate-400">عنوان الدفعة:</span>
                 <span className="font-bold text-white">{batch.title}</span>
@@ -1365,7 +1546,7 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
               <button
                 type="button"
                 onClick={() => setShowCancelPendingConfirm(false)}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl transition cursor-pointer"
+                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-lg transition cursor-pointer"
               >
                 تراجع والمتابعة
               </button>
@@ -1376,7 +1557,7 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
                     setShowCancelPendingConfirm(false);
                     onReturnToEdit(batch);
                   }}
-                  className="px-3.5 py-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-bold text-xs rounded-xl border border-amber-500/30 transition cursor-pointer"
+                  className="px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-bold text-xs rounded-lg border border-amber-500/30 transition cursor-pointer"
                 >
                   العودة للتعديل
                 </button>
@@ -1391,7 +1572,7 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
                     onClose();
                   }
                 }}
-                className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white font-black text-xs rounded-xl shadow-lg shadow-rose-600/30 transition flex items-center gap-1.5 cursor-pointer"
+                className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-500 text-white font-black text-xs rounded-lg shadow-sm transition flex items-center gap-1.5 cursor-pointer"
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 <span>نعم، تجاهل وإلغاء الحفظ</span>
@@ -1404,18 +1585,18 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
       {/* ENTIRE BATCH DELETE CONFIRMATION MODAL */}
       {showDeleteBatchConfirm && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-700 max-w-md w-full rounded-2xl p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center gap-3 text-rose-400">
-              <div className="p-3 bg-rose-500/20 rounded-xl">
-                <AlertCircle className="w-6 h-6 text-rose-400" />
+          <div className="bg-slate-900 border border-slate-700 max-w-md w-full rounded-2xl p-5 shadow-2xl space-y-3 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-2.5 text-rose-400">
+              <div className="p-2 bg-rose-500/20 rounded-xl">
+                <AlertCircle className="w-5 h-5 text-rose-400" />
               </div>
               <div>
-                <h4 className="font-extrabold text-base text-white">تأكيد حذف الدفعة بالكامل</h4>
-                <p className="text-xs text-slate-400">تحذير: لا يمكن التراجع عن هذا الإجراء</p>
+                <h4 className="font-extrabold text-sm sm:text-base text-white">تأكيد حذف الدفعة بالكامل</h4>
+                <p className="text-[11px] text-slate-400">تحذير: لا يمكن التراجع عن هذا الإجراء</p>
               </div>
             </div>
 
-            <div className="p-3 bg-slate-800/80 rounded-xl border border-slate-700/80 text-xs space-y-1">
+            <div className="p-2.5 bg-slate-800/80 rounded-xl border border-slate-700/80 text-xs space-y-1">
               <div className="flex justify-between">
                 <span className="text-slate-400">عنوان الدفعة:</span>
                 <span className="font-bold text-white">{batch.title}</span>
@@ -1432,14 +1613,16 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
 
             <div className="flex items-center justify-end gap-2 pt-2">
               <button
+                type="button"
                 onClick={() => setShowDeleteBatchConfirm(false)}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl transition cursor-pointer"
+                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-lg transition cursor-pointer"
               >
                 إلغاء
               </button>
               <button
+                type="button"
                 onClick={executeDeleteEntireBatch}
-                className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white font-black text-xs rounded-xl shadow-lg shadow-rose-600/30 transition flex items-center gap-1.5 cursor-pointer"
+                className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-500 text-white font-black text-xs rounded-lg shadow-sm transition flex items-center gap-1.5 cursor-pointer"
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 <span>نعم، احذف الدفعة</span>

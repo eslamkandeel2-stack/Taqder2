@@ -97,6 +97,7 @@ import {
   SystemLockedElements,
   SystemFeatureToggles
 } from '../utils/systemConfig';
+import { EXPORT_ENGINES } from '../utils/exportUtils';
 import { useDragScroll } from '../utils/useDragScroll';
 
 interface Props {
@@ -1917,79 +1918,191 @@ export const AppSettingsModal: React.FC<Props> = ({
 
           {/* SUB-TAB 9: EXPORT & PRINT */}
           {activeSubTab === 'export-print' && (
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
-              <div className="flex items-center gap-2 text-slate-900 border-b pb-2.5">
-                <Printer className="w-5 h-5 text-amber-600" />
-                <h4 className="font-extrabold text-sm">إعدادات التصدير والطباعة الافتراضية</h4>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">صيغة التصدير الافتراضية</label>
-                  <select
-                    value={defaultSettings.exportFormat}
-                    onChange={(e) => setDefaultSettings({ ...defaultSettings, exportFormat: e.target.value as any })}
-                    className="w-full text-xs font-bold p-2.5 rounded-xl border border-slate-300 bg-white"
-                  >
-                    <option value="pdf">ملف مستند PDF (موصى به للطباعة)</option>
-                    <option value="png">صورة عالية الدقة PNG</option>
-                    <option value="svg">رسوم متجهة SVG</option>
-                  </select>
+            <div className="space-y-6">
+              {/* Header Card */}
+              <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent p-5 rounded-2xl border border-amber-500/30 flex items-start gap-3 shadow-xs">
+                <div className="w-10 h-10 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center font-black shrink-0 shadow-md">
+                  <Printer className="w-5 h-5" />
                 </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">دقة التصدير (DPI)</label>
-                  <select
-                    value={defaultSettings.exportDpi}
-                    onChange={(e) => setDefaultSettings({ ...defaultSettings, exportDpi: parseInt(e.target.value) as any })}
-                    className="w-full text-xs font-bold p-2.5 rounded-xl border border-slate-300 bg-white"
-                  >
-                    <option value={300}>300 DPI (دقة طباعة قياسية فائقة)</option>
-                    <option value={600}>600 DPI (دقة احترافية فائقة للمطابع)</option>
-                    <option value={150}>150 DPI (مضغوط وخفيف للمشاركة السريعة)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">مقاس الورق الافتراضي</label>
-                  <select
-                    value={defaultSettings.printPaperSize}
-                    onChange={(e) => setDefaultSettings({ ...defaultSettings, printPaperSize: e.target.value as any })}
-                    className="w-full text-xs font-bold p-2.5 rounded-xl border border-slate-300 bg-white"
-                  >
-                    <option value="A4">A4 (210 × 297 mm)</option>
-                    <option value="A3">A3 (297 × 420 mm)</option>
-                    <option value="Letter">Letter (8.5 × 11 in)</option>
-                  </select>
+                <div className="space-y-1">
+                  <h4 className="font-extrabold text-sm text-slate-900">
+                    محركات التصدير والطباعة فائقة الدقة (Multi-Library Export Engines)
+                  </h4>
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    يدعم النظام مكتبات ومحركات تصدير متعددة تضمن تطابقاً تاماً بنسبة 100% بين نافذة المعاينة والملف المحفوظ للخطوط والتنسيقات والأبعاد والألوان.
+                  </p>
                 </div>
               </div>
 
-              <div className="space-y-3 p-4 bg-slate-50 rounded-xl border border-slate-200">
-                <label className="flex items-center justify-between cursor-pointer">
-                  <div>
-                    <span className="text-xs font-bold text-slate-800 block">طباعة متجهة فائقة الدقة (Crisp Vector PDF)</span>
-                    <span className="text-[11px] text-slate-500 block">منع تشوه الخطوط والزخارف عند تكبير الشهادة</span>
+              {/* Engine Selection Grid */}
+              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <div className="flex items-center justify-between border-b pb-2.5">
+                  <div className="flex items-center gap-2 text-slate-900">
+                    <Cpu className="w-5 h-5 text-amber-600" />
+                    <h5 className="font-extrabold text-sm">اختيار محرك التصدير الافتراضي</h5>
                   </div>
-                  <input
-                    type="checkbox"
-                    checked={defaultSettings.crispVectorPdf}
-                    onChange={(e) => setDefaultSettings({ ...defaultSettings, crispVectorPdf: e.target.checked })}
-                    className="w-4 h-4 accent-amber-500 rounded"
-                  />
-                </label>
+                  <span className="text-xs text-slate-500 font-bold">
+                    المحرك النشط: {EXPORT_ENGINES.find(e => e.id === defaultSettings.defaultExportEngine)?.name || 'Modern Screenshot'}
+                  </span>
+                </div>
 
-                <label className="flex items-center justify-between cursor-pointer pt-2 border-t">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {EXPORT_ENGINES.map((engine) => {
+                    const isSelected = (defaultSettings.defaultExportEngine || 'modern-screenshot') === engine.id;
+                    return (
+                      <div
+                        key={engine.id}
+                        onClick={() => setDefaultSettings({ ...defaultSettings, defaultExportEngine: engine.id })}
+                        className={`p-3.5 rounded-2xl border transition cursor-pointer relative flex flex-col justify-between ${
+                          isSelected
+                            ? 'bg-amber-500/10 border-amber-500 shadow-sm ring-2 ring-amber-500/20'
+                            : 'bg-slate-50/70 border-slate-200 hover:bg-slate-100 hover:border-slate-300'
+                        }`}
+                      >
+                        <div>
+                          <div className="flex items-center justify-between gap-1 mb-1.5">
+                            <span className="font-extrabold text-xs text-slate-900">{engine.name}</span>
+                            <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold border ${engine.badgeColor}`}>
+                              {engine.badge}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-600 leading-snug mb-2">
+                            {engine.description}
+                          </p>
+                        </div>
+
+                        <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between text-[10px]">
+                          <span className="text-slate-500 font-bold">الصيغ المدعومة: {engine.formats.map(f => f.toUpperCase()).join(', ')}</span>
+                          {isSelected && (
+                            <span className="text-amber-700 font-black flex items-center gap-1">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-amber-600" />
+                              افتراضي
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Format, DPI, Paper Settings */}
+              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <div className="flex items-center gap-2 text-slate-900 border-b pb-2.5">
+                  <Sliders className="w-5 h-5 text-amber-600" />
+                  <h5 className="font-extrabold text-sm">إعدادات الصيغة والجودة والأبعاد</h5>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
-                    <span className="text-xs font-bold text-slate-800 block">تضمين مربع التوثيق في التصدير تلقائياً</span>
-                    <span className="text-[11px] text-slate-500 block">إضافة الباركود والـ QR ورقم الشهادة في ملف التصدير النهائي</span>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">صيغة التصدير الافتراضية</label>
+                    <select
+                      value={defaultSettings.exportFormat}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, exportFormat: e.target.value as any })}
+                      className="w-full text-xs font-bold p-2.5 rounded-xl border border-slate-300 bg-white focus:ring-2 focus:ring-amber-500 outline-none"
+                    >
+                      <option value="pdf">ملف مستند PDF (موصى به للطباعة الرسمية)</option>
+                      <option value="png">صورة فائقة النقاء PNG (للشاشات والمشاركة)</option>
+                      <option value="jpeg">صورة مضغوطة JPEG (حجم خفيف)</option>
+                      <option value="webp">صورة حديثة WebP (تقنية ضغط متطورة)</option>
+                      <option value="svg">رسوم متجهة SVG (قابل للتكبير اللانهائي)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">دقة التصدير الافتراضية (DPI)</label>
+                    <select
+                      value={defaultSettings.exportDpi}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, exportDpi: parseInt(e.target.value) as any })}
+                      className="w-full text-xs font-bold p-2.5 rounded-xl border border-slate-300 bg-white focus:ring-2 focus:ring-amber-500 outline-none"
+                    >
+                      <option value={72}>72 DPI (مشاركة سريعة وحجم فائق الصغر)</option>
+                      <option value={150}>150 DPI (شاشات عالية الوضوح HD)</option>
+                      <option value={300}>300 DPI (دقة طباعة قياسية فائقة - مستحسن)</option>
+                      <option value={400}>400 DPI (دقة مكثفة للشهادات الفاخرة)</option>
+                      <option value={600}>600 DPI (دقة احترافية فائقة للمطابع الكبرى)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">مقاس الورق الافتراضي</label>
+                    <select
+                      value={defaultSettings.printPaperSize}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, printPaperSize: e.target.value as any })}
+                      className="w-full text-xs font-bold p-2.5 rounded-xl border border-slate-300 bg-white focus:ring-2 focus:ring-amber-500 outline-none"
+                    >
+                      <option value="A4">A4 (210 × 297 مم - القياسي)</option>
+                      <option value="A3">A3 (297 × 420 مم - لوحات شرف كبيرة)</option>
+                      <option value="Letter">Letter (8.5 × 11 بوصة)</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Quality Factor */}
+                <div>
+                  <div className="flex items-center justify-between text-xs font-bold text-slate-700 mb-1">
+                    <span>جودة ضغط الصور (JPEG / WebP):</span>
+                    <span className="font-mono text-amber-600 font-black">{Math.round((defaultSettings.exportImageQuality ?? 0.95) * 100)}%</span>
                   </div>
                   <input
-                    type="checkbox"
-                    checked={defaultSettings.includeVerificationInExport}
-                    onChange={(e) => setDefaultSettings({ ...defaultSettings, includeVerificationInExport: e.target.checked })}
-                    className="w-4 h-4 accent-amber-500 rounded"
+                    type="range"
+                    min="0.5"
+                    max="1.0"
+                    step="0.05"
+                    value={defaultSettings.exportImageQuality ?? 0.95}
+                    onChange={(e) => setDefaultSettings({ ...defaultSettings, exportImageQuality: parseFloat(e.target.value) })}
+                    className="w-full accent-amber-500 cursor-pointer"
                   />
-                </label>
+                </div>
+              </div>
+
+              {/* Interactive Switches */}
+              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <div className="flex items-center gap-2 text-slate-900 border-b pb-2.5">
+                  <Sliders className="w-5 h-5 text-amber-600" />
+                  <h5 className="font-extrabold text-sm">خيارات تجربة التصدير والحفظ</h5>
+                </div>
+
+                <div className="space-y-3">
+                  <label className="flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100/80 rounded-xl border border-slate-200 cursor-pointer transition">
+                    <div>
+                      <span className="text-xs font-bold text-slate-800 block">إظهار نافذة المعاينة والخيارات التفاعلية قبل التصدير</span>
+                      <span className="text-[11px] text-slate-500 block">تسمح لك بفحص وتكبير الشهادة واختيار المحرك والجودة المناسبة قبل بدء التحميل</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={defaultSettings.showExportPreviewModal ?? true}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, showExportPreviewModal: e.target.checked })}
+                      className="w-4 h-4 accent-amber-500 rounded"
+                    />
+                  </label>
+
+                  <label className="flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100/80 rounded-xl border border-slate-200 cursor-pointer transition">
+                    <div>
+                      <span className="text-xs font-bold text-slate-800 block">طباعة متجهة فائقة الدقة (Crisp Vector PDF)</span>
+                      <span className="text-[11px] text-slate-500 block">منع تشوه الخطوط والزخارف والحدود عند تكبير الشهادة</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={defaultSettings.crispVectorPdf}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, crispVectorPdf: e.target.checked })}
+                      className="w-4 h-4 accent-amber-500 rounded"
+                    />
+                  </label>
+
+                  <label className="flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100/80 rounded-xl border border-slate-200 cursor-pointer transition">
+                    <div>
+                      <span className="text-xs font-bold text-slate-800 block">تضمين مربع ورمز التوثيق في التصدير تلقائياً</span>
+                      <span className="text-[11px] text-slate-500 block">إضافة الباركود والـ QR ورقم الشهادة في ملف التصدير النهائي</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={defaultSettings.includeVerificationInExport}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, includeVerificationInExport: e.target.checked })}
+                      className="w-4 h-4 accent-amber-500 rounded"
+                    />
+                  </label>
+                </div>
               </div>
             </div>
           )}
