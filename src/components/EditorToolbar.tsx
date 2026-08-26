@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CertificateData, FontOption, AspectRatioOption, FrameStyle, BadgeIconType, SignatureItem, GradientConfig, GradientType, ElementStyles, TextElementStyle, LayoutPreset } from '../types';
+import { CertificateData, FontOption, AspectRatioOption, FrameStyle, BadgeIconType, SignatureItem, GradientConfig, GradientType, ElementStyles, TextElementStyle, LayoutPreset, TemplatePreset } from '../types';
 import { TEMPLATE_PRESETS } from '../data/templates';
 import { BACKGROUND_TEXTURES } from '../data/backgrounds';
 import {
@@ -35,6 +35,15 @@ import {
 } from '../utils/marginUtils';
 import { SignaturePadModal } from './SignaturePadModal';
 import { TemplateGalleryModal } from './TemplateGalleryModal';
+import { ApplyTemplateChoiceModal } from './ApplyTemplateChoiceModal';
+import { CustomTemplatesManagerModal } from './CustomTemplatesManagerModal';
+import {
+  CustomTemplateItem,
+  TemplateApplyMode,
+  applyTemplateToCertificate,
+  saveCertificateAsCustomTemplate,
+  duplicateAndCustomizeTemplate
+} from '../utils/templateCustomizer';
 import { LogoCropModal } from './LogoCropModal';
 import { removeWhiteBackgroundCanvas, removeBackgroundAi } from '../utils/imageUtils';
 import { validateGridTemplateAreas, CUSTOM_GRID_SNIPPETS, CERTIFICATE_GRID_AREAS } from '../utils/gridValidator';
@@ -107,7 +116,9 @@ import {
   Eye,
   EyeOff,
   Lock,
-  Unlock
+  Unlock,
+  SpellCheck,
+  BookOpen
 } from 'lucide-react';
 import {
   getSavedDrafts,
@@ -122,11 +133,14 @@ import {
   isElementLocked,
   isFeatureEnabled
 } from '../utils/systemConfig';
+import { proofreadCertificate } from '../utils/arabicProofreader';
 
 interface Props {
   certificateData: CertificateData;
   onChange: (newData: CertificateData) => void;
   onOpenAiModal: (tab?: 'improve' | 'full' | 'settings', field?: 'appreciation' | 'title' | 'intro' | 'poem') => void;
+  onOpenProofreaderModal?: () => void;
+  onOpenAppreciationSuggestionsModal?: () => void;
   onExportPDF: () => void;
   onExportImage: () => void;
   onShareEmail: () => void;
@@ -447,6 +461,8 @@ export const EditorToolbar: React.FC<Props> = ({
   certificateData,
   onChange,
   onOpenAiModal,
+  onOpenProofreaderModal,
+  onOpenAppreciationSuggestionsModal,
   onExportPDF,
   onExportImage,
   onShareEmail,
@@ -461,6 +477,10 @@ export const EditorToolbar: React.FC<Props> = ({
   onUndo,
   onRedo
 }) => {
+  const liveProofread = React.useMemo(() => {
+    return proofreadCertificate(certificateData);
+  }, [certificateData]);
+
   const [activeTab, setActiveTab] = useState<'content' | 'formatting' | 'templates' | 'style' | 'frame' | 'signatures' | 'elements' | 'verification' | 'export'>('content');
   const [selectedElementKey, setSelectedElementKey] = useState<keyof ElementStyles>('studentName');
   const [selectedFrameCategory, setSelectedFrameCategory] = useState<string>('الكل');
@@ -487,6 +507,11 @@ export const EditorToolbar: React.FC<Props> = ({
   const [quickDraftName, setQuickDraftName] = useState('');
   const [draftNotice, setDraftNotice] = useState<string | null>(null);
   const [defaultSettingsNotice, setDefaultSettingsNotice] = useState<string | null>(null);
+
+  // Template Choice & Custom Templates State
+  const [pendingChoiceTemplate, setPendingChoiceTemplate] = useState<TemplatePreset | CustomTemplateItem | null>(null);
+  const [isTemplateChoiceModalOpen, setIsTemplateChoiceModalOpen] = useState(false);
+  const [isCustomTemplatesManagerOpen, setIsCustomTemplatesManagerOpen] = useState(false);
 
   React.useEffect(() => {
     const refreshDrafts = () => {
@@ -1049,63 +1074,40 @@ export const EditorToolbar: React.FC<Props> = ({
     }
   };
 
-  const applyPresetTemplate = (presetId: string) => {
+  const handleTriggerTemplateSelection = (template: TemplatePreset | CustomTemplateItem) => {
+    setPendingChoiceTemplate(template);
+    setIsTemplateChoiceModalOpen(true);
+  };
+
+  const handleApplyTemplateWithMode = (
+    template: TemplatePreset | CustomTemplateItem,
+    mode: TemplateApplyMode = 'full'
+  ) => {
+    const updated = applyTemplateToCertificate(certificateData, template, mode);
+    onChange(updated);
+    setIsTemplateChoiceModalOpen(false);
+    setPendingChoiceTemplate(null);
+    setDraftNotice(
+      mode === 'style-only'
+        ? `تم تطبيق تنسيق وشكل قالب "${template.name}" مع الحفاظ التام على بيانات الطالب الحالية! 🎨✨`
+        : `تم تطبيق قالب "${template.name}" بالكامل بنجاح! 📜✨`
+    );
+    setTimeout(() => setDraftNotice(null), 4000);
+  };
+
+  const handleDuplicateTemplateFromChoice = (template: TemplatePreset | CustomTemplateItem) => {
+    const duplicated = duplicateAndCustomizeTemplate(template);
+    setIsTemplateChoiceModalOpen(false);
+    setPendingChoiceTemplate(null);
+    setIsCustomTemplatesManagerOpen(true);
+    setDraftNotice(`تم نسخ قالب "${template.name}" وهو جاهز للتخصيص والتعديل الآن! 📋✨`);
+    setTimeout(() => setDraftNotice(null), 4000);
+  };
+
+  const applyPresetTemplate = (presetId: string, mode: TemplateApplyMode = 'full') => {
     const preset = TEMPLATE_PRESETS.find(p => p.id === presetId);
     if (!preset) return;
-
-    // Capture user's personal & customized fields
-    const {
-      studentName,
-      grade,
-      schoolName,
-      subject,
-      logoUrl,
-      signatures,
-      emojis,
-      positions,
-      issueDate,
-      issuePlace,
-      verificationCode,
-      qrCodeData,
-      watermarkText,
-      recipientGender
-    } = certificateData;
-
-    const currentGender: RecipientGender = recipientGender || 'male';
-
-    const newCertId = `cert-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`;
-    const newVCode = generateVerificationCode();
-
-    let mergedData: CertificateData = {
-      ...certificateData,
-      ...preset.defaultData,
-      // Retain user's actual values for personal identity & customized fields
-      studentName: studentName || preset.defaultData.studentName || '',
-      grade: grade || preset.defaultData.grade || '',
-      schoolName: schoolName || preset.defaultData.schoolName || '',
-      subject: subject || preset.defaultData.subject || '',
-      logoUrl: logoUrl !== undefined ? logoUrl : preset.defaultData.logoUrl,
-      signatures: (signatures && signatures.length > 0) ? signatures : preset.defaultData.signatures,
-      emojis: emojis ?? certificateData.emojis,
-      positions: positions ?? certificateData.positions,
-      issueDate: issueDate || preset.defaultData.issueDate,
-      issuePlace: issuePlace || preset.defaultData.issuePlace,
-      verificationCode: newVCode,
-      qrCodeData: `${window.location.origin}/verify?code=${newVCode}`,
-      watermarkText: watermarkText || preset.defaultData.watermarkText,
-      id: newCertId,
-      isSavedCloud: false,
-      driveFileId: undefined,
-      driveFileWebViewLink: undefined,
-      driveFileUrl: undefined,
-      driveUploadedAt: undefined,
-      updatedAt: new Date().toISOString()
-    };
-
-    // Adapt preset phrasing automatically to user's selected gender (male or female)
-    mergedData = adaptCertificateGenderSync(mergedData, currentGender, { preserveCustomStudentName: true });
-
-    onChange(mergedData);
+    handleApplyTemplateWithMode(preset, mode);
   };
 
   // Color Theme Presets
@@ -1512,6 +1514,93 @@ export const EditorToolbar: React.FC<Props> = ({
         {activeTab === 'content' && (
           <div className="space-y-4">
             
+            {/* Linguistic Proofreading & Appreciation Suggestions Quick Bar */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              
+              {/* Arabic Proofreader Quick Card */}
+              <div className={`p-3 rounded-xl border flex items-center justify-between gap-2.5 transition shadow-2xs ${
+                liveProofread.totalIssues > 0
+                  ? 'bg-amber-50/90 border-amber-300'
+                  : 'bg-emerald-50/80 border-emerald-300'
+              }`}>
+                <div className="flex items-center gap-2.5">
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 font-bold ${
+                    liveProofread.totalIssues > 0
+                      ? 'bg-amber-500 text-slate-950 shadow-xs'
+                      : 'bg-emerald-500 text-white shadow-xs'
+                  }`}>
+                    <SpellCheck className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <h4 className="text-xs font-black text-slate-900">
+                        التدقيق اللغوي والإملائي
+                      </h4>
+                      {liveProofread.totalIssues > 0 ? (
+                        <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-rose-500 text-white animate-pulse">
+                          {liveProofread.totalIssues} ملاحظة
+                        </span>
+                      ) : (
+                        <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-emerald-500 text-white">
+                          سليم 100% ✨
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-slate-600">
+                      {liveProofread.totalIssues > 0
+                        ? `اكتشف النظام ${liveProofread.totalIssues} ملاحظة في الهمزات/التاء/الضمائر`
+                        : 'نصوص الشهادة سليمة ومضبوطة لغوياً'}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={onOpenProofreaderModal}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-black transition shrink-0 cursor-pointer shadow-2xs ${
+                    liveProofread.totalIssues > 0
+                      ? 'bg-amber-500 hover:bg-amber-400 text-slate-950'
+                      : 'bg-slate-800 hover:bg-slate-700 text-white'
+                  }`}
+                  title="فتح نافذة التدقيق الإملائي واللغوي الفوري"
+                >
+                  <span>{liveProofread.totalIssues > 0 ? 'معاينة وتصحيح' : 'فحص لغوي'}</span>
+                </button>
+              </div>
+
+              {/* Appreciation Phrasing Suggestions Bank Card */}
+              <div className="p-3 rounded-xl border border-indigo-200 bg-indigo-50/80 flex items-center justify-between gap-2.5 shadow-2xs">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                    <Sparkles className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <h4 className="text-xs font-black text-slate-900">
+                        بنك صياغات التقدير والثناء
+                      </h4>
+                      <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-indigo-600 text-white">
+                        جاهز 💡
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-600">
+                      صيغ فخمة مصنفة للمواد والأنشطة والمسابقات
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={onOpenAppreciationSuggestionsModal}
+                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-black transition shrink-0 cursor-pointer shadow-2xs"
+                  title="استعراض بنك الصياغات ونصوص التقدير الراقية"
+                >
+                  استعراض الصيغ
+                </button>
+              </div>
+
+            </div>
+
             {/* AI Generator Banner */}
             <div className="bg-gradient-to-r from-amber-50 to-amber-100/80 p-4 rounded-xl border border-amber-200 flex items-center justify-between gap-3">
               <div>
@@ -2411,17 +2500,47 @@ export const EditorToolbar: React.FC<Props> = ({
             </div>
 
             <div>
-              <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center justify-between mb-1.5 flex-wrap gap-1.5">
                 <label className="block text-xs font-bold text-slate-700">عبارة التقدير والشكر التفصيلية</label>
-                <button
-                  type="button"
-                  onClick={() => onOpenAiModal?.('improve', 'appreciation')}
-                  className="text-[11px] font-black text-amber-950 bg-gradient-to-r from-amber-200 to-amber-300 hover:from-amber-300 hover:to-amber-400 px-2.5 py-1 rounded-lg border border-amber-400 shadow-2xs flex items-center gap-1.5 transition cursor-pointer"
-                  title="تحسين وبلاغة عبارة التقدير والشكر بالذكاء الاصطناعي"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-amber-700 animate-pulse" />
-                  <span>تحسين الصياغة بالذكاء الاصطناعي ✨</span>
-                </button>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={onOpenAppreciationSuggestionsModal}
+                    className="text-[10px] font-black text-indigo-900 bg-indigo-100 hover:bg-indigo-200 px-2 py-0.5 rounded-md border border-indigo-300 flex items-center gap-1 transition cursor-pointer"
+                    title="فتح بنك الصياغات الجاهزة والمصنفة للتقدير والثناء"
+                  >
+                    <BookOpen className="w-3 h-3 text-indigo-600" />
+                    <span>بنك الصياغات 💡</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={onOpenProofreaderModal}
+                    className={`text-[10px] font-black px-2 py-0.5 rounded-md border flex items-center gap-1 transition cursor-pointer ${
+                      liveProofread.fields.appreciationText.issues.length > 0
+                        ? 'bg-rose-100 text-rose-900 border-rose-300'
+                        : 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                    }`}
+                    title="فحص وتدقيق هذه الفقرة لغوياً وإملائياً"
+                  >
+                    <SpellCheck className="w-3 h-3 text-current" />
+                    <span>
+                      {liveProofread.fields.appreciationText.issues.length > 0
+                        ? `تدقيق (${liveProofread.fields.appreciationText.issues.length} أخطاء)`
+                        : 'تدقيق إملائي ✍️'}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => onOpenAiModal?.('improve', 'appreciation')}
+                    className="text-[10px] font-black text-amber-950 bg-gradient-to-r from-amber-200 to-amber-300 hover:from-amber-300 hover:to-amber-400 px-2 py-0.5 rounded-md border border-amber-400 shadow-2xs flex items-center gap-1 transition cursor-pointer"
+                    title="تحسين وبلاغة عبارة التقدير والشكر بالذكاء الاصطناعي"
+                  >
+                    <Sparkles className="w-3 h-3 text-amber-700 animate-pulse" />
+                    <span>تحسين بـ AI ✨</span>
+                  </button>
+                </div>
               </div>
               <textarea
                 rows={3}
@@ -4378,6 +4497,18 @@ export const EditorToolbar: React.FC<Props> = ({
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
+                        setIsCustomTemplatesManagerOpen(true);
+                      }}
+                      className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold text-xs rounded-xl border border-amber-300 transition cursor-pointer"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                      <span>قوالبي المخصصة</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
                         setIsGalleryModalOpen(true);
                       }}
                       className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-indigo-100 hover:bg-indigo-200 text-indigo-900 font-bold text-xs rounded-xl border border-indigo-300 transition cursor-pointer"
@@ -4463,7 +4594,7 @@ export const EditorToolbar: React.FC<Props> = ({
                         return (
                           <div
                             key={tmpl.id}
-                            onClick={() => applyPresetTemplate(tmpl.id)}
+                            onClick={() => handleTriggerTemplateSelection(tmpl)}
                             className="p-2.5 rounded-2xl border border-slate-200 hover:border-indigo-500 cursor-pointer transition-all shadow-2xs hover:shadow-md group relative bg-white flex flex-col justify-between"
                           >
                             {/* Mini Certificate Box */}
@@ -8670,8 +8801,40 @@ export const EditorToolbar: React.FC<Props> = ({
       <TemplateGalleryModal
         isOpen={isGalleryModalOpen}
         onClose={() => setIsGalleryModalOpen(false)}
-        onSelectTemplate={(template) => applyPresetTemplate(template.id)}
+        onSelectTemplate={(template, mode) => {
+          handleApplyTemplateWithMode(template, mode || 'full');
+        }}
         currentTemplateId={certificateData.templateId}
+        currentCertificate={certificateData}
+        onShowToast={(msg) => setDefaultSettingsNotice(msg)}
+      />
+
+      {/* Choice Modal: Apply Full vs Style Only */}
+      <ApplyTemplateChoiceModal
+        isOpen={isTemplateChoiceModalOpen}
+        onClose={() => {
+          setIsTemplateChoiceModalOpen(false);
+          setPendingChoiceTemplate(null);
+        }}
+        template={pendingChoiceTemplate}
+        currentCertificate={certificateData}
+        onApply={(template, mode) => {
+          handleApplyTemplateWithMode(template, mode);
+        }}
+        onDuplicateAndEdit={(template) => {
+          handleDuplicateTemplateFromChoice(template);
+        }}
+      />
+
+      {/* Custom Templates Manager Modal */}
+      <CustomTemplatesManagerModal
+        isOpen={isCustomTemplatesManagerOpen}
+        onClose={() => setIsCustomTemplatesManagerOpen(false)}
+        currentCertificate={certificateData}
+        onApplyTemplate={(template, mode) => {
+          handleApplyTemplateWithMode(template, mode);
+          setIsCustomTemplatesManagerOpen(false);
+        }}
         onShowToast={(msg) => setDefaultSettingsNotice(msg)}
       />
 

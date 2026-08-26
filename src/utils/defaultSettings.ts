@@ -145,6 +145,10 @@ export interface DefaultCertificateSettings {
   // 9. Export & Print Settings
   exportFormat: ExportFormat;
   defaultExportEngine: ExportEngine;
+  batchDefaultEngine?: ExportEngine;
+  driveDefaultEngine?: ExportEngine;
+  driveDefaultFormat?: 'png' | 'pdf' | 'jpeg';
+  driveDefaultDpi?: 150 | 300 | 400;
   exportDpi: 72 | 150 | 300 | 400 | 600;
   exportImageQuality: number; // 0.1 to 1.0 (default: 0.95)
   showExportPreviewModal: boolean;
@@ -283,6 +287,10 @@ export const FALLBACK_DEFAULT_SETTINGS: DefaultCertificateSettings = {
   // 9. Export & Print Settings
   exportFormat: 'pdf',
   defaultExportEngine: 'html2canvas',
+  batchDefaultEngine: 'html2canvas',
+  driveDefaultEngine: 'html2canvas',
+  driveDefaultFormat: 'png',
+  driveDefaultDpi: 300,
   exportDpi: 300,
   exportImageQuality: 0.95,
   showExportPreviewModal: true,

@@ -451,9 +451,14 @@ export interface ReminderTask {
   id: string;
   title: string;
   dueDate: string;
+  dueTime?: string;
   priority: 'عالية' | 'متوسطة' | 'عادية';
   completed: boolean;
-  category: 'تسليم شهادات' | 'مراجعة درجات' | 'حفل تكريم' | 'إعداد قوالب';
+  category: 'تسليم شهادات' | 'مراجعة درجات' | 'حفل تكريم' | 'إعداد قوالب' | 'توثيق درايف' | 'مسابقات وإنجازات' | 'أخرى' | string;
+  notes?: string;
+  linkTab?: 'editor' | 'batch' | 'cloud' | 'verify' | 'ai' | 'settings';
+  createdAt?: string;
+  completedAt?: string;
 }
 
 export interface AnalyticsStats {

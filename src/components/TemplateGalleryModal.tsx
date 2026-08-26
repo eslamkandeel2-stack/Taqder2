@@ -1,14 +1,41 @@
 import React, { useState } from 'react';
 import { TEMPLATE_PRESETS } from '../data/templates';
 import { TemplatePreset, CertificateData } from '../types';
-import { LayoutGrid, Search, Check, Sparkles, X, Eye, Award, SlidersHorizontal, Star, CheckCircle2 } from 'lucide-react';
+import {
+  LayoutGrid,
+  Search,
+  Check,
+  Sparkles,
+  X,
+  Eye,
+  Award,
+  SlidersHorizontal,
+  Star,
+  CheckCircle2,
+  Copy,
+  Sliders,
+  BookmarkPlus,
+  Palette,
+  FileText
+} from 'lucide-react';
 import { saveCurrentCertificateAsDefaultSettings } from '../utils/defaultSettings';
+import { ApplyTemplateChoiceModal } from './ApplyTemplateChoiceModal';
+import { CustomTemplatesManagerModal } from './CustomTemplatesManagerModal';
+import {
+  CustomTemplateItem,
+  TemplateApplyMode,
+  duplicateAndCustomizeTemplate
+} from '../utils/templateCustomizer';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  onSelectTemplate: (template: TemplatePreset) => void;
+  onSelectTemplate: (
+    template: TemplatePreset | CustomTemplateItem,
+    mode?: TemplateApplyMode
+  ) => void;
   currentTemplateId?: string;
+  currentCertificate: CertificateData;
   onShowToast?: (msg: string) => void;
 }
 
@@ -17,12 +44,18 @@ export const TemplateGalleryModal: React.FC<Props> = ({
   onClose,
   onSelectTemplate,
   currentTemplateId,
+  currentCertificate,
   onShowToast
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<string>('الكل');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [previewTemplate, setPreviewTemplate] = useState<TemplatePreset | null>(null);
   const [savedDefaultId, setSavedDefaultId] = useState<string | null>(null);
+
+  // Template Selection & Choice Modal State
+  const [pendingChoiceTemplate, setPendingChoiceTemplate] = useState<TemplatePreset | CustomTemplateItem | null>(null);
+  const [isChoiceModalOpen, setIsChoiceModalOpen] = useState(false);
+  const [isCustomTemplatesModalOpen, setIsCustomTemplatesModalOpen] = useState(false);
 
   const handleSaveAsSystemDefault = (tmpl: TemplatePreset, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
@@ -40,6 +73,31 @@ export const TemplateGalleryModal: React.FC<Props> = ({
     setTimeout(() => {
       setSavedDefaultId(null);
     }, 3500);
+  };
+
+  const handleTriggerTemplateSelection = (tmpl: TemplatePreset) => {
+    setPendingChoiceTemplate(tmpl);
+    setIsChoiceModalOpen(true);
+  };
+
+  const handleConfirmChoice = (
+    template: TemplatePreset | CustomTemplateItem,
+    mode: TemplateApplyMode
+  ) => {
+    onSelectTemplate(template, mode);
+    setIsChoiceModalOpen(false);
+    setPendingChoiceTemplate(null);
+    onClose();
+  };
+
+  const handleDuplicateFromChoice = (template: TemplatePreset | CustomTemplateItem) => {
+    const duplicated = duplicateAndCustomizeTemplate(template);
+    if (onShowToast) {
+      onShowToast(`تم إنشاء وتخصيص نسخة قابلة للتعديل من قالب "${template.name}" بنجاح! 📋✨`);
+    }
+    setIsChoiceModalOpen(false);
+    setPendingChoiceTemplate(null);
+    setIsCustomTemplatesModalOpen(true);
   };
 
   if (!isOpen) return null;
@@ -74,7 +132,7 @@ export const TemplateGalleryModal: React.FC<Props> = ({
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-3 sm:p-6 text-right">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-3 sm:p-6 text-right font-['Cairo',sans-serif]">
       <div className="bg-white w-full max-w-6xl h-[90vh] rounded-3xl shadow-2xl overflow-hidden border border-slate-200 flex flex-col animate-in fade-in zoom-in-95 duration-200">
         
         {/* Gallery Header */}
@@ -84,24 +142,35 @@ export const TemplateGalleryModal: React.FC<Props> = ({
               <LayoutGrid className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-extrabold text-base sm:text-lg text-amber-400 font-['Cairo'] flex items-center gap-2">
+              <h3 className="font-extrabold text-base sm:text-lg text-amber-400 flex items-center gap-2">
                 <span>معرض القوالب الاحترافية في شبكة معاينة الشهادات</span>
                 <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full font-sans">
                   {TEMPLATE_PRESETS.length} قالب مجهّز
                 </span>
               </h3>
               <p className="text-xs text-slate-400 mt-0.5">
-                استعرض شكل الشهادة النهائي والزخارف والألوان والخطوط قبل اعتماد القالب
+                استعرض شكل الشهادة النهائي والزخارف والألوان مع إمكانية تطبيق التنسيق فقط أو القالب كاملاً
               </p>
             </div>
           </div>
 
-          <button
-            onClick={onClose}
-            className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition"
-          >
-            <X className="w-6 h-6" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsCustomTemplatesModalOpen(true)}
+              className="px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+            >
+              <BookmarkPlus className="w-4 h-4" />
+              <span>إدارة قوالبي المخصصة</span>
+            </button>
+
+            <button
+              onClick={onClose}
+              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition cursor-pointer"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
         </div>
 
         {/* Filter Controls Bar */}
@@ -254,14 +323,11 @@ export const TemplateGalleryModal: React.FC<Props> = ({
                           معاينة تكبير
                         </button>
                         <button
-                          onClick={() => {
-                            onSelectTemplate(tmpl);
-                            onClose();
-                          }}
+                          onClick={() => handleTriggerTemplateSelection(tmpl)}
                           className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl font-black text-xs shadow-lg flex items-center gap-1 cursor-pointer transition active:scale-95"
                         >
                           <Check className="w-3.5 h-3.5" />
-                          تطبيق
+                          خيارات التطبيق
                         </button>
                       </div>
                     </div>
@@ -291,7 +357,7 @@ export const TemplateGalleryModal: React.FC<Props> = ({
                             <button
                               type="button"
                               onClick={(e) => handleSaveAsSystemDefault(tmpl, e)}
-                              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer border ${
+                              className={`px-2 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer border ${
                                 savedDefaultId === tmpl.id
                                   ? 'bg-emerald-600 text-white border-emerald-600'
                                   : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300'
@@ -301,28 +367,25 @@ export const TemplateGalleryModal: React.FC<Props> = ({
                               {savedDefaultId === tmpl.id ? (
                                 <>
                                   <CheckCircle2 className="w-3 h-3 text-white" />
-                                  <span>تم الحفظ كافتراضي</span>
+                                  <span>تم الحفظ</span>
                                 </>
                               ) : (
                                 <>
                                   <Star className="w-3 h-3 text-amber-600 fill-amber-500" />
-                                  <span>تعيين كافتراضي للنظام</span>
+                                  <span>كافتراضي</span>
                                 </>
                               )}
                             </button>
 
                             <button
-                              onClick={() => {
-                                onSelectTemplate(tmpl);
-                                onClose();
-                              }}
+                              onClick={() => handleTriggerTemplateSelection(tmpl)}
                               className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
                                 isCurrent
                                   ? 'bg-emerald-100 text-emerald-800'
                                   : 'bg-slate-900 hover:bg-amber-600 text-white'
                               }`}
                             >
-                              {isCurrent ? 'القالب المختار' : 'اختر القالب'}
+                              <span>تطبيق</span>
                             </button>
                           </div>
                         </div>
@@ -423,20 +486,48 @@ export const TemplateGalleryModal: React.FC<Props> = ({
 
                   <button
                     onClick={() => {
-                      onSelectTemplate(previewTemplate);
+                      const tmpl = previewTemplate;
                       setPreviewTemplate(null);
-                      onClose();
+                      handleTriggerTemplateSelection(tmpl);
                     }}
                     className="px-6 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl shadow-lg flex items-center gap-2 transition cursor-pointer"
                   >
                     <Check className="w-4 h-4" />
-                    اعتماد وتطبيق هذا القالب فوراً
+                    اختيار وتطبيق هذا القالب
                   </button>
                 </div>
               </div>
             </div>
           </div>
         )}
+
+        {/* Modal for Choosing Application Mode (Full vs. Style Only) */}
+        <ApplyTemplateChoiceModal
+          isOpen={isChoiceModalOpen}
+          onClose={() => {
+            setIsChoiceModalOpen(false);
+            setPendingChoiceTemplate(null);
+          }}
+          template={pendingChoiceTemplate}
+          currentCertificate={currentCertificate}
+          onApply={handleConfirmChoice}
+          onDuplicateAndEdit={handleDuplicateFromChoice}
+        />
+
+        {/* Modal for Managing Custom Templates */}
+        <CustomTemplatesManagerModal
+          isOpen={isCustomTemplatesModalOpen}
+          onClose={() => setIsCustomTemplatesModalOpen(false)}
+          currentCertificate={currentCertificate}
+          onApplyTemplate={(tmpl, mode) => {
+            onSelectTemplate(tmpl, mode);
+            setIsCustomTemplatesModalOpen(false);
+            onClose();
+          }}
+          onShowToast={(msg) => {
+            if (onShowToast) onShowToast(msg);
+          }}
+        />
 
       </div>
     </div>

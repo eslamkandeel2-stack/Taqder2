@@ -20,6 +20,8 @@ import { DirectShareModal } from './components/DirectShareModal';
 import { DraftsManagerModal } from './components/DraftsManagerModal';
 import { HistoryManagerModal } from './components/HistoryManagerModal';
 import { ExportPreviewModal } from './components/ExportPreviewModal';
+import { ArabicProofreaderModal } from './components/ArabicProofreaderModal';
+import { AppreciationSuggestionsModal } from './components/AppreciationSuggestionsModal';
 import { ExportFormat } from './types';
 import {
   sanitizeOklchInDoc,
@@ -339,6 +341,8 @@ export default function App() {
   const [isDraftsModalOpen, setIsDraftsModalOpen] = useState(false);
   const [isHistoryManagerOpen, setIsHistoryManagerOpen] = useState(false);
   const [isExportPreviewModalOpen, setIsExportPreviewModalOpen] = useState(false);
+  const [isProofreaderModalOpen, setIsProofreaderModalOpen] = useState(false);
+  const [isAppreciationModalOpen, setIsAppreciationModalOpen] = useState(false);
   const [exportPreviewFormat, setExportPreviewFormat] = useState<ExportFormat>('pdf');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
@@ -770,6 +774,8 @@ export default function App() {
                   certificateData={certificateData}
                   onChange={updateCertificateData}
                   onOpenAiModal={handleOpenAiModal}
+                  onOpenProofreaderModal={() => setIsProofreaderModalOpen(true)}
+                  onOpenAppreciationSuggestionsModal={() => setIsAppreciationModalOpen(true)}
                   onExportPDF={handleExportPDF}
                   onExportImage={handleExportImage}
                   onShareEmail={handleOpenEmailShare}
@@ -805,7 +811,18 @@ export default function App() {
         )}
 
         {/* TAB 3: DASHBOARD & ANALYTICS */}
-        {activeTab === 'dashboard' && <DashboardAnalytics />}
+        {activeTab === 'dashboard' && (
+          <DashboardAnalytics
+            currentCertificate={certificateData}
+            onLoadCertificate={(cert) => {
+              updateCertificateData(cert);
+              setActiveTab('editor');
+              showToast(`تم فتح شهادة الطالب: ${cert.studentName} بالمحرر ✍️`);
+            }}
+            onNavigateToTab={(tab) => setActiveTab(tab)}
+            onShowToast={showToast}
+          />
+        )}
 
         {/* TAB 4: CLOUD LIBRARY */}
         {activeTab === 'cloud' && (
@@ -955,6 +972,29 @@ export default function App() {
         initialFormat={exportPreviewFormat}
         canvasRef={canvasRef}
         onShowToast={showToast}
+      />
+
+      {/* Smart Arabic Spell-checking and Grammar Proofreading Modal */}
+      <ArabicProofreaderModal
+        isOpen={isProofreaderModalOpen}
+        onClose={() => setIsProofreaderModalOpen(false)}
+        certificateData={certificateData}
+        onApplyChanges={(updated) => {
+          updateCertificateData(updated);
+        }}
+      />
+
+      {/* Categorized Appreciation Phrasing and Quotes Suggestions Modal */}
+      <AppreciationSuggestionsModal
+        isOpen={isAppreciationModalOpen}
+        onClose={() => setIsAppreciationModalOpen(false)}
+        certificateData={certificateData}
+        onApplyAppreciation={(updates) => {
+          updateCertificateData(updates);
+        }}
+        onOpenAiGenerator={() => {
+          handleOpenAiModal('improve', 'appreciation');
+        }}
       />
 
     </div>

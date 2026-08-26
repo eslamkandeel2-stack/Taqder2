@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { CertificateData, BatchRecord, BatchVerificationReportItem, ExportFormat } from '../types';
+import { CertificateData, BatchRecord, BatchVerificationReportItem, ExportFormat, ExportEngine } from '../types';
 import { CertificateCanvas } from './CertificateCanvas';
 import { ExportPreviewModal } from './ExportPreviewModal';
 import {
@@ -7,6 +7,7 @@ import {
   exportCertificateAsPdf,
   exportCertificateAsPng,
   captureCertificateCanvasBlob,
+  captureCertificateBlobUnified,
   getCertificateDimensions
 } from '../utils/exportUtils';
 import { printCertificateViaIframe } from '../utils/printUtils';
@@ -18,6 +19,7 @@ import {
 } from '../services/googleDriveService';
 import { generateVerificationCode } from '../utils/qrUtils';
 import { saveBatchRecord, deleteBatchRecord } from '../utils/batchManager';
+import { getSavedDefaultSettings } from '../utils/defaultSettings';
 import { User } from 'firebase/auth';
 import {
   X,
@@ -45,7 +47,9 @@ import {
   Image as ImageIcon,
   SlidersHorizontal,
   Zap,
-  ArrowRight
+  ArrowRight,
+  Settings,
+  ChevronDown
 } from 'lucide-react';
 
 interface Props {
@@ -92,10 +96,17 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
   // Exporting state
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [exportProgress, setExportProgress] = useState<{ current: number; total: number; name: string } | null>(null);
+  const [batchEngine, setBatchEngine] = useState<ExportEngine>('html2canvas');
+  const [batchDpi, setBatchDpi] = useState<number>(300);
+  const [showBatchEngineMenu, setShowBatchEngineMenu] = useState(false);
 
-  // Drive Batch Upload state
+  // Drive Batch Upload state & Configuration
   const [isDriveModalOpen, setIsDriveModalOpen] = useState(false);
   const [isUploadingToDrive, setIsUploadingToDrive] = useState(false);
+  const [showDriveConfigModal, setShowDriveConfigModal] = useState(false);
+  const [driveEngine, setDriveEngine] = useState<ExportEngine>('html2canvas');
+  const [driveFormat, setDriveFormat] = useState<'png' | 'pdf' | 'jpeg'>('png');
+  const [driveDpi, setDriveDpi] = useState<number>(300);
   const [driveProgress, setDriveProgress] = useState<{ current: number; total: number; name: string } | null>(null);
   const [verificationReport, setVerificationReport] = useState<BatchVerificationReportItem[]>([]);
   const [driveUser, setDriveUser] = useState<User | null>(null);
@@ -109,6 +120,14 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
 
   useEffect(() => {
     if (isOpen) {
+      const settings = getSavedDefaultSettings();
+      if (settings.batchDefaultEngine) setBatchEngine(settings.batchDefaultEngine);
+      else if (settings.defaultExportEngine) setBatchEngine(settings.defaultExportEngine);
+      if (settings.exportDpi) setBatchDpi(settings.exportDpi);
+      if (settings.driveDefaultEngine) setDriveEngine(settings.driveDefaultEngine);
+      if (settings.driveDefaultFormat) setDriveFormat(settings.driveDefaultFormat);
+      if (settings.driveDefaultDpi) setDriveDpi(settings.driveDefaultDpi);
+
       if (batch.certificates && batch.certificates.length > 0 && !selectedCertId) {
         setSelectedCertId(batch.certificates[0].id);
       }
@@ -192,13 +211,15 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
         renderCertificateToDom,
         {
           batchTitle: batch.title || `شهادات_دفعة_${batch.grade || 'الفصل'}`,
+          engine: batchEngine,
+          dpi: batchDpi,
           onProgress: (current, total, name) => {
             setExportProgress({ current, total, name });
           }
         }
       );
 
-      onShowToast(`تم بنجاح تصدير ملف PDF المجمع لـ ${certificates.length} شهادة! 📄✨`);
+      onShowToast(`تم بنجاح تصدير ملف PDF المجمع (${batchEngine}) لـ ${certificates.length} شهادة! 📄✨`);
     } catch (err: any) {
       console.error('Error exporting batch combined PDF:', err);
       onShowToast('حدث خطأ أثناء تصدير ملف PDF المجمع.');
@@ -333,10 +354,15 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
         const element = await renderCertificateToDom(certWithCode);
         await new Promise((r) => setTimeout(r, 100));
 
-        const blob = await captureCertificateCanvasBlob(element, certWithCode, { scale: 2.8 });
+        // Use unified blob capture with the chosen engine, format, and DPI
+        const { blob, ext } = await captureCertificateBlobUnified(element, certWithCode, {
+          engine: driveEngine,
+          format: driveFormat,
+          dpi: driveDpi
+        });
 
         const safeStudentName = studentName.replace(/[^\w\s\u0600-\u06FF-]/gi, '').trim().replace(/\s+/g, '_');
-        const fileName = `شهادة_${safeStudentName}_${vCode}.png`;
+        const fileName = `شهادة_${safeStudentName}_${vCode}.${ext}`;
 
         const uploadRes = await uploadCertificateToDrive(
           blob,
@@ -482,47 +508,123 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
           {/* Top Quick Actions Bar */}
           <div className="flex flex-wrap items-center gap-1.5 w-full md:w-auto justify-end">
             
-            {/* Export Multi-Page Combined PDF */}
-            <button
-              type="button"
-              onClick={handleExportBatchCombinedPdf}
-              disabled={isExportingPdf || certificates.length === 0}
-              className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-xs rounded-lg shadow-sm transition flex items-center gap-1.5 cursor-pointer"
-              title="تجميع كافة شهادات الدفعة في ملف PDF واحد عالي الدقة للطباعة الفورية"
-            >
-              {isExportingPdf ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
-                  <span>معالجة ({exportProgress?.current}/{exportProgress?.total})...</span>
-                </>
-              ) : (
-                <>
-                  <Download className="w-3.5 h-3.5" />
-                  <span className="whitespace-nowrap">تصدير PDF مجمع ({certificates.length})</span>
-                </>
-              )}
-            </button>
+            {/* Export Multi-Page Combined PDF with Engine Selector */}
+            <div className="flex items-center rounded-lg bg-emerald-600 shadow-sm">
+              <button
+                type="button"
+                onClick={handleExportBatchCombinedPdf}
+                disabled={isExportingPdf || certificates.length === 0}
+                className="px-2.5 py-1.5 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-xs rounded-r-lg transition flex items-center gap-1.5 cursor-pointer"
+                title={`تجميع كافة شهادات الدفعة في ملف PDF واحد عالي الدقة (${batchEngine})`}
+              >
+                {isExportingPdf ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+                    <span>معالجة ({exportProgress?.current}/{exportProgress?.total})...</span>
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-3.5 h-3.5" />
+                    <span className="whitespace-nowrap">تصدير PDF مجمع ({certificates.length})</span>
+                  </>
+                )}
+              </button>
 
-            {/* Google Drive Batch Verify */}
-            <button
-              type="button"
-              onClick={handleStartBatchDriveVerification}
-              disabled={isUploadingToDrive || certificates.length === 0}
-              className="px-2.5 py-1.5 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 disabled:opacity-50 text-slate-950 font-black text-xs rounded-lg shadow-sm transition flex items-center gap-1.5 cursor-pointer"
-              title="توثيق الدفعة بالكامل على Google Drive وإنشاء باركود ورابط منفصل لكل طالب"
-            >
-              {isUploadingToDrive ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-950" />
-                  <span>رفع ({driveProgress?.current}/{driveProgress?.total})...</span>
-                </>
-              ) : (
-                <>
-                  <HardDrive className="w-3.5 h-3.5" />
-                  <span className="whitespace-nowrap">توثيق على درايف</span>
-                </>
-              )}
-            </button>
+              <div className="relative border-r border-emerald-500/60">
+                <button
+                  type="button"
+                  onClick={() => setShowBatchEngineMenu(!showBatchEngineMenu)}
+                  disabled={isExportingPdf}
+                  className="px-1.5 py-1.5 hover:bg-emerald-500 text-white text-xs rounded-l-lg transition flex items-center cursor-pointer"
+                  title="تغيير محرك ودقة تصدير الـ PDF المجمع"
+                >
+                  <ChevronDown className="w-3.5 h-3.5" />
+                </button>
+
+                {showBatchEngineMenu && (
+                  <div className="absolute left-0 top-full mt-1 w-64 bg-slate-900 border border-slate-700 rounded-xl p-3 shadow-2xl z-50 text-right space-y-2 text-xs animate-in fade-in zoom-in-95 duration-150">
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-1.5 font-bold text-slate-300">
+                      <span>محرك تصدير الـ PDF المجمع</span>
+                      <span className="text-[10px] text-amber-400 font-mono">{batchDpi} DPI</span>
+                    </div>
+
+                    <div className="space-y-1">
+                      {[
+                        { id: 'html2canvas', name: 'html2canvas 🎨', desc: 'الأكثر استقراراً للخطوط العربية' },
+                        { id: 'modern-screenshot', name: 'Modern Screenshot ⚡', desc: 'فائق السرعة وخفيف' },
+                        { id: 'html-to-image', name: 'html-to-image 🖼️', desc: 'دقة متناهية عبر SVG' },
+                        { id: 'jspdf', name: 'jsPDF + هندسة 📐', desc: 'تطابق أبعاد ورقية 100%' },
+                        { id: 'html2pdf', name: 'html2pdf.js 📄', desc: 'محرك PDF مباشر' }
+                      ].map((eng) => (
+                        <button
+                          key={eng.id}
+                          type="button"
+                          onClick={() => {
+                            setBatchEngine(eng.id as ExportEngine);
+                            setShowBatchEngineMenu(false);
+                            onShowToast(`تم ضبط محرك التصدير المجمع على: ${eng.name}`);
+                          }}
+                          className={`w-full text-right p-1.5 rounded-lg transition flex flex-col cursor-pointer ${
+                            batchEngine === eng.id
+                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                              : 'hover:bg-slate-800 text-slate-300'
+                          }`}
+                        >
+                          <span className="font-bold">{eng.name}</span>
+                          <span className="text-[10px] text-slate-400">{eng.desc}</span>
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-800">
+                      <label className="block text-[11px] text-slate-400 mb-1">دقة التصدير (DPI):</label>
+                      <select
+                        value={batchDpi}
+                        onChange={(e) => setBatchDpi(parseInt(e.target.value))}
+                        className="w-full text-xs font-bold p-1.5 rounded-lg border border-slate-700 bg-slate-800 text-slate-200 outline-none"
+                      >
+                        <option value={150}>150 DPI (خفيف وسريع)</option>
+                        <option value={300}>300 DPI (دقة طباعة قياسية - موصى به)</option>
+                        <option value={400}>400 DPI (دقة فائقة)</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Google Drive Batch Verify with Quick Config */}
+            <div className="flex items-center rounded-lg bg-gradient-to-r from-amber-600 to-amber-500 shadow-sm">
+              <button
+                type="button"
+                onClick={handleStartBatchDriveVerification}
+                disabled={isUploadingToDrive || certificates.length === 0}
+                className="px-2.5 py-1.5 hover:opacity-90 disabled:opacity-50 text-slate-950 font-black text-xs rounded-r-lg transition flex items-center gap-1.5 cursor-pointer"
+                title={`توثيق الدفعة بالكامل على Google Drive (${driveEngine} - ${driveFormat.toUpperCase()})`}
+              >
+                {isUploadingToDrive ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-950" />
+                    <span>رفع ({driveProgress?.current}/{driveProgress?.total})...</span>
+                  </>
+                ) : (
+                  <>
+                    <HardDrive className="w-3.5 h-3.5" />
+                    <span className="whitespace-nowrap">توثيق على درايف</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowDriveConfigModal(true)}
+                disabled={isUploadingToDrive}
+                className="px-1.5 py-1.5 hover:bg-amber-600/30 text-slate-950 text-xs rounded-l-lg border-r border-amber-600/40 transition flex items-center cursor-pointer"
+                title="تخصيص خيارات ومحرك وصيغة التوثيق على Google Drive"
+              >
+                <Settings className="w-3.5 h-3.5" />
+              </button>
+            </div>
 
             {/* View Links Report */}
             {certificates.some(c => c.driveFileWebViewLink) && (
@@ -1344,6 +1446,86 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
                 className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black rounded-lg shadow-xs cursor-pointer transition"
               >
                 حفظ التعديل
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DRIVE VERIFICATION CONFIGURATION MODAL */}
+      {showDriveConfigModal && (
+        <div className="fixed inset-0 z-[85] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-5 max-w-md w-full text-right space-y-4 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+              <div className="flex items-center gap-2 text-amber-400">
+                <Settings className="w-5 h-5" />
+                <h4 className="font-extrabold text-sm sm:text-base text-white">إعدادات توثيق Google Drive</h4>
+              </div>
+              <button onClick={() => setShowDriveConfigModal(false)} className="text-slate-400 hover:text-white cursor-pointer">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block text-slate-300 font-bold mb-1">محرك التوثيق والالتقاط:</label>
+                <select
+                  value={driveEngine}
+                  onChange={(e) => setDriveEngine(e.target.value as ExportEngine)}
+                  className="w-full font-bold p-2.5 rounded-xl border border-slate-700 bg-slate-800 text-slate-200 outline-none focus:ring-2 focus:ring-amber-500"
+                >
+                  <option value="html2canvas">html2canvas 🎨 (الأكثر استقراراً للخطوط)</option>
+                  <option value="modern-screenshot">Modern Screenshot ⚡ (فائق السرعة)</option>
+                  <option value="html-to-image">html-to-image 🖼️ (دقة متناهية SVG)</option>
+                </select>
+                <p className="text-[10px] text-slate-400 mt-0.5">المحرك المسؤول عن تحويل عناصر الشهادة إلى ملف رقمي موثق.</p>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-bold mb-1">صيغة الملف المرفوع لدرايف:</label>
+                <select
+                  value={driveFormat}
+                  onChange={(e) => setDriveFormat(e.target.value as any)}
+                  className="w-full font-bold p-2.5 rounded-xl border border-slate-700 bg-slate-800 text-slate-200 outline-none focus:ring-2 focus:ring-amber-500"
+                >
+                  <option value="png">صورة فائقة النقاء PNG (الموصى به للعرض الفوري)</option>
+                  <option value="pdf">مستند إلكتروني PDF (للطباعة والأرشفة الرسمية)</option>
+                  <option value="jpeg">صورة مضغوطة JPEG (حجم خفيف وتوفير المساحة)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-bold mb-1">دقة التوثيق (DPI):</label>
+                <select
+                  value={driveDpi}
+                  onChange={(e) => setDriveDpi(parseInt(e.target.value))}
+                  className="w-full font-bold p-2.5 rounded-xl border border-slate-700 bg-slate-800 text-slate-200 outline-none focus:ring-2 focus:ring-amber-500"
+                >
+                  <option value={150}>150 DPI (معاينة رقمية سريعة)</option>
+                  <option value={300}>300 DPI (دقة قياسية فائقة - مستحسن)</option>
+                  <option value={400}>400 DPI (دقة مكثفة لأعلى نقاء)</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setShowDriveConfigModal(false)}
+                className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-lg cursor-pointer transition"
+              >
+                إغلاق
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDriveConfigModal(false);
+                  handleStartBatchDriveVerification();
+                }}
+                className="px-3.5 py-1.5 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-slate-950 text-xs font-black rounded-lg shadow-sm cursor-pointer transition flex items-center gap-1"
+              >
+                <HardDrive className="w-3.5 h-3.5" />
+                <span>حفظ وبدء التوثيق</span>
               </button>
             </div>
           </div>

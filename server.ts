@@ -1004,6 +1004,98 @@ ${systemInstruction ? `- تعليمات إضافية خاصة: ${systemInstructi
   }
 });
 
+// AI Arabic Proofreading & Linguistic Optimization Endpoint
+app.post("/api/ai-proofread", async (req, res) => {
+  const aiConfig = extractAiCredentials(req);
+  const { certificateData } = req.body;
+
+  if (!certificateData) {
+    return res.status(400).json({ success: false, error: "Missing certificateData payload" });
+  }
+
+  const isFemale = certificateData.recipientGender === 'female';
+
+  try {
+    const prompt = `أنت بروفيسور تدقيق لغوي وإملائي ومستشار بلاغة عربية للشهادات والوثائق الرسمية.
+قم بتدقيق نصوص شهادة التقدير التالية تدقيقاً لغوياً ونحوياً وإملائياً وبلاغياً شاملاً:
+1. همزات الوصل والقطع (إكرام، إنجاز، استحقاق، اهتمام، إلى، أن).
+2. التاء المربوطة والهاء (المدرسة، شهادة، الله، جهوده، تفوقه).
+3. الألف المقصورة والياء (المولى، الهدى، على، في).
+4. التنوين وتطابق قواعد النحو (شكراً، تقديراً، دائماً).
+5. تطابق التذكير والتأنيث بحسب نوع المكرّم: ${isFemale ? 'المكرّم طالبة (أنثى/مؤنث)' : 'المكرّم طالب (ذكر/مذكر)'}.
+6. إزالة أي أخطاء شائعة (مثل 'مبروك' واستبدالها بـ 'مبارك'، وكلمة 'إن شاء الله').
+7. ضبط علامات الترقيم والمسافات البينية وواو العطف.
+
+نصوص الشهادة الحالية:
+- عنوان الشهادة: "${certificateData.title || ''}"
+- العنوان الفرعي: "${certificateData.subtitle || ''}"
+- عبارة مقدمة التكريم: "${certificateData.recipientIntro || ''}"
+- اسم الطالب/المكرم: "${certificateData.studentName || ''}"
+- الصف أو المرحلة: "${certificateData.grade || ''}"
+- المادة / المجال: "${certificateData.subject || ''}"
+- نص التقدير والشكر: "${certificateData.appreciationText || ''}"
+- بيت الشعر أو المقولة: "${certificateData.poemOrQuote || ''}"
+- مسمى الوسام: "${certificateData.badgeTitle || ''}"
+
+أرجع كائن JSON حصراً بالشكل التالي بدون أي شرح خارجه:
+{
+  "correctedFields": {
+    "title": "العنوان المصحح والمضبوط إملائياً",
+    "subtitle": "العنوان الفرعي المصحح",
+    "recipientIntro": "مقدمة التكريم المصححة",
+    "studentName": "اسم الطالب المصحح",
+    "grade": "الصف المصحح",
+    "subject": "المادة المصححة",
+    "appreciationText": "نص التقدير المصحح بدقة بالغة وبلاغة فصيحة",
+    "poemOrQuote": "بيت الشعر المصحح إملائياً وتشكيل القافية",
+    "badgeTitle": "مسمى الوسام المصحح"
+  },
+  "issues": [
+    {
+      "fieldName": "appreciationText",
+      "originalWord": "الكلمة الخاطئة",
+      "suggestedWord": "الكلمة الصائبة",
+      "category": "hamza",
+      "categoryLabel": "همزة قطع",
+      "severity": "error",
+      "ruleExplanation": "توضيح القاعدة الإملائية بإيجاز"
+    }
+  ],
+  "linguisticNotes": "ملاحظة لغوية عامة حول جودة الصياغة",
+  "score": 95
+}`;
+
+    const rawResponse = await callUnifiedAi({
+      config: aiConfig,
+      prompt,
+      systemInstruction: "أنت مدقق لغوي عربي محترف. أرجع كائن JSON صالح فقط.",
+      temperature: 0.2,
+      maxTokens: 2000,
+      jsonOutput: true,
+    });
+
+    const parsed = cleanAndParseJson(rawResponse, null);
+    if (parsed && parsed.correctedFields) {
+      return res.json({
+        success: true,
+        source: 'ai',
+        correctedFields: parsed.correctedFields,
+        issues: Array.isArray(parsed.issues) ? parsed.issues : [],
+        linguisticNotes: parsed.linguisticNotes || "النصوص فصيحة وسليمة لغوياً",
+        score: typeof parsed.score === 'number' ? parsed.score : 95,
+      });
+    }
+    throw new Error("Failed to parse valid proofread JSON");
+  } catch (err: any) {
+    console.warn("AI Proofread fallback applied:", err);
+    return res.json({
+      success: false,
+      error: err?.message || "AI Proofreader encountered an error",
+      fallbackToLocal: true,
+    });
+  }
+});
+
 // AI Certificate Generation Endpoint
 app.post("/api/generate-certificate-content", async (req, res) => {
   try {

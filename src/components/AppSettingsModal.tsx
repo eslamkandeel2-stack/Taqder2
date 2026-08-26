@@ -2038,6 +2038,51 @@ export const AppSettingsModal: React.FC<Props> = ({
                   </div>
                 </div>
 
+                {/* Batch & Google Drive Default Engine Customization */}
+                <div className="pt-3 border-t border-slate-100 grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="p-3.5 bg-amber-500/5 rounded-xl border border-amber-500/20">
+                    <label className="block text-xs font-bold text-amber-950 mb-1">محرك تصدير الشهادات المجمعة الافتراضي (PDF المجمع)</label>
+                    <select
+                      value={defaultSettings.batchDefaultEngine || defaultSettings.defaultExportEngine || 'html2canvas'}
+                      onChange={(e) => setDefaultSettings({ ...defaultSettings, batchDefaultEngine: e.target.value as any })}
+                      className="w-full text-xs font-bold p-2.5 rounded-xl border border-amber-200 bg-white focus:ring-2 focus:ring-amber-500 outline-none"
+                    >
+                      <option value="html2canvas">html2canvas 🎨 (المحرك الأكثر استقراراً للخطوط العربية)</option>
+                      <option value="modern-screenshot">Modern Screenshot ⚡ (فائق السرعة وخفيف الذاكرة)</option>
+                      <option value="html-to-image">html-to-image 🖼️ (دقة متناهية عبر طبقات SVG)</option>
+                      <option value="jspdf">jsPDF + الحسابات الهندسية 📐 (أبعاد ورقية متطابقة)</option>
+                      <option value="html2pdf">html2pdf.js 📄 (محرك PDF المباشر)</option>
+                    </select>
+                    <p className="text-[10px] text-amber-800/80 mt-1">يُستخدم هذا المحرك عند تصدير كامل شهادات الدفعة في ملف PDF موحد.</p>
+                  </div>
+
+                  <div className="p-3.5 bg-blue-50/70 rounded-xl border border-blue-200/60">
+                    <label className="block text-xs font-bold text-blue-950 mb-1">محرك وصيغة توثيق Google Drive الافتراضية</label>
+                    <div className="grid grid-cols-2 gap-2 mb-1">
+                      <select
+                        value={defaultSettings.driveDefaultEngine || 'html2canvas'}
+                        onChange={(e) => setDefaultSettings({ ...defaultSettings, driveDefaultEngine: e.target.value as any })}
+                        className="w-full text-xs font-bold p-2 rounded-lg border border-blue-200 bg-white outline-none"
+                      >
+                        <option value="html2canvas">html2canvas 🎨</option>
+                        <option value="modern-screenshot">Modern Screenshot ⚡</option>
+                        <option value="html-to-image">html-to-image 🖼️</option>
+                      </select>
+
+                      <select
+                        value={defaultSettings.driveDefaultFormat || 'png'}
+                        onChange={(e) => setDefaultSettings({ ...defaultSettings, driveDefaultFormat: e.target.value as any })}
+                        className="w-full text-xs font-bold p-2 rounded-lg border border-blue-200 bg-white outline-none"
+                      >
+                        <option value="png">صيغة PNG (عالية الوضوح)</option>
+                        <option value="pdf">صيغة PDF (مستند موثق)</option>
+                        <option value="jpeg">صيغة JPEG (حجم خفيف)</option>
+                      </select>
+                    </div>
+                    <p className="text-[10px] text-blue-800/80">المحرك والصيغة المعتمدة لرفع الشهادات ومزامنة روابط التوثيق مع Google Drive.</p>
+                  </div>
+                </div>
+
                 {/* Quality Factor */}
                 <div>
                   <div className="flex items-center justify-between text-xs font-bold text-slate-700 mb-1">

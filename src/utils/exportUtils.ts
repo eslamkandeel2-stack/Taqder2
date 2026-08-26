@@ -6,7 +6,7 @@ import * as htmlToImage from 'html-to-image';
 // @ts-ignore
 import html2pdf from 'html2pdf.js';
 import { CertificateData, ExportEngine, ExportFormat, ExportOptions } from '../types';
-import { generateCertificatePrintHtml } from './printUtils';
+import { generateCertificatePrintHtml, printCertificateViaIframe } from './printUtils';
 import { autoArchiveCertificate, autoArchiveBatchCertificates } from './archiveManager';
 
 export interface EngineInfo {
@@ -470,19 +470,19 @@ let colorCanvasCtx: CanvasRenderingContext2D | null = null;
 let colorTestDiv: HTMLDivElement | null = null;
 
 export function resolveCssColorNative(colorStr: string): string {
-  if (!colorStr || typeof colorStr !== 'string') return colorStr;
+  if (!colorStr || typeof colorStr !== 'string') return 'rgb(0, 0, 0)';
   const trimmed = colorStr.trim();
-  if (!trimmed) return colorStr;
+  if (!trimmed) return 'rgb(0, 0, 0)';
 
   const lower = trimmed.toLowerCase();
 
   if (lower.startsWith('oklch')) {
     const res = oklchToRgbStr(trimmed);
-    if (res && res !== 'rgb(0, 0, 0)') return res;
+    if (res) return res;
   }
   if (lower.startsWith('oklab') || lower.startsWith('lab') || lower.startsWith('lch')) {
     const res = oklabToRgbStr(trimmed.replace(/^(lab|lch)/i, 'oklab'));
-    if (res && res !== 'rgb(0, 0, 0)') return res;
+    if (res) return res;
   }
 
   try {
@@ -502,7 +502,7 @@ export function resolveCssColorNative(colorStr: string): string {
           resolved !== 'rgba(1, 2, 3, 0.5)' &&
           resolved !== 'rgba(1,2,3,0.5)' &&
           resolved !== 'rgba(1, 2, 3, 0.500)' &&
-          !/(?:oklch|oklab|lch|lab)\(/i.test(resolved)
+          !/(?:oklch|oklab|lch|lab|color-mix|color)\(/i.test(resolved)
         ) {
           return resolved;
         }
@@ -523,14 +523,14 @@ export function resolveCssColorNative(colorStr: string): string {
       colorTestDiv.style.color = '';
       colorTestDiv.style.color = trimmed;
       const computed = window.getComputedStyle(colorTestDiv).color;
-      if (computed && computed !== '' && !/(?:oklch|oklab|lch|lab)\(/i.test(computed)) {
+      if (computed && computed !== '' && !/(?:oklch|oklab|lch|lab|color-mix|color)\(/i.test(computed)) {
         return computed;
       }
     }
   } catch (e) {}
 
   if (lower.includes('oklch')) return oklchToRgbStr(trimmed);
-  if (lower.includes('oklab')) return oklabToRgbStr(trimmed);
+  if (lower.includes('oklab') || lower.includes('lab') || lower.includes('lch')) return oklabToRgbStr(trimmed);
 
   return 'rgb(0, 0, 0)';
 }
@@ -584,13 +584,19 @@ export function replaceAllColorFunctions(input: string): string {
     iterations++;
   }
 
-  // Absolute guarantee fallback: strip any lingering oklch/oklab/lch/lab/color-mix/color calls
+  // Absolute guarantee fallback: replace any lingering oklch/oklab/lch/lab calls
+  text = text.replace(/oklch\s*\([^;})]*\)/gi, (m) => oklchToRgbStr(m));
+  text = text.replace(/oklab\s*\([^;})]*\)/gi, (m) => oklabToRgbStr(m));
+  text = text.replace(/lch\s*\([^;})]*\)/gi, (m) => oklchToRgbStr(m.replace(/^lch/i, 'oklch')));
+  text = text.replace(/lab\s*\([^;})]*\)/gi, (m) => oklabToRgbStr(m.replace(/^lab/i, 'oklab')));
+  text = text.replace(/color-mix\s*\([^;})]*\)/gi, 'rgb(0, 0, 0)');
+  text = text.replace(/color\s*\([^;})]*\)/gi, 'rgb(0, 0, 0)');
+
+  // Also strip any partial unclosed oklch/oklab
   text = text.replace(/oklch\s*\([^;}]*/gi, 'rgb(0, 0, 0)');
   text = text.replace(/oklab\s*\([^;}]*/gi, 'rgb(0, 0, 0)');
   text = text.replace(/lch\s*\([^;}]*/gi, 'rgb(0, 0, 0)');
   text = text.replace(/lab\s*\([^;}]*/gi, 'rgb(0, 0, 0)');
-  text = text.replace(/color-mix\s*\([^;}]*/gi, 'rgb(0, 0, 0)');
-  text = text.replace(/color\s*\([^;}]*/gi, 'rgb(0, 0, 0)');
 
   return text;
 }
@@ -1273,6 +1279,10 @@ export async function exportBatchCertificatesAsSinglePdf(
   renderContainer: (cert: CertificateData) => Promise<HTMLElement>,
   options?: {
     batchTitle?: string;
+    engine?: ExportEngine;
+    dpi?: number;
+    scale?: number;
+    quality?: number;
     onProgress?: (current: number, total: number, studentName: string) => void;
   }
 ): Promise<void> {
@@ -1281,6 +1291,8 @@ export async function exportBatchCertificatesAsSinglePdf(
   }
 
   const total = certificates.length;
+  const engine = options?.engine || 'html2canvas';
+  const scale = options?.scale ?? (options?.dpi ? options.dpi / 100 : 2.8);
   let pdf: jsPDF | null = null;
 
   for (let i = 0; i < total; i++) {
@@ -1294,7 +1306,12 @@ export async function exportBatchCertificatesAsSinglePdf(
     // Allow DOM to settle and images to load
     await new Promise((resolve) => setTimeout(resolve, 80));
 
-    const canvas = await captureCertificateCanvas(element, cert, { scale: 2.5 });
+    const canvas = await captureCertificateCanvasUnified(element, cert, {
+      engine,
+      scale,
+      quality: options?.quality ?? 0.95
+    });
+
     const dims = getCertificateDimensions(cert.aspectRatio);
     const isSquare = cert.aspectRatio === 'square';
     const isLandscape = dims.orientation === 'landscape';
@@ -1443,7 +1460,7 @@ export async function captureWithHtmlToImage(
 }
 
 /**
- * Export directly with html2pdf.js
+ * Export directly with html2pdf.js with full sanitization and fallback
  */
 export async function exportWithHtml2Pdf(
   element: HTMLElement,
@@ -1453,47 +1470,68 @@ export async function exportWithHtml2Pdf(
   const dims = getCertificateDimensions(certificateData.aspectRatio);
   const isLandscape = dims.orientation === 'landscape';
   const fileName = options.fileName || getCleanStudentFileName(certificateData.studentName, 'شهادة_تقدير', 'pdf');
+  const targetWidth = options.customWidth || dims.baseWidth;
+  const targetHeight = options.customHeight || dims.baseHeight;
 
   await ensureAllFontsLoaded();
   await getGoogleFontsCss();
+  await waitForImagesToLoad(element);
 
-  // @ts-ignore
-  const html2pdfFn = typeof html2pdf === 'function' ? html2pdf : (window as any).html2pdf;
-  
-  if (html2pdfFn) {
-    const opt = {
-      margin: 0,
-      filename: fileName,
-      image: { type: 'jpeg', quality: options.quality ?? 0.98 },
-      html2canvas: {
-        scale: options.scale ?? 2.8,
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: options.backgroundColor || certificateData.backgroundColor || '#ffffff',
-        onclone: (clonedDoc: Document) => {
-          sanitizeOklchInDoc(clonedDoc, certificateData, element);
+  try {
+    // @ts-ignore
+    const html2pdfFn = typeof html2pdf === 'function' ? html2pdf : (html2pdf as any)?.default || (window as any).html2pdf;
+    
+    if (html2pdfFn) {
+      const opt = {
+        margin: 0,
+        filename: fileName,
+        image: { type: 'jpeg', quality: options.quality ?? 0.98 },
+        html2canvas: {
+          scale: options.scale ?? (options.dpi ? options.dpi / 100 : 2.8),
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: options.backgroundColor || certificateData.backgroundColor || '#ffffff',
+          width: targetWidth,
+          height: targetHeight,
+          windowWidth: targetWidth,
+          windowHeight: targetHeight,
+          scrollX: 0,
+          scrollY: 0,
+          x: 0,
+          y: 0,
+          onclone: (clonedDoc: Document) => {
+            sanitizeOklchInDoc(clonedDoc, certificateData, element);
+          }
+        },
+        jsPDF: {
+          unit: 'mm',
+          format: certificateData.aspectRatio === 'square' ? [dims.widthMm, dims.heightMm] : 'a4',
+          orientation: isLandscape ? 'landscape' : 'portrait'
         }
-      },
-      jsPDF: {
-        unit: 'mm',
-        format: certificateData.aspectRatio === 'square' ? [dims.widthMm, dims.heightMm] : 'a4',
-        orientation: isLandscape ? 'landscape' : 'portrait'
-      }
-    };
+      };
 
-    await html2pdfFn().set(opt).from(element).save();
-    try {
-      autoArchiveCertificate(certificateData, { event: 'export_pdf' });
-    } catch (e) {}
-  } else {
-    // Graceful fallback to jsPDF
-    const canvas = await captureCertificateCanvas(element, certificateData, { scale: options.scale ?? 2.8 });
-    const pdf = createProportionalPdf(canvas, certificateData);
-    pdf.save(fileName);
-    try {
-      autoArchiveCertificate(certificateData, { event: 'export_pdf' });
-    } catch (e) {}
+      await html2pdfFn().set(opt).from(element).save();
+      try {
+        autoArchiveCertificate(certificateData, { event: 'export_pdf' });
+      } catch (e) {}
+      return;
+    }
+  } catch (err) {
+    console.warn('[html2pdf.js] Encountered error, gracefully falling back to proportional jsPDF:', err);
   }
+
+  // Graceful fallback to proportional jsPDF
+  const canvas = await captureCertificateCanvas(element, certificateData, {
+    scale: options.scale ?? (options.dpi ? options.dpi / 100 : 2.8),
+    backgroundColor: options.backgroundColor || certificateData.backgroundColor || '#ffffff',
+    customWidth: targetWidth,
+    customHeight: targetHeight
+  });
+  const pdf = createProportionalPdf(canvas, certificateData);
+  pdf.save(fileName);
+  try {
+    autoArchiveCertificate(certificateData, { event: 'export_pdf' });
+  } catch (e) {}
 }
 
 /**
@@ -1556,8 +1594,11 @@ export async function exportCertificateUnified(
       return { success: true, fileName, format };
     }
     if (engine === 'vector-print') {
-      // Vector print direct execution
-      window.print();
+      // Vector print direct execution using isolated iframe
+      await printCertificateViaIframe(element, certificateData, {
+        paperSize: options.paperSize || (certificateData.aspectRatio === 'square' ? 'Square' : 'A4'),
+        orientation: certificateData.aspectRatio === 'A4-portrait' ? 'portrait' : 'landscape'
+      });
       return { success: true, fileName: 'طباعة_متجهة_مباشرة', format };
     }
     // High-resolution raster canvas via chosen engine -> proportional jsPDF
@@ -1572,6 +1613,10 @@ export async function exportCertificateUnified(
 
   if (format === 'svg') {
     let svgDataUrl = '';
+    const dims = getCertificateDimensions(certificateData.aspectRatio);
+    const targetWidth = options.customWidth || dims.baseWidth;
+    const targetHeight = options.customHeight || dims.baseHeight;
+
     try {
       const usedFonts = getCertificateUsedFonts(certificateData);
       const fontCss = await getBase64EmbeddedFontCss(usedFonts);
@@ -1579,8 +1624,9 @@ export async function exportCertificateUnified(
 
       if (engine === 'modern-screenshot') {
         svgDataUrl = await domToSvg(element, {
-          width: options.customWidth,
-          height: options.customHeight,
+          width: targetWidth,
+          height: targetHeight,
+          scale: 1,
           font: fontCss ? { cssText: fontCss } : undefined,
           filter: (node: Node) => {
             if (node instanceof HTMLElement && (node.classList.contains('drag-handle') || node.hasAttribute('data-editor-control'))) return false;
@@ -1589,6 +1635,9 @@ export async function exportCertificateUnified(
         });
       } else {
         svgDataUrl = await htmlToImage.toSvg(element, {
+          width: targetWidth,
+          height: targetHeight,
+          pixelRatio: 1,
           skipFonts: false,
           fontEmbedCSS: fontCss || undefined,
           filter: (node: Node) => {
@@ -1596,6 +1645,21 @@ export async function exportCertificateUnified(
             return true;
           }
         });
+      }
+
+      // Ensure exported SVG has correct viewBox and full dimensions to prevent any cropping
+      if (svgDataUrl && typeof svgDataUrl === 'string') {
+        if (svgDataUrl.startsWith('data:image/svg+xml;charset=utf-8,') || svgDataUrl.startsWith('data:image/svg+xml,')) {
+          const prefix = svgDataUrl.startsWith('data:image/svg+xml;charset=utf-8,') ? 'data:image/svg+xml;charset=utf-8,' : 'data:image/svg+xml,';
+          let svgContent = decodeURIComponent(svgDataUrl.slice(prefix.length));
+          if (!svgContent.includes(`viewBox="0 0 ${targetWidth} ${targetHeight}"`)) {
+            svgContent = svgContent.replace(/<svg\b([^>]*)>/i, (m, attrs) => {
+              const cleanedAttrs = attrs.replace(/\b(width|height|viewBox)=["'][^"']*["']/gi, '');
+              return `<svg width="${targetWidth}" height="${targetHeight}" viewBox="0 0 ${targetWidth} ${targetHeight}" ${cleanedAttrs}>`;
+            });
+            svgDataUrl = `${prefix}${encodeURIComponent(svgContent)}`;
+          }
+        }
       }
     } catch (e) {
       console.warn('SVG export fallback to canvas data', e);
@@ -1637,6 +1701,36 @@ export async function exportCertificateUnified(
   } catch (e) {}
 
   return { success: true, fileName, format };
+}
+
+/**
+ * Captures certificate DOM element and returns a Blob with the specified engine and format
+ */
+export async function captureCertificateBlobUnified(
+  element: HTMLElement,
+  certificateData: CertificateData,
+  options: ExportOptions = {}
+): Promise<{ blob: Blob; mimeType: string; ext: string }> {
+  const format = options.format || 'png';
+  
+  if (format === 'pdf') {
+    const canvas = await captureCertificateCanvasUnified(element, certificateData, options);
+    const pdf = createProportionalPdf(canvas, certificateData);
+    const blob = pdf.output('blob');
+    return { blob, mimeType: 'application/pdf', ext: 'pdf' };
+  }
+
+  const canvas = await captureCertificateCanvasUnified(element, certificateData, options);
+  const mimeType = format === 'jpeg' ? 'image/jpeg' : format === 'webp' ? 'image/webp' : 'image/png';
+  const quality = options.quality ?? (format === 'png' ? 1.0 : 0.95);
+  const ext = format === 'jpeg' ? 'jpg' : format;
+
+  return new Promise<{ blob: Blob; mimeType: string; ext: string }>((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve({ blob, mimeType, ext });
+      else reject(new Error('فشل إنشاء ملف الصورة من اللوحة'));
+    }, mimeType, quality);
+  });
 }
 
 /**
