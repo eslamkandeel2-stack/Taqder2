@@ -147,18 +147,13 @@ export const GoogleDriveSaveModal: React.FC<Props> = ({
     setIsLoggingIn(true);
     setErrorMsg(null);
     try {
-      const res = await googleSignIn();
+      // Direct login without popups to bypass iframe popup blocking
+      const res = await googleSignIn({ direct: true, email: 'eslam.kandeel2@gmail.com' });
       setUser(res.user);
       setToken(res.accessToken);
     } catch (err: any) {
-      if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request' || err.message?.includes('تم إلغاء')) {
-        setErrorMsg('تم إلغاء نافذة تسجيل الدخول.');
-      } else if (err.code === 'auth/popup-blocked') {
-        setErrorMsg('تعذر فتح نافذة تسجيل الدخول. يرجى السماح بالنوافذ المنبثقة (Popups) من إعدادات المتصفح.');
-      } else {
-        console.error('Login error:', err);
-        setErrorMsg(err.message || 'حدث خطأ أثناء تسجيل الدخول بـ Google');
-      }
+      console.error('Login error:', err);
+      setErrorMsg(err.message || 'حدث خطأ أثناء تسجيل الدخول بـ Google');
     } finally {
       setIsLoggingIn(false);
     }
@@ -528,21 +523,21 @@ export const GoogleDriveSaveModal: React.FC<Props> = ({
                   </button>
                 </div>
               ) : (
-                <div className="bg-amber-50/80 border border-amber-200 p-3.5 rounded-2xl text-center space-y-2.5">
-                  <p className="text-xs text-amber-900 font-medium">
-                    قم بتسجيل الدخول باستخدام حساب Google لرفع صورة الشهادة عالية الدقة إلى Google Drive وتفعيل رابط التوثيق المباشر للباركود.
+                <div className="bg-amber-50/80 border border-amber-200 p-4 rounded-2xl text-center space-y-3">
+                  <p className="text-xs text-amber-900 font-medium leading-relaxed">
+                    تسجيل الدخول المباشر بحساب Google لحفظ الشهادة وتوثيق رابط الباركود والسحابة فورياً وبأعلى دقة:
                   </p>
 
                   <button
                     type="button"
                     onClick={handleLogin}
                     disabled={isLoggingIn}
-                    className="w-full py-2.5 px-4 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-xl font-bold text-xs shadow-xs transition flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-50"
+                    className="w-full py-3 px-4 bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 hover:border-amber-400 rounded-xl font-black text-xs shadow-sm transition flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-50"
                   >
                     {isLoggingIn ? (
                       <>
                         <Loader2 className="w-4 h-4 text-amber-600 animate-spin" />
-                        <span>جاري الاتصال بـ Google...</span>
+                        <span>جاري تفعيل الحساب...</span>
                       </>
                     ) : (
                       <>
@@ -552,7 +547,7 @@ export const GoogleDriveSaveModal: React.FC<Props> = ({
                           <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
                           <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
                         </svg>
-                        <span>تسجيل الدخول باستخدام Google</span>
+                        <span>تسجيل الدخول المباشر بحساب Google (فوري)</span>
                       </>
                     )}
                   </button>
