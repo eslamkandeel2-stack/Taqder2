@@ -20,7 +20,6 @@ import { useDragScroll } from '../utils/useDragScroll';
 import { BatchCertificateViewerModal } from './BatchCertificateViewerModal';
 import { BatchConfirmReviewModal, BatchReviewStudentItem } from './BatchConfirmReviewModal';
 import { StudentGroupsManager } from './StudentGroupsManager';
-import { TemplateCertificatePreview } from './TemplateCertificatePreview';
 import {
   Users,
   Sparkles,
@@ -858,17 +857,11 @@ export const BatchCertificateGenerator: React.FC<Props> = ({
                           : 'border-slate-200 hover:border-slate-300 bg-slate-50/50'
                       }`}
                     >
-                      <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <div className="w-14 h-10 shrink-0 overflow-hidden rounded-lg shadow-2xs border border-slate-200">
-                          <TemplateCertificatePreview
-                            data={preset.defaultData}
-                            mode="mini"
-                            className="w-full h-full scale-[1.0] object-cover"
-                          />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <h4 className="font-black text-xs text-slate-900 line-clamp-1">{preset.name}</h4>
-                          <span className="text-[10px] text-slate-500 line-clamp-1">{preset.category}</span>
+                      <div className="flex items-center gap-3">
+                        <div className={`w-8 h-8 rounded-xl bg-gradient-to-br ${preset.thumbnailGradient} shadow-xs shrink-0`} />
+                        <div>
+                          <h4 className="font-black text-xs text-slate-900">{preset.name}</h4>
+                          <span className="text-[10px] text-slate-500">{preset.category}</span>
                         </div>
                       </div>
 

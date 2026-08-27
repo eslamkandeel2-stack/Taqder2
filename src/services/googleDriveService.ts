@@ -157,39 +157,7 @@ export const initDriveAuth = (
   });
 };
 
-export interface GoogleSignInOptions {
-  direct?: boolean;
-  email?: string;
-  name?: string;
-  accessToken?: string;
-}
-
-export const googleSignIn = async (
-  options: GoogleSignInOptions = { direct: true }
-): Promise<{ user: User; accessToken: string }> => {
-  // If direct authentication is requested (default to avoid popup blocking in iframe sandbox)
-  if (options.direct !== false) {
-    const directUser: User = {
-      uid: 'google-direct-' + Date.now(),
-      email: options.email || 'eslam.kandeel2@gmail.com',
-      displayName: options.name || 'حساب Google (eslam.kandeel2)',
-      photoURL: 'https://lh3.googleusercontent.com/a/default-user',
-      emailVerified: true,
-    } as User;
-
-    const token = options.accessToken || cachedAccessToken || `direct_google_token_${Date.now()}`;
-    cachedAccessToken = token;
-
-    try {
-      localStorage.setItem(TOKEN_STORAGE_KEY, token);
-      localStorage.setItem(GIS_USER_STORAGE_KEY, JSON.stringify(directUser));
-    } catch (e) {
-      console.warn('Storage warning:', e);
-    }
-
-    return { user: directUser, accessToken: token };
-  }
-
+export const googleSignIn = async (): Promise<{ user: User; accessToken: string }> => {
   try {
     isSigningIn = true;
     const result = await signInWithPopup(auth, provider);
@@ -202,40 +170,30 @@ export const googleSignIn = async (
     localStorage.setItem(TOKEN_STORAGE_KEY, cachedAccessToken);
     return { user: result.user, accessToken: cachedAccessToken };
   } catch (error: any) {
-    console.warn('Popup blocked or failed, falling back directly to instant Google direct auth session:', error);
-    
-    // Automatic fallback to instant direct authentication without error
-    const directUser: User = {
-      uid: 'google-direct-' + Date.now(),
-      email: options.email || 'eslam.kandeel2@gmail.com',
-      displayName: options.name || 'حساب Google (eslam.kandeel2)',
-      photoURL: 'https://lh3.googleusercontent.com/a/default-user',
-      emailVerified: true,
-    } as User;
+    console.warn('Firebase signInWithPopup threw error, attempting Google Identity Services (GIS) token fallback:', error);
 
-    const token = `direct_google_token_${Date.now()}`;
-    cachedAccessToken = token;
-    localStorage.setItem(TOKEN_STORAGE_KEY, token);
-    localStorage.setItem(GIS_USER_STORAGE_KEY, JSON.stringify(directUser));
+    try {
+      const gisResult = await requestGisToken();
+      return gisResult;
+    } catch (gisErr: any) {
+      console.error('Google Identity Services login also failed:', gisErr);
 
-    return { user: directUser, accessToken: token };
+      if (gisErr?.message?.includes('closed') || gisErr?.message?.includes('إلغاء') || error?.code === 'auth/popup-closed-by-user') {
+        const err = new Error('تم إلغاء عملية تسجيل الدخول.');
+        (err as any).code = 'auth/popup-closed-by-user';
+        throw err;
+      }
+
+      if (error?.code === 'auth/popup-blocked' || gisErr?.message?.includes('popup')) {
+        const err = new Error('تعذر فتح نافذة تسجيل الدخول. يرجى السماح بالنوافذ المنبثقة (Popups) من إعدادات المتصفح.');
+        (err as any).code = 'auth/popup-blocked';
+        throw err;
+      }
+
+      throw new Error('تعذر الاتصال بـ Google لربط الحساب. يمكنك تجربة "حفظ بالمكتبة السحابية" مباشرة دون الحاجة لـ Google Drive.');
+    }
   } finally {
     isSigningIn = false;
-  }
-};
-
-export const setManualAccessToken = (token: string, email?: string) => {
-  cachedAccessToken = token.trim();
-  localStorage.setItem(TOKEN_STORAGE_KEY, cachedAccessToken);
-  if (email) {
-    const user: User = {
-      uid: 'google-custom-' + Date.now(),
-      email: email.trim(),
-      displayName: email.trim(),
-      photoURL: 'https://lh3.googleusercontent.com/a/default-user',
-      emailVerified: true,
-    } as User;
-    localStorage.setItem(GIS_USER_STORAGE_KEY, JSON.stringify(user));
   }
 };
 
@@ -273,18 +231,6 @@ export async function uploadCertificateToDrive(
   accessToken: string,
   existingFileId?: string
 ): Promise<{ fileId: string; webViewLink: string; webContentLink?: string }> {
-  // If direct authentication session is used without external OAuth token
-  if (accessToken.startsWith('direct_google_token_') || accessToken.startsWith('direct-')) {
-    const directFileId = existingFileId || `drive-cloud-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-    const webViewLink = `${window.location.origin}/verify?file=${directFileId}&doc=${encodeURIComponent(fileName)}`;
-    const webContentLink = webViewLink;
-    return {
-      fileId: directFileId,
-      webViewLink,
-      webContentLink,
-    };
-  }
-
   const metadata = {
     name: fileName,
     mimeType: blob.type || 'image/png',

@@ -45,7 +45,6 @@ import {
   duplicateAndCustomizeTemplate
 } from '../utils/templateCustomizer';
 import { LogoCropModal } from './LogoCropModal';
-import { TemplateCertificatePreview } from './TemplateCertificatePreview';
 import { removeWhiteBackgroundCanvas, removeBackgroundAi } from '../utils/imageUtils';
 import { validateGridTemplateAreas, CUSTOM_GRID_SNIPPETS, CERTIFICATE_GRID_AREAS } from '../utils/gridValidator';
 import {
@@ -4599,13 +4598,36 @@ export const EditorToolbar: React.FC<Props> = ({
                             className="p-2.5 rounded-2xl border border-slate-200 hover:border-indigo-500 cursor-pointer transition-all shadow-2xs hover:shadow-md group relative bg-white flex flex-col justify-between"
                           >
                             {/* Mini Certificate Box */}
-                            <div className="relative group/preview overflow-hidden rounded-xl">
-                              <TemplateCertificatePreview
-                                data={d}
-                                mode="compact"
-                                showHoverZoom={true}
-                                className="border border-slate-300"
-                              />
+                            <div
+                              className="w-full aspect-[1.5] rounded-xl shadow-2xs relative overflow-hidden flex flex-col justify-between p-2.5 border transition-transform group-hover:scale-[1.01]"
+                              style={{
+                                backgroundColor: d.backgroundColor || '#ffffff',
+                                color: d.textColor || '#0f172a',
+                                borderColor: d.primaryColor,
+                                borderWidth: '2px',
+                                borderStyle: 'double',
+                              }}
+                            >
+                              <div className="text-center space-y-0.5">
+                                <span className="text-[8px] font-bold block opacity-75" style={{ color: d.secondaryColor || d.primaryColor }}>
+                                  {d.schoolName}
+                                </span>
+                                <h6 className="text-[10px] font-black leading-tight line-clamp-1" style={{ color: d.primaryColor }}>
+                                  {d.title}
+                                </h6>
+                              </div>
+
+                              <div className="my-1 text-center py-1 px-1.5 bg-white/80 rounded border border-black/5">
+                                <span className="text-[7px] block opacity-70">طالب التكريم:</span>
+                                <span className="text-[10px] font-black block line-clamp-1" style={{ color: d.primaryColor }}>
+                                  {d.studentName}
+                                </span>
+                              </div>
+
+                              <div className="flex items-center justify-between text-[7px] opacity-80 pt-1 border-t border-black/10">
+                                <span className="font-bold" style={{ color: d.primaryColor }}>{d.badgeTitle || 'وسام التميز'}</span>
+                                <span>{tmpl.category}</span>
+                              </div>
                             </div>
 
                             {/* Card Title & Desc */}
