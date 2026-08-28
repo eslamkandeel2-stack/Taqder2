@@ -78,6 +78,7 @@ interface UnifiedCertificate extends CertificateData {
   _sourceType: 'single' | 'batch';
   _batchId?: string;
   _batchTitle?: string;
+  _uniqueKey?: string;
 }
 
 interface Props {
@@ -150,6 +151,7 @@ export const CloudLibrary: React.FC<Props> = ({
   // Load all certificates from single storage and batch history
   const reloadAllCertificates = () => {
     const list: UnifiedCertificate[] = [];
+    const seenIds = new Set<string>();
 
     // A. Single saved certs
     try {
@@ -157,11 +159,14 @@ export const CloudLibrary: React.FC<Props> = ({
       if (localSingle) {
         const parsed = JSON.parse(localSingle);
         if (Array.isArray(parsed)) {
-          parsed.forEach((c: CertificateData) => {
+          parsed.forEach((c: CertificateData, idx: number) => {
+            const uidKey = `single-${c.id || idx}-${idx}`;
+            seenIds.add(c.id);
             list.push({
               ...c,
               _sourceType: 'single',
-              _batchTitle: 'شهادة فردية'
+              _batchTitle: 'شهادة فردية',
+              _uniqueKey: uidKey
             });
           });
         }
@@ -173,14 +178,16 @@ export const CloudLibrary: React.FC<Props> = ({
     // B. Batch certificates
     try {
       const batches = getSavedBatches();
-      batches.forEach((b: BatchRecord) => {
+      batches.forEach((b: BatchRecord, bIdx: number) => {
         if (b.certificates && Array.isArray(b.certificates)) {
-          b.certificates.forEach((c: CertificateData) => {
+          b.certificates.forEach((c: CertificateData, cIdx: number) => {
+            const uidKey = `batch-${b.id || bIdx}-${c.id || cIdx}-${cIdx}`;
             list.push({
               ...c,
               _sourceType: 'batch',
               _batchId: b.id,
-              _batchTitle: b.title || `دفعة ${b.grade || 'فصل'}`
+              _batchTitle: b.title || `دفعة ${b.grade || 'فصل'}`,
+              _uniqueKey: uidKey
             });
           });
         }
@@ -194,7 +201,8 @@ export const CloudLibrary: React.FC<Props> = ({
       list.push({
         ...currentCertificate,
         _sourceType: 'single',
-        _batchTitle: 'شهادة فردية'
+        _batchTitle: 'شهادة فردية',
+        _uniqueKey: `curr-${currentCertificate.id || '0'}-0`
       });
     }
 
@@ -213,6 +221,9 @@ export const CloudLibrary: React.FC<Props> = ({
       reloadAllCertificates();
     };
     window.addEventListener('taqdeer_archive_updated', handleWindowArchiveUpdate);
+    window.addEventListener('taqdeer_certs_changed', handleWindowArchiveUpdate);
+    window.addEventListener('taqdeer_batches_changed', handleWindowArchiveUpdate);
+    window.addEventListener('taqdeer_account_switched', handleWindowArchiveUpdate);
 
     // Listen to Google Drive auth changes
     const unsubDrive = initDriveAuth(
@@ -229,6 +240,9 @@ export const CloudLibrary: React.FC<Props> = ({
     return () => {
       unsubArchive();
       window.removeEventListener('taqdeer_archive_updated', handleWindowArchiveUpdate);
+      window.removeEventListener('taqdeer_certs_changed', handleWindowArchiveUpdate);
+      window.removeEventListener('taqdeer_batches_changed', handleWindowArchiveUpdate);
+      window.removeEventListener('taqdeer_account_switched', handleWindowArchiveUpdate);
       unsubDrive();
     };
   }, [currentCertificate]);
@@ -1276,14 +1290,14 @@ export const CloudLibrary: React.FC<Props> = ({
           {/* VIEW 3: GRID CARDS VIEW */}
           {viewMode === 'grid' && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-              {currentPagedCertificates.map((cert) => {
+              {currentPagedCertificates.map((cert, idx) => {
                 const isSelected = selectedIds.has(cert.id);
                 const driveLink = cert.driveFileWebViewLink || cert.driveFileUrl;
                 const verifyCode = cert.verificationCode || `TQ-${cert.id.slice(-6).toUpperCase()}`;
 
                 return (
                   <div
-                    key={cert.id}
+                    key={cert._uniqueKey || `cloud-card-${cert.id}-${idx}`}
                     className={`bg-slate-900 p-5 rounded-3xl border transition-all duration-200 flex flex-col justify-between space-y-4 relative ${
                       isSelected
                         ? 'border-amber-500 ring-2 ring-amber-500/20 bg-slate-900/90 shadow-xl'
@@ -1492,7 +1506,7 @@ export const CloudLibrary: React.FC<Props> = ({
 
                       return (
                         <tr
-                          key={cert.id}
+                          key={cert._uniqueKey || `cloud-table-${cert.id}-${idx}`}
                           className={`transition ${
                             isSelected ? 'bg-amber-500/10' : 'hover:bg-slate-800/40'
                           }`}

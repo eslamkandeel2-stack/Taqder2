@@ -1,6 +1,7 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, User, signOut } from 'firebase/auth';
 import firebaseConfig from '../../firebase-applet-config.json';
+import { syncUserSettingsToCloud, loadUserSettingsFromCloud } from './cloudDatabaseService';
 
 declare global {
   interface Window {
@@ -13,6 +14,7 @@ export const auth = getAuth(app);
 
 const provider = new GoogleAuthProvider();
 provider.addScope('https://www.googleapis.com/auth/drive.file');
+provider.addScope('https://www.googleapis.com/auth/gmail.send');
 provider.setCustomParameters({
   prompt: 'select_account'
 });
@@ -58,7 +60,7 @@ export const requestGisToken = async (): Promise<{ user: User; accessToken: stri
 
       const client = window.google.accounts.oauth2.initTokenClient({
         client_id: clientId,
-        scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile',
+        scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile',
         callback: async (response: any) => {
           if (response.error) {
             console.error('GIS callback error:', response);
@@ -87,7 +89,7 @@ export const requestGisToken = async (): Promise<{ user: User; accessToken: stri
             }
 
             const mockUser = {
-              uid: 'gis-' + Date.now(),
+              uid: 'gis-' + (userProfile.email ? userProfile.email.replace(/[^a-zA-Z0-9]/g, '_') : Date.now()),
               email: userProfile.email,
               displayName: userProfile.name,
               photoURL: userProfile.picture,
@@ -99,20 +101,43 @@ export const requestGisToken = async (): Promise<{ user: User; accessToken: stri
               console.warn('Failed to store GIS user in localStorage:', e);
             }
 
+            // Sync or pull cloud settings on successful sign in
+            try {
+              await loadUserSettingsFromCloud(mockUser.uid);
+            } catch (syncErr) {
+              console.warn('Auto sync cloud settings error:', syncErr);
+            }
+
             resolve({ user: mockUser, accessToken: response.access_token });
           } else {
             reject(new Error('لم يتم استلام مفتاح الوصول من Google.'));
           }
         },
         error_callback: (err: any) => {
-          console.error('GIS Error callback:', err);
-          reject(new Error('تعذر فتح نافذة تسجيل الدخول من Google'));
+          console.warn('GIS Error callback:', err);
+          const errorType = err?.type || '';
+          const errorMsg = typeof err === 'string' ? err : (err?.message || '');
+          
+          if (errorType === 'popup_closed' || errorMsg.toLowerCase().includes('closed') || errorMsg.toLowerCase().includes('cancel') || errorMsg.includes('إلغاء')) {
+            const cancelErr = new Error('تم إلغاء عملية تسجيل الدخول أو إغلاق النافذة');
+            (cancelErr as any).code = 'auth/popup-closed-by-user';
+            (cancelErr as any).isUserCancel = true;
+            reject(cancelErr);
+          } else if (errorType === 'popup_failed_to_open' || errorType === 'popup_blocked' || errorMsg.toLowerCase().includes('blocked')) {
+            const blockedErr = new Error('تم حظر النافذة المنبثقة من قِبل المتصفح. يرجى السماح بالنوافذ المنبثقة أو فتح التطبيق في علامة تبويب جديدة.');
+            (blockedErr as any).code = 'auth/popup-blocked';
+            reject(blockedErr);
+          } else {
+            const generalErr = new Error(errorMsg || 'تعذر فتح نافذة تسجيل الدخول من Google');
+            (generalErr as any).code = 'auth/gis-failed';
+            reject(generalErr);
+          }
         },
       });
 
       client.requestAccessToken({ prompt: 'select_account' });
     } catch (err) {
-      console.error('GIS token init error:', err);
+      console.warn('GIS token init exception:', err);
       reject(err);
     }
   });
@@ -170,27 +195,49 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
     localStorage.setItem(TOKEN_STORAGE_KEY, cachedAccessToken);
     return { user: result.user, accessToken: cachedAccessToken };
   } catch (error: any) {
-    console.warn('Firebase signInWithPopup threw error, attempting Google Identity Services (GIS) token fallback:', error);
+    console.warn('Firebase signInWithPopup returned notice, attempting Google Identity Services (GIS) token fallback:', error?.code || error?.message);
+
+    // If user explicitly closed popup or canceled during Firebase popup
+    if (error?.code === 'auth/popup-closed-by-user' || error?.code === 'auth/cancelled-popup-request') {
+      const cancelErr = new Error('تم إلغاء عملية تسجيل الدخول أو إغلاق النافذة');
+      (cancelErr as any).code = 'auth/popup-closed-by-user';
+      (cancelErr as any).isUserCancel = true;
+      throw cancelErr;
+    }
 
     try {
       const gisResult = await requestGisToken();
       return gisResult;
     } catch (gisErr: any) {
-      console.error('Google Identity Services login also failed:', gisErr);
+      console.warn('Google Identity Services status:', gisErr?.code || gisErr?.message);
 
-      if (gisErr?.message?.includes('closed') || gisErr?.message?.includes('إلغاء') || error?.code === 'auth/popup-closed-by-user') {
+      if (
+        gisErr?.code === 'auth/popup-closed-by-user' ||
+        gisErr?.isUserCancel ||
+        gisErr?.message?.includes('إغلاق') ||
+        gisErr?.message?.toLowerCase()?.includes('closed') ||
+        gisErr?.message?.toLowerCase()?.includes('cancel') ||
+        gisErr?.message?.includes('إلغاء') ||
+        error?.code === 'auth/popup-closed-by-user'
+      ) {
         const err = new Error('تم إلغاء عملية تسجيل الدخول.');
         (err as any).code = 'auth/popup-closed-by-user';
+        (err as any).isUserCancel = true;
         throw err;
       }
 
-      if (error?.code === 'auth/popup-blocked' || gisErr?.message?.includes('popup')) {
-        const err = new Error('تعذر فتح نافذة تسجيل الدخول. يرجى السماح بالنوافذ المنبثقة (Popups) من إعدادات المتصفح.');
+      if (
+        error?.code === 'auth/popup-blocked' ||
+        gisErr?.code === 'auth/popup-blocked' ||
+        gisErr?.message?.toLowerCase()?.includes('blocked') ||
+        gisErr?.message?.includes('حظر')
+      ) {
+        const err = new Error('تم حظر النافذة المنبثقة من قِبل المتصفح. يمكنك فتح التطبيق في علامة تبويب جديدة أو السماح بالنوافذ المنبثقة (Popups).');
         (err as any).code = 'auth/popup-blocked';
         throw err;
       }
 
-      throw new Error('تعذر الاتصال بـ Google لربط الحساب. يمكنك تجربة "حفظ بالمكتبة السحابية" مباشرة دون الحاجة لـ Google Drive.');
+      throw new Error(gisErr?.message || 'تعذر الاتصال بـ Google لربط الحساب. يمكنك تجربة "حفظ بالمكتبة السحابية" مباشرة دون الحاجة لـ Google Drive.');
     }
   } finally {
     isSigningIn = false;
@@ -202,6 +249,46 @@ export const getAccessToken = async (): Promise<string | null> => {
     cachedAccessToken = localStorage.getItem(TOKEN_STORAGE_KEY);
   }
   return cachedAccessToken;
+};
+
+export const getCurrentUser = (): User | null => {
+  if (auth.currentUser) {
+    return auth.currentUser;
+  }
+  const savedGisUser = localStorage.getItem(GIS_USER_STORAGE_KEY);
+  if (savedGisUser) {
+    try {
+      return JSON.parse(savedGisUser) as User;
+    } catch (e) {
+      console.warn('Failed to parse GIS user:', e);
+    }
+  }
+  return null;
+};
+
+export const initAuthListener = (onUserChanged: (user: User | null) => void) => {
+  // Check initial cached user
+  const initialUser = getCurrentUser();
+  if (initialUser) {
+    onUserChanged(initialUser);
+  }
+
+  return onAuthStateChanged(auth, (firebaseUser) => {
+    if (firebaseUser) {
+      onUserChanged(firebaseUser);
+    } else {
+      const gisUser = localStorage.getItem(GIS_USER_STORAGE_KEY);
+      if (gisUser) {
+        try {
+          onUserChanged(JSON.parse(gisUser) as User);
+          return;
+        } catch (e) {
+          // ignore
+        }
+      }
+      onUserChanged(null);
+    }
+  });
 };
 
 export const clearAccessToken = () => {
