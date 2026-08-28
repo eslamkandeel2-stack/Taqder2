@@ -18,8 +18,7 @@ import {
   ChevronRight,
   Undo2,
   Redo2,
-  History,
-  User as UserIcon
+  History
 } from 'lucide-react';
 import { getSavedDrafts, subscribeToDrafts } from '../utils/draftsManager';
 import { useDragScroll } from '../utils/useDragScroll';
@@ -34,8 +33,6 @@ interface Props {
   onOpenGoogleDriveModal?: () => void;
   onOpenDraftsModal?: () => void;
   onOpenHistoryModal?: () => void;
-  onOpenUserAuthModal?: () => void;
-  currentUser?: any;
   canUndo?: boolean;
   canRedo?: boolean;
   onUndo?: () => void;
@@ -56,8 +53,6 @@ export const Navbar: React.FC<Props> = ({
   onOpenGoogleDriveModal,
   onOpenDraftsModal,
   onOpenHistoryModal,
-  onOpenUserAuthModal,
-  currentUser,
   canUndo,
   canRedo,
   onUndo,
@@ -349,37 +344,6 @@ export const Navbar: React.FC<Props> = ({
                 <span className="hidden sm:inline">تصدير PDF</span>
                 <span className="sm:hidden font-black">PDF</span>
               </button>
-
-              {/* Google User Auth / Cloud Account Button */}
-              {onOpenUserAuthModal && (
-                <button
-                  type="button"
-                  onClick={onOpenUserAuthModal}
-                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition shrink-0 cursor-pointer border ${
-                    currentUser
-                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
-                      : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700 hover:text-white'
-                  }`}
-                  title={currentUser ? `الحساب المتصل: ${currentUser.displayName || currentUser.email}` : 'تسجيل الدخول بحساب Google ومزامنة السحابة'}
-                >
-                  {currentUser?.photoURL ? (
-                    <img
-                      src={currentUser.photoURL}
-                      alt={currentUser.displayName || 'Google User'}
-                      referrerPolicy="no-referrer"
-                      className="w-4 h-4 rounded-full object-cover border border-amber-400/50 shrink-0"
-                    />
-                  ) : (
-                    <UserIcon className={`w-3.5 h-3.5 shrink-0 ${currentUser ? 'text-amber-400' : 'text-slate-400'}`} />
-                  )}
-                  <span className="hidden xl:inline max-w-[100px] truncate text-[11px]">
-                    {currentUser ? (currentUser.displayName?.split(' ')[0] || 'حسابي') : 'دخول Google'}
-                  </span>
-                  {currentUser && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping shrink-0" />
-                  )}
-                </button>
-              )}
 
               <button
                 type="button"

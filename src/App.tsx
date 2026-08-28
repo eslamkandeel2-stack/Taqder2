@@ -17,16 +17,12 @@ import { VerificationPortal } from './components/VerificationPortal';
 import { GoogleDriveSaveModal } from './components/GoogleDriveSaveModal';
 import { PrintPreviewModal } from './components/PrintPreviewModal';
 import { DirectShareModal } from './components/DirectShareModal';
-import { UserAuthProfileModal } from './components/UserAuthProfileModal';
 import { DraftsManagerModal } from './components/DraftsManagerModal';
 import { HistoryManagerModal } from './components/HistoryManagerModal';
 import { ExportPreviewModal } from './components/ExportPreviewModal';
 import { ArabicProofreaderModal } from './components/ArabicProofreaderModal';
 import { AppreciationSuggestionsModal } from './components/AppreciationSuggestionsModal';
 import { ExportFormat } from './types';
-import { User } from 'firebase/auth';
-import { initAuthListener, getCurrentUser } from './services/googleDriveService';
-import { saveActiveWorkspaceVault } from './services/accountIsolationManager';
 import {
   sanitizeOklchInDoc,
   waitForImagesToLoad,
@@ -344,37 +340,12 @@ export default function App() {
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [isDraftsModalOpen, setIsDraftsModalOpen] = useState(false);
   const [isHistoryManagerOpen, setIsHistoryManagerOpen] = useState(false);
-  const [isUserAuthModalOpen, setIsUserAuthModalOpen] = useState(false);
   const [isExportPreviewModalOpen, setIsExportPreviewModalOpen] = useState(false);
   const [isProofreaderModalOpen, setIsProofreaderModalOpen] = useState(false);
   const [isAppreciationModalOpen, setIsAppreciationModalOpen] = useState(false);
   const [exportPreviewFormat, setExportPreviewFormat] = useState<ExportFormat>('pdf');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
-  const [currentUser, setCurrentUser] = useState<User | null>(() => getCurrentUser());
-
-  // Listen for Google/Firebase Auth changes & Account Workspace Isolation switches
-  useEffect(() => {
-    const unsub = initAuthListener((user) => {
-      setCurrentUser(user);
-    });
-
-    const handleAccountSwitched = (e: any) => {
-      const freshData = getAutosavedInitialData();
-      setHistory([freshData]);
-      setHistoryIndex(0);
-      if (e?.detail?.user !== undefined) {
-        setCurrentUser(e.detail.user);
-      }
-    };
-
-    window.addEventListener('taqdeer_account_switched', handleAccountSwitched);
-
-    return () => {
-      unsub();
-      window.removeEventListener('taqdeer_account_switched', handleAccountSwitched);
-    };
-  }, []);
 
   const canvasRef = useRef<HTMLDivElement>(null);
 
@@ -643,8 +614,6 @@ export default function App() {
         onOpenGoogleDriveModal={() => setIsDriveModalOpen(true)}
         onOpenDraftsModal={() => setIsDraftsModalOpen(true)}
         onOpenHistoryModal={() => setIsHistoryManagerOpen(true)}
-        onOpenUserAuthModal={() => setIsUserAuthModalOpen(true)}
-        currentUser={currentUser}
         canUndo={canUndo}
         canRedo={canRedo}
         onUndo={handleUndo}
@@ -956,21 +925,8 @@ export default function App() {
         initialMode={shareInitialMode}
         certificateData={certificateData}
         canvasRef={canvasRef}
-        currentUserEmail={currentUser?.email || undefined}
         onShowToast={showToast}
         onSetExporting={setIsExporting}
-      />
-
-      {/* User Authentication & Cloud Account Profile Modal */}
-      <UserAuthProfileModal
-        isOpen={isUserAuthModalOpen}
-        onClose={() => setIsUserAuthModalOpen(false)}
-        currentUser={currentUser}
-        onUserChange={setCurrentUser}
-        onShowToast={showToast}
-        onOpenCloudLibrary={() => {
-          setActiveTab('cloud');
-        }}
       />
 
       {/* Print Preview & Page Settings Modal */}

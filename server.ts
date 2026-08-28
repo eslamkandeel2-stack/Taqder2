@@ -1,6 +1,5 @@
 import express from "express";
 import path from "path";
-import fs from "fs";
 import dotenv from "dotenv";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
@@ -1809,110 +1808,6 @@ app.post("/api/ai-remove-background", async (req, res) => {
       recommendedThreshold: 215,
       explanation: "تم معالجة الشعار بنجاح وتحويل خلفيته لشفافة.",
     });
-  }
-});
-
-// Cloud Sync Storage Directory
-const SYNC_DATA_DIR = path.join(process.cwd(), ".data", "cloud_sync");
-try {
-  if (!fs.existsSync(SYNC_DATA_DIR)) {
-    fs.mkdirSync(SYNC_DATA_DIR, { recursive: true });
-  }
-} catch (e) {
-  console.warn("Could not create sync directory:", e);
-}
-
-function sanitizeUserKey(key: string): string {
-  if (!key) return "anonymous";
-  return key.replace(/[^a-zA-Z0-9_\-@.]/g, "_").substring(0, 100);
-}
-
-// Universal Cloud Sync: Save user account data & certificates across devices
-app.post("/api/cloud-sync/save", (req, res) => {
-  try {
-    const { userId, userEmail, packageData } = req.body;
-    const targetKey = sanitizeUserKey(userId || userEmail);
-    if (!targetKey || targetKey === "anonymous") {
-      return res.status(400).json({ success: false, error: "Missing valid user ID or Email for sync" });
-    }
-
-    const record = {
-      userId: userId || "",
-      userEmail: userEmail || "",
-      updatedAt: new Date().toISOString(),
-      data: packageData || {},
-    };
-    const jsonContent = JSON.stringify(record);
-
-    // Save under primary target key
-    const primaryPath = path.join(SYNC_DATA_DIR, `${targetKey}.json`);
-    fs.writeFileSync(primaryPath, jsonContent, "utf-8");
-
-    // Also mirror to userEmail if provided and different
-    if (userEmail && typeof userEmail === "string") {
-      const emailKey = sanitizeUserKey(userEmail);
-      if (emailKey && emailKey !== targetKey) {
-        const emailPath = path.join(SYNC_DATA_DIR, `${emailKey}.json`);
-        fs.writeFileSync(emailPath, jsonContent, "utf-8");
-      }
-    }
-
-    // Also mirror to userId if provided and different
-    if (userId && typeof userId === "string") {
-      const uidKey = sanitizeUserKey(userId);
-      if (uidKey && uidKey !== targetKey) {
-        const uidPath = path.join(SYNC_DATA_DIR, `${uidKey}.json`);
-        fs.writeFileSync(uidPath, jsonContent, "utf-8");
-      }
-    }
-
-    return res.json({
-      success: true,
-      syncedAt: record.updatedAt,
-      message: "تم حفظ ومزامنة جميع البيانات في السحابة بنجاح ☁️",
-    });
-  } catch (error: any) {
-    console.error("Cloud Sync Save Error:", error);
-    return res.status(500).json({ success: false, error: error.message || "Failed to save cloud sync data" });
-  }
-});
-
-// Universal Cloud Sync: Load user account data & certificates across devices
-app.get("/api/cloud-sync/load", (req, res) => {
-  try {
-    const userId = (req.query.userId as string) || "";
-    const userEmail = (req.query.userEmail as string) || "";
-    
-    // Try primary key and fallback to email key
-    const primaryKey = sanitizeUserKey(userId);
-    const emailKey = sanitizeUserKey(userEmail);
-
-    let filePath = path.join(SYNC_DATA_DIR, `${primaryKey}.json`);
-    if (!fs.existsSync(filePath) && emailKey && emailKey !== "anonymous") {
-      filePath = path.join(SYNC_DATA_DIR, `${emailKey}.json`);
-    }
-
-    if (!fs.existsSync(filePath)) {
-      return res.json({
-        success: true,
-        exists: false,
-        data: null,
-        message: "لا توجد بيانات سحابية محفوظة مسبقاً لهذا الحساب",
-      });
-    }
-
-    const raw = fs.readFileSync(filePath, "utf-8");
-    const record = JSON.parse(raw);
-
-    return res.json({
-      success: true,
-      exists: true,
-      updatedAt: record.updatedAt,
-      packageData: record.data,
-    });
-  } catch (error: any) {
-    console.error("Cloud Sync Load Error:", error);
-    return res.status(500).json({ success: false, error: error.message || "Failed to load cloud sync data" });
   }
 });
 

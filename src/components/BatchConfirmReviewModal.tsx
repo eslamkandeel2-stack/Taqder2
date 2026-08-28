@@ -570,7 +570,7 @@ export const BatchConfirmReviewModal: React.FC<BatchConfirmReviewModalProps> = (
 
                   return (
                     <div
-                      key={`student-review-${student.id || idx}-${idx}`}
+                      key={student.id}
                       className="p-2.5 sm:p-3 flex items-center justify-between gap-3 hover:bg-slate-900/60 transition group"
                     >
                       {/* Left: Row Number & Name */}

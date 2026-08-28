@@ -143,22 +143,15 @@ export const GoogleDriveSaveModal: React.FC<Props> = ({
     }
   };
 
-const handleLogin = () => {
-  setIsLoggingIn(true);
-  setErrorMsg(null);
-
-  // استدعاء الفتح فوراً عند الضغط دون await قبله
-  googleSignIn()
-    .then((res) => {
+  const handleLogin = async () => {
+    setIsLoggingIn(true);
+    setErrorMsg(null);
+    try {
+      const res = await googleSignIn();
       setUser(res.user);
       setToken(res.accessToken);
-    })
-    .catch((err: any) => {
-      if (
-        err.code === 'auth/popup-closed-by-user' ||
-        err.code === 'auth/cancelled-popup-request' ||
-        err.message?.includes('تم إلغاء')
-      ) {
+    } catch (err: any) {
+      if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request' || err.message?.includes('تم إلغاء')) {
         setErrorMsg('تم إلغاء نافذة تسجيل الدخول.');
       } else if (err.code === 'auth/popup-blocked') {
         setErrorMsg('تعذر فتح نافذة تسجيل الدخول. يرجى السماح بالنوافذ المنبثقة (Popups) من إعدادات المتصفح.');
@@ -166,11 +159,10 @@ const handleLogin = () => {
         console.error('Login error:', err);
         setErrorMsg(err.message || 'حدث خطأ أثناء تسجيل الدخول بـ Google');
       }
-    })
-    .finally(() => {
+    } finally {
       setIsLoggingIn(false);
-    });
-};
+    }
+  };
 
   const handleSignOut = async () => {
     await googleSignOut();
