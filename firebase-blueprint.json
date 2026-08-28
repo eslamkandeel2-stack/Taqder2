@@ -1,0 +1,79 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile data for registered and cloud accounts",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "lastSyncedAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["uid"]
+    },
+    "UserSettings": {
+      "title": "UserSettings",
+      "description": "User preferences and system configuration",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "systemConfig": { "type": "object" },
+        "defaultSettings": { "type": "object" },
+        "aiSettings": { "type": "object" },
+        "updatedAt": { "type": "string" },
+        "syncedAt": { "type": "string" }
+      },
+      "required": ["uid"]
+    },
+    "UserCertificate": {
+      "title": "UserCertificate",
+      "description": "Certificates saved to cloud library",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "title": { "type": "string" },
+        "studentName": { "type": "string" },
+        "savedAt": { "type": "string" }
+      },
+      "required": ["id", "userId"]
+    },
+    "UserDataBundle": {
+      "title": "UserDataBundle",
+      "description": "User certificates, drafts and batches bundle",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "certsCount": { "type": "number" },
+        "draftsCount": { "type": "number" },
+        "batchesCount": { "type": "number" },
+        "syncedAt": { "type": "string" }
+      },
+      "required": ["userId"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profile documents"
+    },
+    "/user_settings/{userId}": {
+      "schema": "UserSettings",
+      "description": "User preferences and system configs"
+    },
+    "/user_certificates/{docId}": {
+      "schema": "UserCertificate",
+      "description": "Cloud library certificates"
+    },
+    "/user_data_bundles/{userId}": {
+      "schema": "UserDataBundle",
+      "description": "Cloud sync data bundles"
+    }
+  }
+}

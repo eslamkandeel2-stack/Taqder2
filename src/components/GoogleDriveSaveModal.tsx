@@ -333,30 +333,36 @@ const handleLogin = () => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 overflow-y-auto font-['Cairo']">
-      <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden text-right animate-in fade-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/80 backdrop-blur-sm p-0 sm:p-4 font-['Cairo']">
+      <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl border border-slate-200 w-full max-w-lg max-h-[92dvh] sm:max-h-[90vh] flex flex-col overflow-hidden text-right animate-in fade-in zoom-in-95 duration-200">
         
+        {/* Mobile Swipe / Drag Indicator Bar */}
+        <div className="pt-2.5 pb-1 bg-gradient-to-r from-slate-900 via-amber-950 to-slate-900 sm:hidden shrink-0">
+          <div className="w-12 h-1 bg-amber-200/50 rounded-full mx-auto" />
+        </div>
+
         {/* Header */}
-        <div className="bg-gradient-to-r from-slate-900 via-amber-950 to-slate-900 text-white p-6 relative border-b border-slate-800">
+        <div className="bg-gradient-to-r from-slate-900 via-amber-950 to-slate-900 text-white p-4 sm:p-6 relative border-b border-slate-800 shrink-0">
           <button
             onClick={onClose}
-            className="absolute top-5 left-5 p-2 text-slate-400 hover:text-white hover:bg-slate-800/80 rounded-full transition cursor-pointer"
+            className="absolute top-3.5 left-3.5 sm:top-5 sm:left-5 p-2 text-slate-400 hover:text-white hover:bg-slate-800/80 rounded-full transition cursor-pointer"
+            aria-label="إغلاق"
           >
             <X className="w-5 h-5" />
           </button>
 
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center text-slate-950 shadow-md shrink-0">
-              <Cloud className="w-7 h-7" />
+          <div className="flex items-center gap-3 pr-1">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center text-slate-950 shadow-md shrink-0">
+              <Cloud className="w-6 h-6 sm:w-7 sm:h-7" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-lg font-black">خيارات الحفظ السحابي</h3>
-                <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded-full font-bold">
+            <div className="min-w-0 pr-1">
+              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                <h3 className="text-base sm:text-lg font-black truncate">خيارات الحفظ السحابي</h3>
+                <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded-full font-bold whitespace-nowrap">
                   مكتبة + Google Drive
                 </span>
               </div>
-              <p className="text-xs text-slate-300 mt-0.5">
+              <p className="text-[11px] sm:text-xs text-slate-300 mt-0.5 leading-tight">
                 اختر الحفظ بالسحابة في المكتبة أو الرفع المباشر لـ Google Drive
               </p>
             </div>
@@ -364,52 +370,52 @@ const handleLogin = () => {
         </div>
 
         {/* Mode Selector Tabs */}
-        <div className="px-6 pt-5">
+        <div className="px-4 sm:px-6 pt-3 sm:pt-4 shrink-0 bg-white">
           <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200 gap-1">
             <button
               type="button"
               onClick={() => { setSaveMode('cloud-only'); setErrorMsg(null); }}
-              className={`flex-1 py-2.5 px-3 rounded-xl font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer ${
+              className={`flex-1 py-2 sm:py-2.5 px-2 sm:px-3 rounded-xl font-bold text-[11px] sm:text-xs transition flex items-center justify-center gap-1.5 cursor-pointer ${
                 saveMode === 'cloud-only'
                   ? 'bg-sky-600 text-white shadow-sm font-extrabold'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
               }`}
             >
-              <Cloud className="w-4 h-4 shrink-0" />
-              <span>حفظ بالمكتبة (بدون Drive)</span>
+              <Cloud className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+              <span className="truncate">حفظ بالمكتبة (بدون Drive)</span>
             </button>
 
             <button
               type="button"
               onClick={() => { setSaveMode('google-drive'); setErrorMsg(null); }}
-              className={`flex-1 py-2.5 px-3 rounded-xl font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer ${
+              className={`flex-1 py-2 sm:py-2.5 px-2 sm:px-3 rounded-xl font-bold text-[11px] sm:text-xs transition flex items-center justify-center gap-1.5 cursor-pointer ${
                 saveMode === 'google-drive'
                   ? 'bg-amber-500 text-slate-950 shadow-sm font-extrabold'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
               }`}
             >
-              <HardDrive className="w-4 h-4 shrink-0" />
-              <span>رفع على Google Drive</span>
+              <HardDrive className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+              <span className="truncate">رفع على Google Drive</span>
             </button>
           </div>
         </div>
 
-        {/* Content Body */}
-        <div className="p-6 space-y-4">
+        {/* Content Body: Smooth Touch Scrollable Up & Down */}
+        <div className="p-4 sm:p-6 space-y-4 flex-1 overflow-y-auto overscroll-contain touch-pan-y">
 
           {/* Certificate Info Card */}
           <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 text-xs space-y-1.5">
-            <div className="flex justify-between text-slate-600">
-              <span>اسم الشهادة:</span>
-              <strong className="text-slate-900">{certificateData.title}</strong>
+            <div className="flex justify-between items-center text-slate-600">
+              <span className="shrink-0 ml-2">اسم الشهادة:</span>
+              <strong className="text-slate-900 truncate text-left">{certificateData.title}</strong>
             </div>
-            <div className="flex justify-between text-slate-600">
-              <span>اسم المكرّم:</span>
-              <strong className="text-amber-700">{certificateData.studentName}</strong>
+            <div className="flex justify-between items-center text-slate-600">
+              <span className="shrink-0 ml-2">اسم المكرّم:</span>
+              <strong className="text-amber-700 truncate text-left">{certificateData.studentName}</strong>
             </div>
-            <div className="flex justify-between text-slate-600">
-              <span>كود التوثيق والباركود:</span>
-              <strong className="font-mono text-indigo-700">{certificateData.verificationCode || 'سيتولّد تلقائياً'}</strong>
+            <div className="flex justify-between items-center text-slate-600">
+              <span className="shrink-0 ml-2">كود التوثيق:</span>
+              <strong className="font-mono text-indigo-700 dir-ltr">{certificateData.verificationCode || 'سيتولّد تلقائياً'}</strong>
             </div>
           </div>
 
@@ -418,7 +424,7 @@ const handleLogin = () => {
             <div className="p-3.5 bg-red-50 border border-red-200 rounded-xl text-red-800 text-xs flex flex-col gap-2.5">
               <div className="flex items-center gap-2">
                 <AlertCircle className="w-5 h-5 text-red-600 shrink-0" />
-                <span className="font-medium">{errorMsg}</span>
+                <span className="font-medium leading-snug">{errorMsg}</span>
               </div>
               {saveMode === 'google-drive' && (errorMsg.includes('انتهت صلاحية') || errorMsg.includes('401') || !token) && (
                 <button
@@ -445,7 +451,7 @@ const handleLogin = () => {
           {/* MODE 1: CLOUD ONLY (Without Drive) */}
           {saveMode === 'cloud-only' && (
             <div className="space-y-4">
-              <div className="bg-sky-50 border border-sky-200 p-4 rounded-2xl space-y-2 text-right">
+              <div className="bg-sky-50 border border-sky-200 p-3.5 sm:p-4 rounded-2xl space-y-2 text-right">
                 <div className="flex items-center gap-2 text-sky-950 font-bold text-xs">
                   <Database className="w-4 h-4 text-sky-600 shrink-0" />
                   <span>الحفظ في المكتبة السحابية (التخزين السريع)</span>
@@ -456,19 +462,19 @@ const handleLogin = () => {
               </div>
 
               {cloudOnlySuccess ? (
-                <div className="bg-emerald-50 border border-emerald-300 p-4 rounded-2xl space-y-3 text-right">
+                <div className="bg-emerald-50 border border-emerald-300 p-3.5 sm:p-4 rounded-2xl space-y-3 text-right">
                   <div className="flex items-center gap-2 text-emerald-950 font-black text-xs">
                     <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
                     <span>تم حفظ الشهادة بالسحابة في مكتبتك بنجاح! ☁️✨</span>
                   </div>
-                  <p className="text-[11px] text-emerald-800">
+                  <p className="text-[11px] text-emerald-800 leading-relaxed">
                     يمكنك الآن العودة للتصميم أو فتح قسم "المكتبة السحابية" لاستعراض الشهادة. كما يمكنك أيضاً رفعها على Google Drive في أي وقت.
                   </p>
                   <div className="flex items-center gap-2 pt-1">
                     <button
                       type="button"
                       onClick={() => setSaveMode('google-drive')}
-                      className="flex-1 py-2 px-3 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black rounded-xl text-center flex items-center justify-center gap-1.5 transition cursor-pointer"
+                      className="flex-1 py-2.5 px-3 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black rounded-xl text-center flex items-center justify-center gap-1.5 transition cursor-pointer"
                     >
                       <HardDrive className="w-4 h-4" />
                       <span>الترقية للرفع على Google Drive</span>
@@ -480,7 +486,7 @@ const handleLogin = () => {
                   type="button"
                   onClick={handleSaveCloudOnly}
                   disabled={isSavingCloudOnly}
-                  className="w-full py-3.5 px-4 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs rounded-xl shadow-md transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  className="w-full py-3.5 px-4 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs sm:text-sm rounded-xl shadow-md transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                 >
                   {isSavingCloudOnly ? (
                     <>
@@ -508,7 +514,7 @@ const handleLogin = () => {
             <div className="space-y-4">
               {/* User Account Bar */}
               {user ? (
-                <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-2xl flex items-center justify-between">
+                <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-2xl flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2.5 min-w-0">
                     {user.photoURL ? (
                       <img src={user.photoURL} alt={user.displayName || 'Google Account'} className="w-8 h-8 rounded-full border-2 border-emerald-500 shrink-0" />
@@ -521,7 +527,7 @@ const handleLogin = () => {
                       <span className="block text-xs font-bold text-slate-900 truncate">
                         {user.displayName || user.email}
                       </span>
-                      <span className="block text-[10px] text-emerald-700 font-medium">
+                      <span className="block text-[10px] text-emerald-700 font-medium truncate">
                         متصل بحساب Google ✅
                       </span>
                     </div>
@@ -530,14 +536,14 @@ const handleLogin = () => {
                   <button
                     type="button"
                     onClick={handleSignOut}
-                    className="text-[11px] text-slate-500 hover:text-red-600 font-bold underline px-2 py-1 transition cursor-pointer"
+                    className="text-[11px] text-slate-500 hover:text-red-600 font-bold underline px-2 py-1 transition cursor-pointer shrink-0"
                   >
                     تبديل
                   </button>
                 </div>
               ) : (
                 <div className="bg-amber-50/80 border border-amber-200 p-3.5 rounded-2xl text-center space-y-2.5">
-                  <p className="text-xs text-amber-900 font-medium">
+                  <p className="text-xs text-amber-900 font-medium leading-relaxed">
                     قم بتسجيل الدخول باستخدام حساب Google لرفع صورة الشهادة عالية الدقة إلى Google Drive وتفعيل رابط التوثيق المباشر للباركود.
                   </p>
 
@@ -554,7 +560,7 @@ const handleLogin = () => {
                       </>
                     ) : (
                       <>
-                        <svg className="w-4 h-4" viewBox="0 0 48 48">
+                        <svg className="w-4 h-4 shrink-0" viewBox="0 0 48 48">
                           <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
                           <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
                           <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
@@ -573,7 +579,7 @@ const handleLogin = () => {
                   type="button"
                   onClick={handleUploadToDrive}
                   disabled={isUploading}
-                  className="w-full py-3.5 px-4 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs rounded-xl shadow-md transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  className="w-full py-3.5 px-4 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs sm:text-sm rounded-xl shadow-md transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                 >
                   {isUploading ? (
                     <>
@@ -582,12 +588,12 @@ const handleLogin = () => {
                     </>
                   ) : uploadSuccess ? (
                     <>
-                      <HardDrive className="w-5 h-5" />
+                      <HardDrive className="w-5 h-5 shrink-0" />
                       <span>إعادة رفع / تحديث الشهادة على Google Drive</span>
                     </>
                   ) : (
                     <>
-                      <HardDrive className="w-5 h-5" />
+                      <HardDrive className="w-5 h-5 shrink-0" />
                       <span>حفظ ورفع الشهادة وتفعيل رابط Google Drive</span>
                     </>
                   )}
@@ -596,21 +602,21 @@ const handleLogin = () => {
 
               {/* Upload Success View */}
               {uploadSuccess && driveUrl && (
-                <div className="bg-emerald-50 border border-emerald-300 p-4 rounded-2xl space-y-3 text-right">
-                  <div className="flex items-center gap-2 text-emerald-950 font-black text-xs">
+                <div className="bg-emerald-50 border border-emerald-300 p-3.5 sm:p-4 rounded-2xl space-y-3 text-right">
+                  <div className="flex items-center gap-2 text-emerald-950 font-black text-xs sm:text-sm">
                     <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
                     <span>تم حفظ الشهادة بنجاح على Google Drive! ☁️🎉</span>
                   </div>
-                  <p className="text-[11px] text-emerald-800">
+                  <p className="text-[11px] text-emerald-800 leading-relaxed">
                     أصبح باركود QR الخاص بهذه الشهادة يوجه الآن مباشرة إلى رابط التحقق والتحميل الأصلي على Google Drive.
                   </p>
 
-                  <div className="bg-white p-2.5 rounded-xl border border-emerald-200 flex items-center justify-between gap-2">
-                    <span className="text-[11px] font-mono text-slate-700 truncate dir-ltr">{driveUrl}</span>
+                  <div className="bg-white p-2.5 rounded-xl border border-emerald-200 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
+                    <span className="text-[11px] font-mono text-slate-700 truncate dir-ltr text-center sm:text-left">{driveUrl}</span>
                     <button
                       type="button"
                       onClick={handleCopyLink}
-                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg transition flex items-center gap-1 shrink-0 cursor-pointer"
+                      className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg transition flex items-center justify-center gap-1 shrink-0 cursor-pointer"
                     >
                       {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                       <span>{copied ? 'تم النسخ!' : 'نسخ الرابط'}</span>
@@ -622,7 +628,7 @@ const handleLogin = () => {
                       href={driveUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex-1 py-2 px-3 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl text-center flex items-center justify-center gap-1.5 transition"
+                      className="w-full py-2.5 px-3 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl text-center flex items-center justify-center gap-1.5 transition"
                     >
                       <ExternalLink className="w-4 h-4 text-amber-400" />
                       <span>فتح الشهادة في Google Drive</span>
@@ -636,12 +642,12 @@ const handleLogin = () => {
         </div>
 
         {/* Footer */}
-        <div className="bg-slate-50 p-4 border-t border-slate-200 flex justify-between items-center text-xs">
-          <span className="text-slate-500 font-medium">نظام التوثيق والمكتبة السحابية</span>
+        <div className="bg-slate-50 p-3.5 sm:p-4 border-t border-slate-200 flex justify-between items-center text-xs shrink-0">
+          <span className="text-slate-500 font-medium text-[11px] sm:text-xs">نظام التوثيق والمكتبة السحابية</span>
           <button
             type="button"
             onClick={onClose}
-            className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl transition cursor-pointer"
+            className="px-5 py-2 sm:py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl transition cursor-pointer"
           >
             إغلاق
           </button>

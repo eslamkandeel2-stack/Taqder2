@@ -1,14 +1,7 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { 
-  getAuth, 
-  signInWithRedirect, 
-  getRedirectResult, 
-  GoogleAuthProvider, 
-  onAuthStateChanged, 
-  User, 
-  signOut 
-} from 'firebase/auth';
+import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, User, signOut } from 'firebase/auth';
 import firebaseConfig from '../../firebase-applet-config.json';
+import { syncUserSettingsToCloud, loadUserSettingsFromCloud } from './cloudDatabaseService';
 
 declare global {
   interface Window {
@@ -21,6 +14,7 @@ export const auth = getAuth(app);
 
 const provider = new GoogleAuthProvider();
 provider.addScope('https://www.googleapis.com/auth/drive.file');
+provider.addScope('https://www.googleapis.com/auth/gmail.send');
 provider.setCustomParameters({
   prompt: 'select_account'
 });
@@ -28,30 +22,132 @@ provider.setCustomParameters({
 const TOKEN_STORAGE_KEY = 'taqdeer_drive_access_token';
 const GIS_USER_STORAGE_KEY = 'taqdeer_gis_user';
 
+let isSigningIn = false;
 let cachedAccessToken: string | null = localStorage.getItem(TOKEN_STORAGE_KEY);
+
+function loadGsiScript(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (window.google?.accounts?.oauth2) {
+      resolve();
+      return;
+    }
+    const existingScript = document.getElementById('gsi-client-script');
+    if (existingScript) {
+      existingScript.addEventListener('load', () => resolve());
+      existingScript.addEventListener('error', () => reject(new Error('فشل تحميل مكتبة Google Identity Services')));
+      return;
+    }
+    const script = document.createElement('script');
+    script.id = 'gsi-client-script';
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('فشل تحميل مكتبة Google Identity Services'));
+    document.head.appendChild(script);
+  });
+}
+
+export const requestGisToken = async (): Promise<{ user: User; accessToken: string }> => {
+  await loadGsiScript();
+  const clientId = firebaseConfig.oAuthClientId || '460203543434-4f7rq24i5u1tj3la4mbvrrfeg46fs83v.apps.googleusercontent.com';
+
+  return new Promise((resolve, reject) => {
+    try {
+      if (!window.google?.accounts?.oauth2) {
+        throw new Error('مكتبة Google Identity Services غير مكرسة في المتصفح');
+      }
+
+      const client = window.google.accounts.oauth2.initTokenClient({
+        client_id: clientId,
+        scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile',
+        callback: async (response: any) => {
+          if (response.error) {
+            console.error('GIS callback error:', response);
+            reject(new Error(`خطأ في مصادقة Google: ${response.error_description || response.error}`));
+            return;
+          }
+          if (response.access_token) {
+            cachedAccessToken = response.access_token;
+            localStorage.setItem(TOKEN_STORAGE_KEY, cachedAccessToken);
+
+            let userProfile = { email: '', name: 'حساب Google', picture: '' };
+            try {
+              const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                headers: { Authorization: `Bearer ${response.access_token}` },
+              });
+              if (res.ok) {
+                const info = await res.json();
+                userProfile = {
+                  email: info.email || '',
+                  name: info.name || info.email || 'حساب Google',
+                  picture: info.picture || '',
+                };
+              }
+            } catch (e) {
+              console.warn('Failed to fetch userinfo from Google API:', e);
+            }
+
+            const mockUser = {
+              uid: 'gis-' + (userProfile.email ? userProfile.email.replace(/[^a-zA-Z0-9]/g, '_') : Date.now()),
+              email: userProfile.email,
+              displayName: userProfile.name,
+              photoURL: userProfile.picture,
+            } as User;
+
+            try {
+              localStorage.setItem(GIS_USER_STORAGE_KEY, JSON.stringify(mockUser));
+            } catch (e) {
+              console.warn('Failed to store GIS user in localStorage:', e);
+            }
+
+            // Sync or pull cloud settings on successful sign in
+            try {
+              await loadUserSettingsFromCloud(mockUser.uid);
+            } catch (syncErr) {
+              console.warn('Auto sync cloud settings error:', syncErr);
+            }
+
+            resolve({ user: mockUser, accessToken: response.access_token });
+          } else {
+            reject(new Error('لم يتم استلام مفتاح الوصول من Google.'));
+          }
+        },
+        error_callback: (err: any) => {
+          console.warn('GIS Error callback:', err);
+          const errorType = err?.type || '';
+          const errorMsg = typeof err === 'string' ? err : (err?.message || '');
+          
+          if (errorType === 'popup_closed' || errorMsg.toLowerCase().includes('closed') || errorMsg.toLowerCase().includes('cancel') || errorMsg.includes('إلغاء')) {
+            const cancelErr = new Error('تم إلغاء عملية تسجيل الدخول أو إغلاق النافذة');
+            (cancelErr as any).code = 'auth/popup-closed-by-user';
+            (cancelErr as any).isUserCancel = true;
+            reject(cancelErr);
+          } else if (errorType === 'popup_failed_to_open' || errorType === 'popup_blocked' || errorMsg.toLowerCase().includes('blocked')) {
+            const blockedErr = new Error('تم حظر النافذة المنبثقة من قِبل المتصفح. يرجى السماح بالنوافذ المنبثقة أو فتح التطبيق في علامة تبويب جديدة.');
+            (blockedErr as any).code = 'auth/popup-blocked';
+            reject(blockedErr);
+          } else {
+            const generalErr = new Error(errorMsg || 'تعذر فتح نافذة تسجيل الدخول من Google');
+            (generalErr as any).code = 'auth/gis-failed';
+            reject(generalErr);
+          }
+        },
+      });
+
+      client.requestAccessToken({ prompt: 'select_account' });
+    } catch (err) {
+      console.warn('GIS token init exception:', err);
+      reject(err);
+    }
+  });
+};
 
 export const initDriveAuth = (
   onAuthSuccess?: (user: User, token: string) => void,
   onAuthFailure?: () => void
 ) => {
-  // Check for redirect result when returning from Google Auth page
-  getRedirectResult(auth)
-    .then((result) => {
-      if (result) {
-        const credential = GoogleAuthProvider.credentialFromResult(result);
-        if (credential?.accessToken) {
-          cachedAccessToken = credential.accessToken;
-          localStorage.setItem(TOKEN_STORAGE_KEY, cachedAccessToken);
-        }
-        if (onAuthSuccess) {
-          onAuthSuccess(result.user, cachedAccessToken || '');
-        }
-      }
-    })
-    .catch((error) => {
-      console.error('Error during redirect result handling:', error);
-    });
-
+  // Check localStorage for saved GIS user & cached token
   const savedGisUser = localStorage.getItem(GIS_USER_STORAGE_KEY);
   if (!cachedAccessToken) {
     cachedAccessToken = localStorage.getItem(TOKEN_STORAGE_KEY);
@@ -86,17 +182,65 @@ export const initDriveAuth = (
   });
 };
 
-/**
- * Initiates direct redirect authentication to prevent popup-blocker issues on mobile browsers
- */
 export const googleSignIn = async (): Promise<{ user: User; accessToken: string }> => {
   try {
-    await signInWithRedirect(auth, provider);
-    // Returning dummy promise as page will redirect immediately
-    return new Promise(() => {});
+    isSigningIn = true;
+    const result = await signInWithPopup(auth, provider);
+    const credential = GoogleAuthProvider.credentialFromResult(result);
+    if (!credential?.accessToken) {
+      throw new Error('لم نتمكن من الحصول على مفتاح الوصول لحساب Google.');
+    }
+
+    cachedAccessToken = credential.accessToken;
+    localStorage.setItem(TOKEN_STORAGE_KEY, cachedAccessToken);
+    return { user: result.user, accessToken: cachedAccessToken };
   } catch (error: any) {
-    console.error('Google direct redirect error:', error);
-    throw new Error('تعذر إعادة التوجيه إلى Google لتسجيل الدخول.');
+    console.warn('Firebase signInWithPopup returned notice, attempting Google Identity Services (GIS) token fallback:', error?.code || error?.message);
+
+    // If user explicitly closed popup or canceled during Firebase popup
+    if (error?.code === 'auth/popup-closed-by-user' || error?.code === 'auth/cancelled-popup-request') {
+      const cancelErr = new Error('تم إلغاء عملية تسجيل الدخول أو إغلاق النافذة');
+      (cancelErr as any).code = 'auth/popup-closed-by-user';
+      (cancelErr as any).isUserCancel = true;
+      throw cancelErr;
+    }
+
+    try {
+      const gisResult = await requestGisToken();
+      return gisResult;
+    } catch (gisErr: any) {
+      console.warn('Google Identity Services status:', gisErr?.code || gisErr?.message);
+
+      if (
+        gisErr?.code === 'auth/popup-closed-by-user' ||
+        gisErr?.isUserCancel ||
+        gisErr?.message?.includes('إغلاق') ||
+        gisErr?.message?.toLowerCase()?.includes('closed') ||
+        gisErr?.message?.toLowerCase()?.includes('cancel') ||
+        gisErr?.message?.includes('إلغاء') ||
+        error?.code === 'auth/popup-closed-by-user'
+      ) {
+        const err = new Error('تم إلغاء عملية تسجيل الدخول.');
+        (err as any).code = 'auth/popup-closed-by-user';
+        (err as any).isUserCancel = true;
+        throw err;
+      }
+
+      if (
+        error?.code === 'auth/popup-blocked' ||
+        gisErr?.code === 'auth/popup-blocked' ||
+        gisErr?.message?.toLowerCase()?.includes('blocked') ||
+        gisErr?.message?.includes('حظر')
+      ) {
+        const err = new Error('تم حظر النافذة المنبثقة من قِبل المتصفح. يمكنك فتح التطبيق في علامة تبويب جديدة أو السماح بالنوافذ المنبثقة (Popups).');
+        (err as any).code = 'auth/popup-blocked';
+        throw err;
+      }
+
+      throw new Error(gisErr?.message || 'تعذر الاتصال بـ Google لربط الحساب. يمكنك تجربة "حفظ بالمكتبة السحابية" مباشرة دون الحاجة لـ Google Drive.');
+    }
+  } finally {
+    isSigningIn = false;
   }
 };
 
@@ -105,6 +249,46 @@ export const getAccessToken = async (): Promise<string | null> => {
     cachedAccessToken = localStorage.getItem(TOKEN_STORAGE_KEY);
   }
   return cachedAccessToken;
+};
+
+export const getCurrentUser = (): User | null => {
+  if (auth.currentUser) {
+    return auth.currentUser;
+  }
+  const savedGisUser = localStorage.getItem(GIS_USER_STORAGE_KEY);
+  if (savedGisUser) {
+    try {
+      return JSON.parse(savedGisUser) as User;
+    } catch (e) {
+      console.warn('Failed to parse GIS user:', e);
+    }
+  }
+  return null;
+};
+
+export const initAuthListener = (onUserChanged: (user: User | null) => void) => {
+  // Check initial cached user
+  const initialUser = getCurrentUser();
+  if (initialUser) {
+    onUserChanged(initialUser);
+  }
+
+  return onAuthStateChanged(auth, (firebaseUser) => {
+    if (firebaseUser) {
+      onUserChanged(firebaseUser);
+    } else {
+      const gisUser = localStorage.getItem(GIS_USER_STORAGE_KEY);
+      if (gisUser) {
+        try {
+          onUserChanged(JSON.parse(gisUser) as User);
+          return;
+        } catch (e) {
+          // ignore
+        }
+      }
+      onUserChanged(null);
+    }
+  });
 };
 
 export const clearAccessToken = () => {
@@ -123,6 +307,7 @@ export const googleSignOut = async () => {
   localStorage.removeItem(TOKEN_STORAGE_KEY);
   localStorage.removeItem(GIS_USER_STORAGE_KEY);
 };
+
 
 /**
  * Uploads a file Blob (PNG or PDF) to Google Drive and sets public link permission
@@ -146,6 +331,7 @@ export async function uploadCertificateToDrive(
   let fileId = existingFileId;
 
   if (fileId) {
+    // Update existing file
     const updateRes = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart`, {
       method: 'PATCH',
       headers: {
@@ -165,6 +351,7 @@ export async function uploadCertificateToDrive(
   }
 
   if (!fileId) {
+    // Create new file
     const createRes = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink,webContentLink', {
       method: 'POST',
       headers: {
@@ -186,6 +373,7 @@ export async function uploadCertificateToDrive(
     fileId = data.id;
   }
 
+  // Make file publicly readable for QR code verification
   try {
     await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/permissions`, {
       method: 'POST',

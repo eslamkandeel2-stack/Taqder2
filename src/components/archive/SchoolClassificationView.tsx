@@ -264,14 +264,14 @@ export const SchoolClassificationView: React.FC<SchoolClassificationViewProps> =
                 {isExpanded && (
                   <div className="border-t border-slate-800 p-4 sm:p-5 bg-slate-950/40">
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {group.certificates.map((cert) => {
+                      {group.certificates.map((cert, certIdx) => {
                         const isSelected = selectedIds.has(cert.id);
                         const vCode = cert.verificationCode || `TQ-${cert.id.slice(-6).toUpperCase()}`;
                         const driveLink = cert.driveFileWebViewLink || cert.driveFileUrl;
 
                         return (
                           <div
-                            key={cert.id}
+                            key={`school-${group.schoolName}-${cert.id}-${certIdx}`}
                             className={`bg-slate-900/90 p-4 rounded-2xl border transition-all flex flex-col justify-between space-y-3 ${
                               isSelected
                                 ? 'border-amber-500 ring-2 ring-amber-500/20 shadow-md'
