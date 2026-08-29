@@ -40,6 +40,7 @@ export interface FullAccountSyncPackage {
   signaturePresets?: any[];
   archiveMetadata?: any[];
   autosaveCert?: CertificateData;
+  defaultMargins?: any;
 }
 
 /**
@@ -342,6 +343,14 @@ export async function syncFullAccountToCloud(user: { uid: string; email?: string
     console.warn(e);
   }
 
+  let defaultMargins: any = undefined;
+  try {
+    const raw = localStorage.getItem('taqdeer_default_margins');
+    if (raw) defaultMargins = JSON.parse(raw);
+  } catch (e) {
+    console.warn(e);
+  }
+
   const syncPackage: FullAccountSyncPackage = {
     updatedAt: new Date().toISOString(),
     userId,
@@ -356,7 +365,8 @@ export async function syncFullAccountToCloud(user: { uid: string; email?: string
     customTemplates: customTemplates,
     signaturePresets: signaturePresets,
     archiveMetadata: archiveMetadata,
-    autosaveCert: autosaveCert
+    autosaveCert: autosaveCert,
+    defaultMargins: defaultMargins
   };
 
   // 2. High-speed Server Cloud Sync
@@ -381,6 +391,15 @@ export async function syncFullAccountToCloud(user: { uid: string; email?: string
       draftsCount: drafts.length,
       batches: batches.slice(0, 30),
       drafts: drafts.slice(0, 30),
+      customTemplates: customTemplates.slice(0, 30),
+      signaturePresets: signaturePresets.slice(0, 20),
+      studentGroups: studentGroups.slice(0, 30),
+      archiveMetadata: archiveMetadata.slice(0, 50),
+      autosaveCert: autosaveCert || null,
+      defaultMargins: defaultMargins || null,
+      systemConfig: currentSystemConfig,
+      defaultSettings: currentDefaultSettings,
+      aiSettings: currentAiSettings,
       updatedAt: serverTimestamp(),
       syncedAt: new Date().toISOString()
     }, { merge: true });
@@ -423,6 +442,12 @@ export async function restoreAccountFromCloud(userId: string, userEmail = ''): P
     if (serverPackage.aiSettings) {
       localStorage.setItem('taqdeer_ai_settings_v1', JSON.stringify(serverPackage.aiSettings));
       window.dispatchEvent(new CustomEvent('taqdeer_ai_settings_changed', { detail: serverPackage.aiSettings }));
+    }
+    if (serverPackage.defaultMargins) {
+      localStorage.setItem('taqdeer_default_margins', JSON.stringify(serverPackage.defaultMargins));
+    }
+    if (serverPackage.autosaveCert) {
+      localStorage.setItem('taqdeer_autosave_certificate', JSON.stringify(serverPackage.autosaveCert));
     }
 
     // Merge Certificates
@@ -548,6 +573,31 @@ export async function restoreAccountFromCloud(userId: string, userEmail = ''): P
       if (bundle.batches && Array.isArray(bundle.batches)) {
         localStorage.setItem('taqdeer_batch_history_v1', JSON.stringify(bundle.batches));
         restoredBatchesCount = bundle.batches.length;
+      }
+      if (bundle.customTemplates && Array.isArray(bundle.customTemplates)) {
+        localStorage.setItem('taqdeer_custom_user_templates_v1', JSON.stringify(bundle.customTemplates));
+        window.dispatchEvent(new CustomEvent('taqdeer_custom_templates_changed', { detail: bundle.customTemplates }));
+      }
+      if (bundle.studentGroups && Array.isArray(bundle.studentGroups)) {
+        localStorage.setItem('taqdeer_student_groups_v1', JSON.stringify(bundle.studentGroups));
+        window.dispatchEvent(new CustomEvent('taqdeer_student_groups_changed', { detail: bundle.studentGroups }));
+      }
+      if (bundle.signaturePresets && Array.isArray(bundle.signaturePresets)) {
+        localStorage.setItem('taqdeer_saved_signature_presets', JSON.stringify(bundle.signaturePresets));
+      }
+      if (bundle.autosaveCert) {
+        localStorage.setItem('taqdeer_autosave_certificate', JSON.stringify(bundle.autosaveCert));
+      }
+      if (bundle.defaultMargins) {
+        localStorage.setItem('taqdeer_default_margins', JSON.stringify(bundle.defaultMargins));
+      }
+      if (bundle.systemConfig) {
+        localStorage.setItem('taqdeer_system_config_v2', JSON.stringify(bundle.systemConfig));
+        window.dispatchEvent(new CustomEvent('taqdeer_system_config_changed', { detail: bundle.systemConfig }));
+      }
+      if (bundle.defaultSettings) {
+        localStorage.setItem('taqdeer_default_settings', JSON.stringify(bundle.defaultSettings));
+        window.dispatchEvent(new CustomEvent('taqdeer_default_settings_changed', { detail: bundle.defaultSettings }));
       }
     }
   } catch (e) {

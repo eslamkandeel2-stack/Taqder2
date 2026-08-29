@@ -27,6 +27,7 @@ import { ExportFormat } from './types';
 import { User } from 'firebase/auth';
 import { initAuthListener, getCurrentUser } from './services/googleDriveService';
 import { saveActiveWorkspaceVault } from './services/accountIsolationManager';
+import { syncFullAccountToCloud } from './services/cloudDatabaseService';
 import {
   sanitizeOklchInDoc,
   waitForImagesToLoad,
@@ -141,13 +142,13 @@ const getAutosavedInitialData = (): CertificateData => {
     if (saved) {
       const parsed = JSON.parse(saved);
       if (parsed && typeof parsed === 'object' && parsed.title && parsed.studentName) {
-        return applyDefaultsToCertificate(parsed);
+        return parsed;
       }
     }
   } catch (e) {
     console.error('Error reading autosaved draft:', e);
   }
-  return INITIAL_CERTIFICATE_DATA;
+  return applyDefaultsToCertificate(RAW_INITIAL_CERTIFICATE_DATA);
 };
 
 const getInitialUrlState = () => {
@@ -375,6 +376,19 @@ export default function App() {
       window.removeEventListener('taqdeer_account_switched', handleAccountSwitched);
     };
   }, []);
+
+  // Debounced cloud sync & local vault snapshot on active edits for logged-in accounts
+  useEffect(() => {
+    if (!currentUser || (!currentUser.uid && !currentUser.email)) return;
+    const timer = setTimeout(() => {
+      saveActiveWorkspaceVault(currentUser);
+      syncFullAccountToCloud(currentUser).catch((err) => {
+        console.warn('Debounced background sync notice:', err);
+      });
+    }, 3000);
+
+    return () => clearTimeout(timer);
+  }, [certificateData, currentUser]);
 
   const canvasRef = useRef<HTMLDivElement>(null);
 

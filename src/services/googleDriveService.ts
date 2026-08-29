@@ -1,5 +1,5 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, User, signOut } from 'firebase/auth';
+import { getAuth, signInWithPopup, signInWithCredential, GoogleAuthProvider, onAuthStateChanged, User, signOut } from 'firebase/auth';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { syncUserSettingsToCloud, loadUserSettingsFromCloud } from './cloudDatabaseService';
 
@@ -25,9 +25,30 @@ const GIS_USER_STORAGE_KEY = 'taqdeer_gis_user';
 let isSigningIn = false;
 let cachedAccessToken: string | null = localStorage.getItem(TOKEN_STORAGE_KEY);
 
-function loadGsiScript(): Promise<void> {
+export function getOAuthClientId(): string {
+  return firebaseConfig.oAuthClientId || '460203543434-ubg52iibus6gua5jgp0eurv0nnotnctk.apps.googleusercontent.com';
+}
+
+export function parseJwt(token: string): any {
+  try {
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    return JSON.parse(jsonPayload);
+  } catch (e) {
+    console.warn('Failed to parse JWT:', e);
+    return null;
+  }
+}
+
+export function loadGsiScript(): Promise<void> {
   return new Promise((resolve, reject) => {
-    if (window.google?.accounts?.oauth2) {
+    if (window.google?.accounts?.id && window.google?.accounts?.oauth2) {
       resolve();
       return;
     }
@@ -35,6 +56,9 @@ function loadGsiScript(): Promise<void> {
     if (existingScript) {
       existingScript.addEventListener('load', () => resolve());
       existingScript.addEventListener('error', () => reject(new Error('فشل تحميل مكتبة Google Identity Services')));
+      if (window.google?.accounts) {
+        resolve();
+      }
       return;
     }
     const script = document.createElement('script');
@@ -48,9 +72,126 @@ function loadGsiScript(): Promise<void> {
   });
 }
 
+/**
+ * Handle Google ID token from in-frame Google Sign-In Button or One-Tap
+ */
+export const handleGoogleIdToken = async (idToken: string): Promise<{ user: User; accessToken: string }> => {
+  const payload = parseJwt(idToken) || {};
+  const email = payload.email || '';
+  const name = payload.name || payload.email || 'حساب Google';
+  const picture = payload.picture || '';
+  const sub = payload.sub || Date.now().toString();
+
+  let finalUser: User;
+  let finalToken = idToken;
+
+  try {
+    const credential = GoogleAuthProvider.credential(idToken);
+    const userCredential = await signInWithCredential(auth, credential);
+    finalUser = userCredential.user;
+  } catch (firebaseErr) {
+    console.warn('Firebase signInWithCredential note (using local GIS fallback user):', firebaseErr);
+    finalUser = {
+      uid: 'gis-' + (email ? email.replace(/[^a-zA-Z0-9]/g, '_') : sub),
+      email: email,
+      displayName: name,
+      photoURL: picture,
+    } as User;
+  }
+
+  try {
+    localStorage.setItem(GIS_USER_STORAGE_KEY, JSON.stringify(finalUser));
+    localStorage.setItem(TOKEN_STORAGE_KEY, finalToken);
+    cachedAccessToken = finalToken;
+  } catch (e) {
+    console.warn('Failed to store GIS user in localStorage:', e);
+  }
+
+  // Sync or pull cloud settings on successful sign in
+  try {
+    await loadUserSettingsFromCloud(finalUser.uid);
+  } catch (syncErr) {
+    console.warn('Auto sync cloud settings error:', syncErr);
+  }
+
+  return { user: finalUser, accessToken: finalToken };
+};
+
+/**
+ * Render Google In-Frame Sign-In button into a DOM container element
+ * Completely avoids mobile popup-blockers by rendering inside the frame
+ */
+export const renderInFrameGoogleButton = async (
+  containerElement: HTMLElement,
+  onSuccess: (res: { user: User; accessToken: string }) => void,
+  onError?: (err: any) => void,
+  options?: {
+    theme?: 'outline' | 'filled_blue' | 'filled_black';
+    size?: 'large' | 'medium' | 'small';
+    text?: 'signin_with' | 'signup_with' | 'continue_with' | 'signin';
+    shape?: 'rectangular' | 'pill' | 'circle' | 'square';
+    width?: number | string;
+    locale?: string;
+  }
+): Promise<() => void> => {
+  await loadGsiScript();
+  const clientId = getOAuthClientId();
+
+  if (!window.google?.accounts?.id) {
+    throw new Error('Google Identity Services ID client is not available');
+  }
+
+  try {
+    window.google.accounts.id.initialize({
+      client_id: clientId,
+      callback: async (response: any) => {
+        if (response.credential) {
+          try {
+            const res = await handleGoogleIdToken(response.credential);
+            onSuccess(res);
+          } catch (e) {
+            if (onError) onError(e);
+          }
+        } else {
+          if (onError) onError(new Error('لم يتم استلام بيانات التحقق من Google'));
+        }
+      },
+      auto_select: false,
+      cancel_on_tap_outside: true,
+      use_fedcm_for_prompt: false,
+      context: 'signin'
+    });
+
+    containerElement.innerHTML = '';
+    window.google.accounts.id.renderButton(containerElement, {
+      theme: options?.theme || 'filled_blue',
+      size: options?.size || 'large',
+      type: 'standard',
+      shape: options?.shape || 'rectangular',
+      text: options?.text || 'signin_with',
+      logo_alignment: 'center',
+      width: options?.width || (containerElement.clientWidth > 0 ? containerElement.clientWidth : 280),
+      locale: options?.locale || 'ar'
+    });
+  } catch (err) {
+    console.error('Failed to initialize and render Google In-Frame Button:', err);
+    if (onError) onError(err);
+  }
+
+  return () => {
+    try {
+      if (window.google?.accounts?.id) {
+        window.google.accounts.id.cancel();
+      }
+    } catch (e) {
+      // ignore cleanup error
+    }
+  };
+};
+
 export const requestGisToken = async (): Promise<{ user: User; accessToken: string }> => {
   await loadGsiScript();
-  const clientId = firebaseConfig.oAuthClientId || '460203543434-4f7rq24i5u1tj3la4mbvrrfeg46fs83v.apps.googleusercontent.com';
+  const clientId = getOAuthClientId();
 
   return new Promise((resolve, reject) => {
     try {

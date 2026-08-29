@@ -22,10 +22,12 @@ import {
   ArrowLeftRight,
   PlusCircle,
   Lock,
-  Layers
+  Layers,
+  Smartphone
 } from 'lucide-react';
 import { User } from 'firebase/auth';
 import { googleSignIn, googleSignOut, getAccessToken } from '../services/googleDriveService';
+import { GoogleInFrameButton } from './GoogleInFrameButton';
 import { 
   syncFullAccountToCloud, 
   restoreAccountFromCloud, 
@@ -83,7 +85,25 @@ export const UserAuthProfileModal: React.FC<UserAuthProfileModalProps> = ({
 
   const currentAccountKey = getAccountKey(currentUser);
 
-  // 1. Google Auth Login with Account Isolation
+  // 1. In-Frame Google Auth (100% Popup-Blocker Proof on Mobile & Safari)
+  const handleInFrameLoginSuccess = async (res: { user: User; accessToken: string }) => {
+    try {
+      setIsLoading(true);
+      const restoreRes = await switchAndIsolateAccount(res.user, currentUser);
+      onUserChange(res.user);
+      setLastSyncResult(restoreRes);
+      setKnownAccounts(getKnownAccounts());
+
+      onShowToast(`أهلاً بك ${res.user.displayName || 'عزيزنا المستخدم'}! تم تسجيل الدخول واستعادة بياناتك بنجاح ✨ (${restoreRes.certsCount} شهادة، ${restoreRes.draftsCount} مسودة)`);
+    } catch (err: any) {
+      console.error('In-frame login process error:', err);
+      onShowToast(err.message || 'حدث خطأ أثناء مزامنة بيانات الحساب');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Google Auth Login with Account Isolation (Popup / Manual Fallback)
   const handleLogin = async () => {
     try {
       setIsLoading(true);
@@ -334,49 +354,71 @@ export const UserAuthProfileModal: React.FC<UserAuthProfileModalProps> = ({
             </div>
           </div>
         ) : (
-          <div className="bg-slate-800/50 border border-slate-700/80 p-5 rounded-2xl text-center space-y-3">
+          <div className="bg-slate-800/50 border border-slate-700/80 p-5 rounded-2xl text-center space-y-4">
             <div className="w-12 h-12 bg-amber-500/20 text-amber-400 rounded-full flex items-center justify-center mx-auto border border-amber-500/30">
               <UserIcon className="w-6 h-6" />
             </div>
             <div>
               <h4 className="font-extrabold text-sm text-white">تسجيل الدخول بالحساب الرسمي</h4>
-              <p className="text-xs text-slate-400 max-w-sm mx-auto mt-1">
+              <p className="text-xs text-slate-400 max-w-sm mx-auto mt-1 leading-relaxed">
                 سجل الدخول بحسابك لعزل واسترجاع كافة شهاداتك، مسوداتك، توقيعاتك، وإعدادات مدرستك تلقائياً على هذا الجهاز أو أي جهاز آخر.
               </p>
             </div>
 
-            <button
-              onClick={handleLogin}
-              disabled={isLoading}
-              className="w-full py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:brightness-110 text-slate-950 font-black text-xs rounded-xl transition shadow-lg flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>جاري تسجيل الدخول واسترجاع البيانات...</span>
-                </>
-              ) : (
-                <>
-                  <LogIn className="w-4 h-4" />
-                  <span>تسجيل الدخول بحساب Google</span>
-                </>
-              )}
-            </button>
+            {/* In-Frame Google Sign-In Button (Direct, No Popups Blocked) */}
+            <div className="bg-slate-900/90 border border-amber-500/30 p-3.5 rounded-2xl space-y-2.5">
+              <div className="flex items-center justify-center gap-1.5 text-[11px] font-bold text-amber-300">
+                <Smartphone className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <span>تسجيل الدخول المباشر داخل الصفحة (يدعم الهواتف وبدون حظر)</span>
+              </div>
+              
+              <GoogleInFrameButton
+                onSuccess={handleInFrameLoginSuccess}
+                onError={(err) => {
+                  console.warn('In-frame button notice:', err);
+                  onShowToast(err?.message || 'تعذر إتمام الدخول المباشر، يمكنك استخدام زر تسجيل الدخول البديل.');
+                }}
+                theme="filled_blue"
+                size="large"
+                text="signin_with"
+                shape="rectangular"
+              />
+            </div>
 
-            {/* If in iframe or user prefers new tab */}
-            {isInIframe && (
-              <div className="pt-2 border-t border-slate-700/60">
+            {/* Alternative Popup / Tab login */}
+            <div className="space-y-2 pt-1">
+              <button
+                type="button"
+                onClick={handleLogin}
+                disabled={isLoading}
+                className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-xl transition border border-slate-700 hover:border-amber-500/50 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin text-amber-400" />
+                    <span>جاري الاتصال...</span>
+                  </>
+                ) : (
+                  <>
+                    <LogIn className="w-3.5 h-3.5 text-amber-400" />
+                    <span>أو فتح نافذة تسجيل الدخول المنفصلة</span>
+                  </>
+                )}
+              </button>
+
+              {/* If in iframe */}
+              {isInIframe && (
                 <a
                   href={window.location.href}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-xs rounded-xl transition border border-amber-500/30 flex items-center justify-center gap-1.5"
+                  className="w-full py-2 bg-slate-850 hover:bg-slate-800 text-amber-300 font-medium text-[11px] rounded-xl transition border border-amber-500/20 flex items-center justify-center gap-1.5"
                 >
                   <ArrowUpRight className="w-3.5 h-3.5" />
-                  <span>فتح في علامة تبويب مستقلة (للسماح بالنوافذ)</span>
+                  <span>فتح في علامة تبويب جديدة مستقلة</span>
                 </a>
-              </div>
-            )}
+              )}
+            </div>
 
             {/* Custom School / Institutional Profile Fallback */}
             <div className="pt-2 border-t border-slate-700/60">

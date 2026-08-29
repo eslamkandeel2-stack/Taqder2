@@ -23,6 +23,7 @@ export const WORKSPACE_STORAGE_KEYS = {
   GROUPS: 'taqdeer_student_groups_v1',
   SYSTEM_CONFIG: 'taqdeer_system_config_v2',
   DEFAULT_SETTINGS: 'taqdeer_default_settings',
+  DEFAULT_MARGINS: 'taqdeer_default_margins',
   AI_SETTINGS: 'taqdeer_ai_settings_v1',
   CUSTOM_TEMPLATES: 'taqdeer_custom_user_templates_v1',
   SIGNATURE_PRESETS: 'taqdeer_saved_signature_presets',
@@ -41,6 +42,7 @@ export interface AccountVaultSnapshot {
   lastUpdated: string;
   systemConfig: SystemSettingsConfig;
   defaultSettings: DefaultCertificateSettings;
+  defaultMargins?: any;
   aiSettings: AISettings;
   autoArchiveConfig: AutoArchiveConfig;
   certificates: CertificateData[];
@@ -112,6 +114,14 @@ export function createWorkspaceSnapshot(user?: UserLike | null): AccountVaultSna
     console.warn(e);
   }
 
+  let defaultMargins: any = null;
+  try {
+    const raw = localStorage.getItem(WORKSPACE_STORAGE_KEYS.DEFAULT_MARGINS);
+    if (raw) defaultMargins = JSON.parse(raw);
+  } catch (e) {
+    console.warn(e);
+  }
+
   return {
     accountKey,
     userId: user?.uid,
@@ -121,6 +131,7 @@ export function createWorkspaceSnapshot(user?: UserLike | null): AccountVaultSna
     lastUpdated: new Date().toISOString(),
     systemConfig: getSavedSystemConfig(),
     defaultSettings: getSavedDefaultSettings(),
+    defaultMargins: defaultMargins,
     aiSettings: getSavedAISettings(),
     autoArchiveConfig: getAutoArchiveConfig(),
     certificates: certs,
@@ -167,6 +178,9 @@ export function applyVaultSnapshotToWorkspace(snapshot: AccountVaultSnapshot): v
     if (snapshot.defaultSettings) {
       localStorage.setItem(WORKSPACE_STORAGE_KEYS.DEFAULT_SETTINGS, JSON.stringify(snapshot.defaultSettings));
     }
+    if (snapshot.defaultMargins) {
+      localStorage.setItem(WORKSPACE_STORAGE_KEYS.DEFAULT_MARGINS, JSON.stringify(snapshot.defaultMargins));
+    }
     if (snapshot.aiSettings) {
       localStorage.setItem(WORKSPACE_STORAGE_KEYS.AI_SETTINGS, JSON.stringify(snapshot.aiSettings));
     }
@@ -199,6 +213,8 @@ export function resetWorkspaceToDefaults(): void {
   try {
     localStorage.setItem(WORKSPACE_STORAGE_KEYS.SYSTEM_CONFIG, JSON.stringify(DEFAULT_SYSTEM_CONFIG));
     localStorage.setItem(WORKSPACE_STORAGE_KEYS.DEFAULT_SETTINGS, JSON.stringify(FALLBACK_DEFAULT_SETTINGS));
+    localStorage.removeItem(WORKSPACE_STORAGE_KEYS.DEFAULT_MARGINS);
+    localStorage.removeItem(WORKSPACE_STORAGE_KEYS.AUTOSAVE_CERT);
     localStorage.setItem(WORKSPACE_STORAGE_KEYS.AI_SETTINGS, JSON.stringify(DEFAULT_AI_SETTINGS));
     localStorage.setItem(WORKSPACE_STORAGE_KEYS.AUTO_ARCHIVE_CONFIG, JSON.stringify(DEFAULT_AUTO_ARCHIVE_CONFIG));
 
