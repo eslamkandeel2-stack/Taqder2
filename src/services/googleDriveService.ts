@@ -168,7 +168,8 @@ export const renderInFrameGoogleButton = async (
       auto_select: false,
       cancel_on_tap_outside: true,
       use_fedcm_for_prompt: false,
-      context: 'signin'
+      context: 'signin',
+      prompt_parent_id: containerElement.id || 'google-inframe-signin-container',
     });
 
     containerElement.innerHTML = '';
