@@ -350,7 +350,7 @@ export const Navbar: React.FC<Props> = ({
                 <span className="sm:hidden font-black">PDF</span>
               </button>
 
-              {/* Google User Auth / Cloud Account Button */}
+              {/* Google / Unified User Auth Button */}
               {onOpenUserAuthModal && (
                 <button
                   type="button"
@@ -360,20 +360,20 @@ export const Navbar: React.FC<Props> = ({
                       ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
                       : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700 hover:text-white'
                   }`}
-                  title={currentUser ? `الحساب المتصل: ${currentUser.displayName || currentUser.email}` : 'تسجيل الدخول بحساب Google ومزامنة السحابة'}
+                  title={currentUser ? `الحساب المتصل: ${currentUser.displayName || currentUser.email} (${(currentUser as any).userId || currentUser.uid})` : 'تسجيل الدخول وإدارة المعرف (User ID) ومزامنة السحابة'}
                 >
                   {currentUser?.photoURL ? (
                     <img
                       src={currentUser.photoURL}
-                      alt={currentUser.displayName || 'Google User'}
+                      alt={currentUser.displayName || 'User'}
                       referrerPolicy="no-referrer"
                       className="w-4 h-4 rounded-full object-cover border border-amber-400/50 shrink-0"
                     />
                   ) : (
                     <UserIcon className={`w-3.5 h-3.5 shrink-0 ${currentUser ? 'text-amber-400' : 'text-slate-400'}`} />
                   )}
-                  <span className="hidden xl:inline max-w-[100px] truncate text-[11px]">
-                    {currentUser ? (currentUser.displayName?.split(' ')[0] || 'حسابي') : 'دخول Google'}
+                  <span className="hidden xl:inline max-w-[110px] truncate text-[11px]">
+                    {currentUser ? (currentUser.displayName?.split(' ')[0] || (currentUser as any).userId || 'حسابي') : 'دخول / حسابي'}
                   </span>
                   {currentUser && (
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping shrink-0" />

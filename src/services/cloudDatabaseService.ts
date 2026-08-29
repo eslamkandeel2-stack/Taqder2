@@ -610,3 +610,89 @@ export async function restoreAccountFromCloud(userId: string, userEmail = ''): P
     batchesCount: restoredBatchesCount
   };
 }
+
+export interface UserVerificationCloudRecord {
+  userId: string;
+  email: string;
+  displayName?: string;
+  isVerified: boolean;
+  status: 'pending' | 'verified' | 'rejected';
+  verificationMethod?: string;
+  emailSentAt?: string;
+  verifiedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Saves or updates user verification status record in Firebase Firestore
+ */
+export async function saveUserVerificationToFirestore(
+  userId: string,
+  data: {
+    email: string;
+    displayName?: string;
+    isVerified: boolean;
+    status?: 'pending' | 'verified' | 'rejected';
+    verificationMethod?: string;
+    emailSentAt?: string;
+    verifiedAt?: string;
+  }
+): Promise<boolean> {
+  if (!userId) return false;
+  try {
+    const cleanUserId = userId.trim();
+    const docRef = doc(db, 'user_verifications', cleanUserId);
+    const nowIso = new Date().toISOString();
+    
+    const payload: UserVerificationCloudRecord = {
+      userId: cleanUserId,
+      email: data.email || '',
+      displayName: data.displayName || '',
+      isVerified: Boolean(data.isVerified),
+      status: data.status || (data.isVerified ? 'verified' : 'pending'),
+      verificationMethod: data.verificationMethod || 'email_otp',
+      emailSentAt: data.emailSentAt || nowIso,
+      verifiedAt: data.isVerified ? (data.verifiedAt || nowIso) : undefined,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    };
+
+    await withTimeout(setDoc(docRef, payload, { merge: true }), 4000, null);
+
+    // Also update /users/{userId} if exists or merge verification flag
+    try {
+      const userRef = doc(db, 'users', cleanUserId);
+      await withTimeout(setDoc(userRef, {
+        isVerified: data.isVerified,
+        verifiedAt: data.isVerified ? (data.verifiedAt || nowIso) : undefined,
+        verificationStatus: payload.status,
+        updatedAt: nowIso,
+      }, { merge: true }), 3000, null);
+    } catch (e) {
+      console.warn('Could not mirror verification to users collection:', e);
+    }
+
+    return true;
+  } catch (err) {
+    console.warn('Failed to save user verification to Firestore:', err);
+    return false;
+  }
+}
+
+/**
+ * Loads user verification record from Firebase Firestore
+ */
+export async function loadUserVerificationFromFirestore(userId: string): Promise<UserVerificationCloudRecord | null> {
+  if (!userId) return null;
+  try {
+    const docRef = doc(db, 'user_verifications', userId.trim());
+    const snap = await withTimeout(getDoc(docRef), 3500, null);
+    if (snap && snap.exists()) {
+      return snap.data() as UserVerificationCloudRecord;
+    }
+  } catch (err) {
+    console.warn('Failed to load user verification from Firestore:', err);
+  }
+  return null;
+}

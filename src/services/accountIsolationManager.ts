@@ -11,9 +11,13 @@ import { syncFullAccountToCloud, restoreAccountFromCloud, FullAccountSyncPackage
 
 export interface UserLike {
   uid: string;
+  userId?: string;
   email?: string | null;
   displayName?: string | null;
   photoURL?: string | null;
+  googleEmail?: string | null;
+  isVerified?: boolean;
+  username?: string;
 }
 
 export const WORKSPACE_STORAGE_KEYS = {
@@ -338,9 +342,12 @@ export async function switchAndIsolateAccount(
 export interface KnownAccountRecord {
   accountKey: string;
   uid: string;
+  userId?: string;
   email: string;
   displayName: string;
   photoURL?: string;
+  googleEmail?: string;
+  isVerified?: boolean;
   lastActive: string;
   certsCount: number;
 }
@@ -366,9 +373,12 @@ export function registerAccountInRegistry(user: UserLike): void {
     const record: KnownAccountRecord = {
       accountKey: key,
       uid: user.uid,
+      userId: user.userId || user.uid,
       email: user.email || '',
       displayName: user.displayName || 'مستخدم معتمد',
       photoURL: user.photoURL || undefined,
+      googleEmail: user.googleEmail || undefined,
+      isVerified: user.isVerified ?? true,
       lastActive: new Date().toISOString(),
       certsCount
     };

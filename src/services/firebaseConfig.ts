@@ -5,6 +5,7 @@ import {
   browserLocalPersistence, 
   browserSessionPersistence, 
   inMemoryPersistence,
+  browserPopupRedirectResolver,
   Auth
 } from 'firebase/auth';
 import { 
@@ -23,7 +24,8 @@ try {
   // Use browserLocalPersistence & browserSessionPersistence instead of IndexedDB persistence
   // to prevent browser "Database is closing/hidden" errors in iframes and mobile browsers
   authInstance = initializeAuth(app, {
-    persistence: [browserLocalPersistence, browserSessionPersistence, inMemoryPersistence]
+    persistence: [browserLocalPersistence, browserSessionPersistence, inMemoryPersistence],
+    popupRedirectResolver: browserPopupRedirectResolver
   });
 } catch (e) {
   authInstance = getAuth(app);

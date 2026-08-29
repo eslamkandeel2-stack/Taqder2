@@ -25,8 +25,8 @@ import { ArabicProofreaderModal } from './components/ArabicProofreaderModal';
 import { AppreciationSuggestionsModal } from './components/AppreciationSuggestionsModal';
 import { ExportFormat } from './types';
 import { User } from 'firebase/auth';
-import { initAuthListener, getCurrentUser } from './services/googleDriveService';
-import { saveActiveWorkspaceVault } from './services/accountIsolationManager';
+import { initAuthListener, getCurrentUser, checkRedirectAuthResult } from './services/googleDriveService';
+import { saveActiveWorkspaceVault, switchAndIsolateAccount } from './services/accountIsolationManager';
 import { syncFullAccountToCloud } from './services/cloudDatabaseService';
 import {
   sanitizeOklchInDoc,
@@ -356,6 +356,15 @@ export default function App() {
 
   // Listen for Google/Firebase Auth changes & Account Workspace Isolation switches
   useEffect(() => {
+    // Check if returning from Google Redirect Auth (e.g. on Vercel / mobile)
+    checkRedirectAuthResult().then((res) => {
+      if (res?.user) {
+        setCurrentUser(res.user);
+        switchAndIsolateAccount(res.user).catch(err => console.warn('Account switch after redirect error:', err));
+        setToastMessage(`أهلاً بك ${res.user.displayName || 'مستخدم Google'}! تم تسجيل الدخول بنجاح ✨`);
+      }
+    }).catch(e => console.warn('checkRedirectAuthResult notice:', e));
+
     const unsub = initAuthListener((user) => {
       setCurrentUser(user);
     });

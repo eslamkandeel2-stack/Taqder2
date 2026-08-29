@@ -5,6 +5,7 @@ import {
   signInWithCredential, 
   GoogleAuthProvider, 
   onAuthStateChanged, 
+  browserPopupRedirectResolver,
   User, 
   signOut 
 } from 'firebase/auth';
@@ -333,7 +334,7 @@ export const initDriveAuth = (
 
 export const checkRedirectAuthResult = async (): Promise<{ user: User; accessToken: string } | null> => {
   try {
-    const result = await getRedirectResult(auth);
+    const result = await getRedirectResult(auth, browserPopupRedirectResolver);
     if (result && result.user) {
       const credential = GoogleAuthProvider.credentialFromResult(result);
       const token = credential?.accessToken || localStorage.getItem(TOKEN_STORAGE_KEY) || '';
@@ -357,7 +358,16 @@ export const checkRedirectAuthResult = async (): Promise<{ user: User; accessTok
 export const googleSignInWithRedirect = async (): Promise<void> => {
   try {
     isSigningIn = true;
-    await signInWithRedirect(auth, provider);
+    
+    // In iframe contexts, top-level navigation might be needed or preferred
+    const isInIframe = typeof window !== 'undefined' && window.self !== window.top;
+    if (isInIframe) {
+      // Open in a new top-level tab/window directly to complete authentication safely
+      window.open(window.location.href, '_blank');
+      return;
+    }
+
+    await signInWithRedirect(auth, provider, browserPopupRedirectResolver);
   } catch (error: any) {
     console.error('Firebase signInWithRedirect error:', error);
     throw error;
@@ -369,7 +379,7 @@ export const googleSignInWithRedirect = async (): Promise<void> => {
 export const googleSignIn = async (): Promise<{ user: User; accessToken: string }> => {
   try {
     isSigningIn = true;
-    const result = await signInWithPopup(auth, provider);
+    const result = await signInWithPopup(auth, provider, browserPopupRedirectResolver);
     const credential = GoogleAuthProvider.credentialFromResult(result);
     if (!credential?.accessToken) {
       throw new Error('لم نتمكن من الحصول على مفتاح الوصول لحساب Google.');
