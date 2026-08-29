@@ -1,5 +1,14 @@
-import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, signInWithPopup, signInWithCredential, GoogleAuthProvider, onAuthStateChanged, User, signOut } from 'firebase/auth';
+import { 
+  signInWithPopup, 
+  signInWithRedirect, 
+  getRedirectResult, 
+  signInWithCredential, 
+  GoogleAuthProvider, 
+  onAuthStateChanged, 
+  User, 
+  signOut 
+} from 'firebase/auth';
+import { auth, default as app } from './firebaseConfig';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { syncUserSettingsToCloud, loadUserSettingsFromCloud } from './cloudDatabaseService';
 
@@ -9,8 +18,7 @@ declare global {
   }
 }
 
-const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-export const auth = getAuth(app);
+export { auth };
 
 const provider = new GoogleAuthProvider();
 provider.addScope('https://www.googleapis.com/auth/drive.file');
@@ -323,6 +331,41 @@ export const initDriveAuth = (
   });
 };
 
+export const checkRedirectAuthResult = async (): Promise<{ user: User; accessToken: string } | null> => {
+  try {
+    const result = await getRedirectResult(auth);
+    if (result && result.user) {
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      const token = credential?.accessToken || localStorage.getItem(TOKEN_STORAGE_KEY) || '';
+      if (token) {
+        cachedAccessToken = token;
+        localStorage.setItem(TOKEN_STORAGE_KEY, token);
+      }
+      try {
+        await loadUserSettingsFromCloud(result.user.uid);
+      } catch (e) {
+        console.warn('Sync on redirect error:', e);
+      }
+      return { user: result.user, accessToken: token };
+    }
+  } catch (error: any) {
+    console.warn('getRedirectResult notice:', error);
+  }
+  return null;
+};
+
+export const googleSignInWithRedirect = async (): Promise<void> => {
+  try {
+    isSigningIn = true;
+    await signInWithRedirect(auth, provider);
+  } catch (error: any) {
+    console.error('Firebase signInWithRedirect error:', error);
+    throw error;
+  } finally {
+    isSigningIn = false;
+  }
+};
+
 export const googleSignIn = async (): Promise<{ user: User; accessToken: string }> => {
   try {
     isSigningIn = true;
@@ -373,8 +416,9 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
         gisErr?.message?.toLowerCase()?.includes('blocked') ||
         gisErr?.message?.includes('حظر')
       ) {
-        const err = new Error('تم حظر النافذة المنبثقة من قِبل المتصفح. يمكنك فتح التطبيق في علامة تبويب جديدة أو السماح بالنوافذ المنبثقة (Popups).');
+        const err = new Error('تم حظر النوافذ المنبثقة من قِبل المتصفح على جهازك. يمكنك استخدام "تسجيل الدخول المباشر بنفس الصفحة" أو "الدخول الفوري بحساب المعلم/المدرسة".');
         (err as any).code = 'auth/popup-blocked';
+        (err as any).isPopupBlocked = true;
         throw err;
       }
 
@@ -408,6 +452,13 @@ export const getCurrentUser = (): User | null => {
 };
 
 export const initAuthListener = (onUserChanged: (user: User | null) => void) => {
+  // Check if returning from redirect authentication
+  checkRedirectAuthResult().then((res) => {
+    if (res?.user) {
+      onUserChanged(res.user);
+    }
+  }).catch((e) => console.warn('Redirect auth listener note:', e));
+
   // Check initial cached user
   const initialUser = getCurrentUser();
   if (initialUser) {

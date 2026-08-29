@@ -1,11 +1,44 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { 
+  getAuth, 
+  initializeAuth, 
+  browserLocalPersistence, 
+  browserSessionPersistence, 
+  inMemoryPersistence,
+  Auth
+} from 'firebase/auth';
+import { 
+  getFirestore, 
+  initializeFirestore, 
+  memoryLocalCache,
+  Firestore
+} from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 // Initialize Firebase App instance singleton
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
-export const auth = getAuth(app);
-export const db = getFirestore(app);
+let authInstance: Auth;
+try {
+  // Use browserLocalPersistence & browserSessionPersistence instead of IndexedDB persistence
+  // to prevent browser "Database is closing/hidden" errors in iframes and mobile browsers
+  authInstance = initializeAuth(app, {
+    persistence: [browserLocalPersistence, browserSessionPersistence, inMemoryPersistence]
+  });
+} catch (e) {
+  authInstance = getAuth(app);
+}
+
+let dbInstance: Firestore;
+try {
+  dbInstance = initializeFirestore(app, {
+    localCache: memoryLocalCache()
+  });
+} catch (e) {
+  dbInstance = getFirestore(app);
+}
+
+export const auth = authInstance;
+export const db = dbInstance;
 export default app;
+

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { User } from 'firebase/auth';
-import { renderInFrameGoogleButton, googleSignIn } from '../services/googleDriveService';
-import { Loader2, LogIn } from 'lucide-react';
+import { renderInFrameGoogleButton, googleSignIn, googleSignInWithRedirect } from '../services/googleDriveService';
+import { Loader2, LogIn, Compass, Smartphone } from 'lucide-react';
 
 interface GoogleInFrameButtonProps {
   onSuccess: (res: { user: User; accessToken: string }) => void;
@@ -11,6 +11,7 @@ interface GoogleInFrameButtonProps {
   text?: 'signin_with' | 'signup_with' | 'continue_with' | 'signin';
   shape?: 'rectangular' | 'pill' | 'circle' | 'square';
   className?: string;
+  showRedirectOption?: boolean;
 }
 
 export const GoogleInFrameButton: React.FC<GoogleInFrameButtonProps> = ({
@@ -20,12 +21,14 @@ export const GoogleInFrameButton: React.FC<GoogleInFrameButtonProps> = ({
   size = 'large',
   text = 'signin_with',
   shape = 'rectangular',
-  className = ''
+  className = '',
+  showRedirectOption = false
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isRendered, setIsRendered] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [fallbackMode, setFallbackMode] = useState(false);
+  const [isRedirecting, setIsRedirecting] = useState(false);
 
   useEffect(() => {
     let cleanupFn: (() => void) | undefined;
@@ -94,8 +97,19 @@ export const GoogleInFrameButton: React.FC<GoogleInFrameButtonProps> = ({
     }
   };
 
+  const handleRedirectLogin = async () => {
+    try {
+      setIsRedirecting(true);
+      await googleSignInWithRedirect();
+    } catch (err: any) {
+      console.error('Redirect sign in error:', err);
+      if (onError) onError(err);
+      setIsRedirecting(false);
+    }
+  };
+
   return (
-    <div className={`w-full flex flex-col items-center justify-center min-h-[44px] ${className}`}>
+    <div className={`w-full flex flex-col items-center justify-center gap-2 ${className}`}>
       {/* Target container for Google's native in-frame iframe button */}
       <div 
         ref={containerRef} 
@@ -122,6 +136,27 @@ export const GoogleInFrameButton: React.FC<GoogleInFrameButtonProps> = ({
             <>
               <LogIn className="w-4 h-4" />
               <span>تسجيل الدخول بحساب Google</span>
+            </>
+          )}
+        </button>
+      )}
+
+      {showRedirectOption && (
+        <button
+          type="button"
+          onClick={handleRedirectLogin}
+          disabled={isRedirecting}
+          className="w-full py-2 px-3 bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-[11px] rounded-xl border border-amber-500/30 transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+        >
+          {isRedirecting ? (
+            <>
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              <span>جاري الانتقال لصفحة Google...</span>
+            </>
+          ) : (
+            <>
+              <Compass className="w-3.5 h-3.5" />
+              <span>الدخول المباشر بنفس الصفحة (بدون نوافذ منبثقة)</span>
             </>
           )}
         </button>

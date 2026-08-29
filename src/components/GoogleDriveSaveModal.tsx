@@ -562,6 +562,7 @@ const handleLogin = () => {
                       size="large"
                       text="signin_with"
                       shape="rectangular"
+                      showRedirectOption={true}
                     />
                   </div>
 

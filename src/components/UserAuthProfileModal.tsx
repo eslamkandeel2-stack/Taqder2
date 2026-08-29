@@ -26,7 +26,7 @@ import {
   Smartphone
 } from 'lucide-react';
 import { User } from 'firebase/auth';
-import { googleSignIn, googleSignOut, getAccessToken } from '../services/googleDriveService';
+import { googleSignIn, googleSignInWithRedirect, googleSignOut, getAccessToken } from '../services/googleDriveService';
 import { GoogleInFrameButton } from './GoogleInFrameButton';
 import { 
   syncFullAccountToCloud, 
@@ -70,6 +70,7 @@ export const UserAuthProfileModal: React.FC<UserAuthProfileModalProps> = ({
   const [institutionName, setInstitutionName] = useState('');
   const [institutionEmail, setInstitutionEmail] = useState('');
   const [showCustomLogin, setShowCustomLogin] = useState(false);
+  const [showPopupBlockedHelper, setShowPopupBlockedHelper] = useState(false);
   const [knownAccounts, setKnownAccounts] = useState<KnownAccountRecord[]>([]);
   const [switchingAccountKey, setSwitchingAccountKey] = useState<string | null>(null);
 
@@ -103,6 +104,18 @@ export const UserAuthProfileModal: React.FC<UserAuthProfileModalProps> = ({
     }
   };
 
+  // Google Auth Direct Redirect Login (100% Popup-Blocker Proof on Mobile)
+  const handleRedirectLogin = async () => {
+    try {
+      setIsLoading(true);
+      await googleSignInWithRedirect();
+    } catch (err: any) {
+      console.error('Redirect login error:', err);
+      onShowToast(err.message || 'تعذر الانتقال لصفحة تسجيل الدخول المباشر');
+      setIsLoading(false);
+    }
+  };
+
   // Google Auth Login with Account Isolation (Popup / Manual Fallback)
   const handleLogin = async () => {
     try {
@@ -119,6 +132,11 @@ export const UserAuthProfileModal: React.FC<UserAuthProfileModalProps> = ({
     } catch (err: any) {
       if (err?.code === 'auth/popup-closed-by-user' || err?.isUserCancel || err?.message?.includes('إلغاء') || err?.message?.includes('إغلاق')) {
         onShowToast('تم إلغاء تسجيل الدخول.');
+        return;
+      }
+      if (err?.code === 'auth/popup-blocked' || err?.isPopupBlocked || err?.message?.includes('حظر')) {
+        setShowPopupBlockedHelper(true);
+        onShowToast('تم حظر النوافذ المنبثقة على هاتفك. يمكنك استخدام الدخول المباشر بنفس الصفحة أدناه 📱');
         return;
       }
       console.warn('Login note:', err);
@@ -376,14 +394,51 @@ export const UserAuthProfileModal: React.FC<UserAuthProfileModalProps> = ({
                 onSuccess={handleInFrameLoginSuccess}
                 onError={(err) => {
                   console.warn('In-frame button notice:', err);
-                  onShowToast(err?.message || 'تعذر إتمام الدخول المباشر، يمكنك استخدام زر تسجيل الدخول البديل.');
+                  setShowPopupBlockedHelper(true);
                 }}
                 theme="filled_blue"
                 size="large"
                 text="signin_with"
                 shape="rectangular"
+                showRedirectOption={true}
               />
             </div>
+
+            {/* Smart Popup-Blocker Recovery Card (Shown if phone blocks popup) */}
+            {showPopupBlockedHelper && (
+              <div className="bg-amber-950/40 border border-amber-500/50 p-3.5 rounded-2xl text-right space-y-2.5 animate-fadeIn">
+                <div className="flex items-center gap-2 text-amber-300 font-bold text-xs">
+                  <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>حل مشكلة حظر النوافذ المنبثقة على الهواتف:</span>
+                </div>
+                <p className="text-[11px] text-amber-200/90 leading-relaxed">
+                  تمنع بعض متصفحات الهواتف (Safari / Chrome) فتح النوافذ المنبثقة. يمكنك المتابعة بأحد الخيارات المباشرة التالية:
+                </p>
+                <div className="space-y-1.5 pt-1">
+                  <button
+                    type="button"
+                    onClick={handleRedirectLogin}
+                    disabled={isLoading}
+                    className="w-full py-2 px-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl transition flex items-center justify-center gap-2 cursor-pointer shadow-md"
+                  >
+                    <Smartphone className="w-3.5 h-3.5" />
+                    <span>الدخول المباشر بنفس الصفحة (بدون نوافذ)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowCustomLogin(true);
+                      setShowPopupBlockedHelper(false);
+                    }}
+                    className="w-full py-2 px-3 bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-xs rounded-xl transition border border-amber-500/30 flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>الدخول الفوري بحساب المدرسة / المعلم</span>
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Alternative Popup / Tab login */}
             <div className="space-y-2 pt-1">
