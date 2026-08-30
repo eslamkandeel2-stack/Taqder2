@@ -6,6 +6,7 @@ import {
   browserSessionPersistence, 
   inMemoryPersistence,
   browserPopupRedirectResolver,
+  setPersistence,
   Auth
 } from 'firebase/auth';
 import { 
@@ -21,14 +22,22 @@ const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
 let authInstance: Auth;
 try {
-  // Use browserLocalPersistence & browserSessionPersistence instead of IndexedDB persistence
-  // to prevent browser "Database is closing/hidden" errors in iframes and mobile browsers
+  // Use browserLocalPersistence to guarantee user session survives across redirects and refreshes
   authInstance = initializeAuth(app, {
     persistence: [browserLocalPersistence, browserSessionPersistence, inMemoryPersistence],
     popupRedirectResolver: browserPopupRedirectResolver
   });
 } catch (e) {
   authInstance = getAuth(app);
+}
+
+// Explicitly enforce browser local persistence for Vercel and standard web browsers
+try {
+  setPersistence(authInstance, browserLocalPersistence).catch((err) => {
+    console.warn('Set browserLocalPersistence fallback:', err);
+  });
+} catch (err) {
+  console.warn('Set persistence exception:', err);
 }
 
 let dbInstance: Firestore;
@@ -43,4 +52,5 @@ try {
 export const auth = authInstance;
 export const db = dbInstance;
 export default app;
+
 

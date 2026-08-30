@@ -59,12 +59,18 @@ export interface AccountVaultSnapshot {
   autosaveCert?: CertificateData | null;
 }
 
+let isSwitchingAccountLock = false;
+
+export function isAccountSwitching(): boolean {
+  return isSwitchingAccountLock;
+}
+
 /**
  * Calculates a unique, sanitized storage key for any user account (or guest)
  */
 export function getAccountKey(user?: UserLike | null): string {
   if (!user) return 'guest';
-  const rawKey = user.uid || user.email || 'anonymous';
+  const rawKey = user.uid || user.userId || user.email || 'anonymous';
   return 'acc_' + rawKey.replace(/[^a-zA-Z0-9_\-@.]/g, '_').toLowerCase();
 }
 
@@ -153,17 +159,20 @@ export function createWorkspaceSnapshot(user?: UserLike | null): AccountVaultSna
  * Saves the current workspace state to the user's isolated local vault
  */
 export function saveActiveWorkspaceVault(user?: UserLike | null): void {
-  if (typeof window === 'undefined') return;
+  if (typeof window === 'undefined' || isSwitchingAccountLock) return;
   try {
     const activeKey = getActiveAccountKey();
-    const snapshot = createWorkspaceSnapshot(user);
-    localStorage.setItem(`taqdeer_vault_${activeKey}`, JSON.stringify(snapshot));
-    
-    // Also save under user specific key if different
     const userSpecificKey = getAccountKey(user);
-    if (userSpecificKey !== activeKey) {
-      localStorage.setItem(`taqdeer_vault_${userSpecificKey}`, JSON.stringify(snapshot));
+
+    // Prevent saving wrong user's data into another account's vault
+    if (user && activeKey !== 'guest' && activeKey !== userSpecificKey) {
+      console.warn(`[Vault] Skipped saving: activeKey (${activeKey}) mismatch with userKey (${userSpecificKey})`);
+      return;
     }
+
+    const targetKey = user ? userSpecificKey : activeKey;
+    const snapshot = createWorkspaceSnapshot(user);
+    localStorage.setItem(`taqdeer_vault_${targetKey}`, JSON.stringify(snapshot));
   } catch (err) {
     console.warn('Failed to save active workspace vault:', err);
   }
@@ -178,21 +187,35 @@ export function applyVaultSnapshotToWorkspace(snapshot: AccountVaultSnapshot): v
     // 1. Settings & Config
     if (snapshot.systemConfig) {
       localStorage.setItem(WORKSPACE_STORAGE_KEYS.SYSTEM_CONFIG, JSON.stringify(snapshot.systemConfig));
-    }
-    if (snapshot.defaultSettings) {
-      localStorage.setItem(WORKSPACE_STORAGE_KEYS.DEFAULT_SETTINGS, JSON.stringify(snapshot.defaultSettings));
-    }
-    if (snapshot.defaultMargins) {
-      localStorage.setItem(WORKSPACE_STORAGE_KEYS.DEFAULT_MARGINS, JSON.stringify(snapshot.defaultMargins));
-    }
-    if (snapshot.aiSettings) {
-      localStorage.setItem(WORKSPACE_STORAGE_KEYS.AI_SETTINGS, JSON.stringify(snapshot.aiSettings));
-    }
-    if (snapshot.autoArchiveConfig) {
-      localStorage.setItem(WORKSPACE_STORAGE_KEYS.AUTO_ARCHIVE_CONFIG, JSON.stringify(snapshot.autoArchiveConfig));
+    } else {
+      localStorage.setItem(WORKSPACE_STORAGE_KEYS.SYSTEM_CONFIG, JSON.stringify(DEFAULT_SYSTEM_CONFIG));
     }
 
-    // 2. Data Arrays
+    if (snapshot.defaultSettings) {
+      localStorage.setItem(WORKSPACE_STORAGE_KEYS.DEFAULT_SETTINGS, JSON.stringify(snapshot.defaultSettings));
+    } else {
+      localStorage.setItem(WORKSPACE_STORAGE_KEYS.DEFAULT_SETTINGS, JSON.stringify(FALLBACK_DEFAULT_SETTINGS));
+    }
+
+    if (snapshot.defaultMargins) {
+      localStorage.setItem(WORKSPACE_STORAGE_KEYS.DEFAULT_MARGINS, JSON.stringify(snapshot.defaultMargins));
+    } else {
+      localStorage.removeItem(WORKSPACE_STORAGE_KEYS.DEFAULT_MARGINS);
+    }
+
+    if (snapshot.aiSettings) {
+      localStorage.setItem(WORKSPACE_STORAGE_KEYS.AI_SETTINGS, JSON.stringify(snapshot.aiSettings));
+    } else {
+      localStorage.setItem(WORKSPACE_STORAGE_KEYS.AI_SETTINGS, JSON.stringify(DEFAULT_AI_SETTINGS));
+    }
+
+    if (snapshot.autoArchiveConfig) {
+      localStorage.setItem(WORKSPACE_STORAGE_KEYS.AUTO_ARCHIVE_CONFIG, JSON.stringify(snapshot.autoArchiveConfig));
+    } else {
+      localStorage.setItem(WORKSPACE_STORAGE_KEYS.AUTO_ARCHIVE_CONFIG, JSON.stringify(DEFAULT_AUTO_ARCHIVE_CONFIG));
+    }
+
+    // 2. Data Arrays - ALWAYS overwritten with current snapshot (or empty array)
     localStorage.setItem(WORKSPACE_STORAGE_KEYS.CERTS, JSON.stringify(snapshot.certificates || []));
     localStorage.setItem(WORKSPACE_STORAGE_KEYS.BATCHES, JSON.stringify(snapshot.batches || []));
     localStorage.setItem(WORKSPACE_STORAGE_KEYS.DRAFTS, JSON.stringify(snapshot.drafts || []));
@@ -203,6 +226,8 @@ export function applyVaultSnapshotToWorkspace(snapshot: AccountVaultSnapshot): v
 
     if (snapshot.autosaveCert) {
       localStorage.setItem(WORKSPACE_STORAGE_KEYS.AUTOSAVE_CERT, JSON.stringify(snapshot.autosaveCert));
+    } else {
+      localStorage.removeItem(WORKSPACE_STORAGE_KEYS.AUTOSAVE_CERT);
     }
   } catch (err) {
     console.warn('Failed to apply vault snapshot:', err);
@@ -225,7 +250,9 @@ export function resetWorkspaceToDefaults(): void {
     localStorage.setItem(WORKSPACE_STORAGE_KEYS.CERTS, JSON.stringify([]));
     localStorage.setItem(WORKSPACE_STORAGE_KEYS.BATCHES, JSON.stringify([]));
     localStorage.setItem(WORKSPACE_STORAGE_KEYS.DRAFTS, JSON.stringify([]));
+    localStorage.setItem(WORKSPACE_STORAGE_KEYS.GROUPS, JSON.stringify([]));
     localStorage.setItem(WORKSPACE_STORAGE_KEYS.CUSTOM_TEMPLATES, JSON.stringify([]));
+    localStorage.setItem(WORKSPACE_STORAGE_KEYS.SIGNATURE_PRESETS, JSON.stringify([]));
     localStorage.setItem(WORKSPACE_STORAGE_KEYS.ARCHIVE_METADATA, JSON.stringify([]));
   } catch (err) {
     console.warn('Failed to reset workspace:', err);
@@ -246,6 +273,15 @@ export function dispatchWorkspaceReloadEvents(user?: UserLike | null): void {
     window.dispatchEvent(new CustomEvent('taqdeer_drafts_changed', { detail: getSavedDrafts() }));
     window.dispatchEvent(new CustomEvent('taqdeer_custom_templates_changed', { detail: getSavedCustomTemplates() }));
     window.dispatchEvent(new CustomEvent('taqdeer_archive_changed'));
+    const autosaveRaw = localStorage.getItem(WORKSPACE_STORAGE_KEYS.AUTOSAVE_CERT);
+    if (autosaveRaw) {
+      try {
+        const cert = JSON.parse(autosaveRaw);
+        window.dispatchEvent(new CustomEvent('taqdeer_autosave_cert_updated', { detail: cert }));
+      } catch {}
+    } else {
+      window.dispatchEvent(new CustomEvent('taqdeer_autosave_cert_updated', { detail: null }));
+    }
     window.dispatchEvent(new Event('storage'));
   } catch (e) {
     console.warn('Dispatch event note:', e);
@@ -254,11 +290,12 @@ export function dispatchWorkspaceReloadEvents(user?: UserLike | null): void {
 
 /**
  * COMPLETE ACCOUNT ISOLATION SWITCHER:
- * 1. Takes a full snapshot of the outgoing account and saves to local vault + cloud.
- * 2. Clears workspace data so no leakage occurs between accounts.
- * 3. Restores the incoming account's isolated local vault.
- * 4. Pulls latest cloud data for this account from Firestore/Server.
- * 5. Notifies all UI components in real time.
+ * 1. Locks workspace from background auto-sync during transition.
+ * 2. Takes a full snapshot of the outgoing account and saves to its local vault + cloud.
+ * 3. Clears workspace data so no leakage occurs between accounts.
+ * 4. Restores the incoming account's isolated local vault (or clean defaults).
+ * 5. Pulls isolated cloud data for this account from Firestore/Server.
+ * 6. Notifies all UI components in real time and releases lock.
  */
 export async function switchAndIsolateAccount(
   newUser: UserLike | null,
@@ -268,73 +305,82 @@ export async function switchAndIsolateAccount(
   draftsCount: number;
   batchesCount: number;
 }> {
-  const prevActiveKey = getActiveAccountKey();
-  const nextActiveKey = getAccountKey(newUser);
-
-  // 1. Snapshot previous active account's workspace
-  if (prevActiveKey) {
-    try {
-      const prevSnapshot = createWorkspaceSnapshot(previousUser);
-      localStorage.setItem(`taqdeer_vault_${prevActiveKey}`, JSON.stringify(prevSnapshot));
-
-      // Background cloud push for previous user if authenticated
-      if (previousUser && (previousUser.uid || previousUser.email)) {
-        syncFullAccountToCloud(previousUser).catch(err => {
-          console.warn('Background sync for previous user notice:', err);
-        });
-      }
-    } catch (e) {
-      console.warn('Snapshot error for previous user:', e);
-    }
-  }
-
-  // 2. Load incoming user's local vault if present
-  let hasLocalVault = false;
-  try {
-    const rawVault = localStorage.getItem(`taqdeer_vault_${nextActiveKey}`);
-    if (rawVault) {
-      const snapshot: AccountVaultSnapshot = JSON.parse(rawVault);
-      applyVaultSnapshotToWorkspace(snapshot);
-      hasLocalVault = true;
-    } else {
-      // Clean isolated slate for new user/guest
-      resetWorkspaceToDefaults();
-    }
-  } catch (e) {
-    console.warn('Failed to load local vault:', e);
-    resetWorkspaceToDefaults();
-  }
-
-  // 3. Set active account marker
-  localStorage.setItem(WORKSPACE_STORAGE_KEYS.ACTIVE_ACCOUNT_KEY, nextActiveKey);
-
-  // 4. If new user is logged in, pull & merge their cloud data
+  isSwitchingAccountLock = true;
   let result = {
     certsCount: 0,
     draftsCount: 0,
     batchesCount: 0
   };
 
-  if (newUser && (newUser.uid || newUser.email)) {
-    try {
-      const cloudRes = await restoreAccountFromCloud(newUser.uid, newUser.email || '');
-      result = cloudRes;
+  try {
+    const prevActiveKey = getActiveAccountKey();
+    const nextActiveKey = getAccountKey(newUser);
 
-      // Update local vault with the freshly merged cloud state
-      const updatedSnapshot = createWorkspaceSnapshot(newUser);
-      localStorage.setItem(`taqdeer_vault_${nextActiveKey}`, JSON.stringify(updatedSnapshot));
-    } catch (cloudErr) {
-      console.warn('Cloud restore on switch notice:', cloudErr);
+    // 1. Snapshot previous active account's workspace if active
+    if (prevActiveKey && prevActiveKey !== nextActiveKey) {
+      try {
+        const prevSnapshot = createWorkspaceSnapshot(previousUser);
+        localStorage.setItem(`taqdeer_vault_${prevActiveKey}`, JSON.stringify(prevSnapshot));
+
+        // Background cloud push for previous user if authenticated
+        if (previousUser && (previousUser.uid || previousUser.email || previousUser.userId)) {
+          syncFullAccountToCloud(previousUser).catch(err => {
+            console.warn('Background sync for previous user notice:', err);
+          });
+        }
+      } catch (e) {
+        console.warn('Snapshot error for previous user:', e);
+      }
     }
-  }
 
-  // 5. Register in Known Accounts Registry if user is valid
-  if (newUser && (newUser.uid || newUser.email)) {
-    registerAccountInRegistry(newUser);
-  }
+    // 2. Wipe active workspace first to guarantee ZERO data leakage
+    resetWorkspaceToDefaults();
 
-  // 6. Notify all components to re-render with isolated data
-  dispatchWorkspaceReloadEvents(newUser);
+    // 3. Load incoming user's local vault if present
+    let hasLocalVault = false;
+    try {
+      const rawVault = localStorage.getItem(`taqdeer_vault_${nextActiveKey}`);
+      if (rawVault) {
+        const snapshot: AccountVaultSnapshot = JSON.parse(rawVault);
+        applyVaultSnapshotToWorkspace(snapshot);
+        hasLocalVault = true;
+      }
+    } catch (e) {
+      console.warn('Failed to load local vault:', e);
+      resetWorkspaceToDefaults();
+    }
+
+    // 4. Set active account marker
+    localStorage.setItem(WORKSPACE_STORAGE_KEYS.ACTIVE_ACCOUNT_KEY, nextActiveKey);
+
+    // 5. If new user is logged in, pull their isolated cloud data
+    if (newUser && (newUser.uid || newUser.email || newUser.userId)) {
+      const uidOrId = newUser.uid || newUser.userId || '';
+      try {
+        const cloudRes = await restoreAccountFromCloud(uidOrId, newUser.email || '');
+        result = cloudRes;
+
+        // Update local vault with the freshly merged cloud state
+        const updatedSnapshot = createWorkspaceSnapshot(newUser);
+        localStorage.setItem(`taqdeer_vault_${nextActiveKey}`, JSON.stringify(updatedSnapshot));
+      } catch (cloudErr) {
+        console.warn('Cloud restore on switch notice:', cloudErr);
+      }
+    }
+
+    // 6. Register in Known Accounts Registry if user is valid
+    if (newUser && (newUser.uid || newUser.email || newUser.userId)) {
+      registerAccountInRegistry(newUser);
+    }
+
+    // 7. Notify all components to re-render with isolated data
+    dispatchWorkspaceReloadEvents(newUser);
+  } finally {
+    // Release switching lock
+    setTimeout(() => {
+      isSwitchingAccountLock = false;
+    }, 300);
+  }
 
   return result;
 }

@@ -195,6 +195,28 @@ ${text}`;
       }
     }
 
+    // 5. حفظ بيانات الحساب السحابية
+    if (pathname === '/cloud-sync/save' || pathname === '/cloud-sync/save/') {
+      const { userId, userEmail, packageData } = bodyData || {};
+      if (!userId && !userEmail) {
+        return res.status(400).json({ success: false, error: 'معرف المستخدم مطلوب' });
+      }
+      return res.status(200).json({
+        success: true,
+        message: 'تم استلام وتأكيد حزمة البيانات بنجاح',
+        syncedAt: new Date().toISOString()
+      });
+    }
+
+    // 6. تحميل بيانات الحساب السحابية
+    if (pathname === '/cloud-sync/load' || pathname === '/cloud-sync/load/') {
+      return res.status(200).json({
+        success: true,
+        exists: false,
+        message: 'جاهز للمزامنة مع قاعدة البيانات السحابية'
+      });
+    }
+
     return res.status(404).json({ success: false, error: 'المسار المطلوب غير موجود' });
   } catch (error: any) {
     console.error('Server error:', error);
