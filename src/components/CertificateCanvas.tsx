@@ -6,6 +6,7 @@ import { getGradientCss } from '../utils/gradientUtils';
 import { getTodayHijriDate, getTodayGregorianDate } from '../utils/defaultSettings';
 import { validateGridTemplateAreas } from '../utils/gridValidator';
 import { getCertificateDimensions } from '../utils/exportUtils';
+import { getCertificateBarcodeUrl } from '../utils/systemConfig';
 import {
   Award,
   Star,
@@ -556,6 +557,8 @@ export const CertificateCanvas: React.FC<Props> = ({
     });
   }, [data.verificationCode, data.id, data.certificateId, data.verificationPrefix, data.verificationCodePattern]);
 
+  const isDriveUploaded = !!(data.driveFileWebViewLink || data.driveFileUrl || data.isSavedCloud);
+
   // Measure container width dynamically to scale canvas to fit preview area
   useEffect(() => {
     if (!containerRef.current) return;
@@ -704,13 +707,24 @@ export const CertificateCanvas: React.FC<Props> = ({
     };
   }, [draggingKey, isDragModeActive, data.emojis, data.positions, onUpdateData, onUpdateEmojiPos, actualCanvasRef]);
 
-  // Generate dynamic QR Code for certificate verification (Links directly to Google Drive if available, otherwise to platform verification URL)
-  const isDriveUploaded = !!(data.driveFileWebViewLink || data.driveFileUrl);
+  const [systemConfigVersion, setSystemConfigVersion] = useState<number>(0);
+
+  useEffect(() => {
+    const handleConfigChange = () => {
+      setSystemConfigVersion((v) => v + 1);
+    };
+    window.addEventListener('taqdeer_system_config_changed', handleConfigChange);
+    return () => window.removeEventListener('taqdeer_system_config_changed', handleConfigChange);
+  }, []);
+
+  // Generate dynamic QR Code for certificate verification based on system/certificate destination setting
   const qrTargetUrl = useMemo(() => {
-    return isDriveUploaded
-      ? (data.driveFileWebViewLink || data.driveFileUrl!)
-      : `${window.location.origin}/verify?code=${verificationCode}`;
-  }, [isDriveUploaded, data.driveFileWebViewLink, data.driveFileUrl, verificationCode]);
+    return getCertificateBarcodeUrl(
+      verificationCode,
+      data.driveFileWebViewLink || data.driveFileUrl,
+      data.barcodeLinkTarget
+    );
+  }, [verificationCode, data.driveFileWebViewLink, data.driveFileUrl, data.barcodeLinkTarget, systemConfigVersion]);
 
   useEffect(() => {
     let isMounted = true;

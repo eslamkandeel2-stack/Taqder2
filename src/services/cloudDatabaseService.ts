@@ -7,7 +7,9 @@ import {
   query, 
   where, 
   deleteDoc, 
-  serverTimestamp
+  serverTimestamp,
+  onSnapshot,
+  Unsubscribe
 } from 'firebase/firestore';
 import { db } from './firebaseConfig';
 import { CertificateData, BatchRecord } from '../types';
@@ -15,6 +17,7 @@ import { DraftCertificateItem, getSavedDrafts } from '../utils/draftsManager';
 import { SystemSettingsConfig, getSavedSystemConfig } from '../utils/systemConfig';
 import { DefaultCertificateSettings, getSavedDefaultSettings } from '../utils/defaultSettings';
 import { AISettings, getSavedAISettings } from '../utils/aiConfig';
+import { AutoArchiveConfig, getAutoArchiveConfig } from '../utils/archiveManager';
 
 export interface UserCloudProfile {
   uid: string;
@@ -32,6 +35,7 @@ export interface FullAccountSyncPackage {
   systemConfig: SystemSettingsConfig;
   defaultSettings: DefaultCertificateSettings;
   aiSettings: AISettings;
+  autoArchiveConfig?: AutoArchiveConfig;
   certificates: CertificateData[];
   batches: BatchRecord[];
   drafts: DraftCertificateItem[];
@@ -44,9 +48,17 @@ export interface FullAccountSyncPackage {
 }
 
 /**
+ * Sanitize account ID for Firestore document keys
+ */
+export function sanitizeDocKey(raw: string): string {
+  if (!raw) return 'anonymous';
+  return raw.replace(/[^a-zA-Z0-9_\-@.]/g, '_').toLowerCase();
+}
+
+/**
  * Timeout wrapper to prevent any network or Firestore promise from blocking UI
  */
-function withTimeout<T>(promise: Promise<T>, ms = 4500, fallbackValue: T | null = null): Promise<T | null> {
+function withTimeout<T>(promise: Promise<T>, ms = 6000, fallbackValue: T | null = null): Promise<T | null> {
   let timeoutId: any;
   const timeoutPromise = new Promise<T | null>((resolve) => {
     timeoutId = setTimeout(() => resolve(fallbackValue), ms);
@@ -57,7 +69,7 @@ function withTimeout<T>(promise: Promise<T>, ms = 4500, fallbackValue: T | null 
       return res;
     }).catch((err) => {
       clearTimeout(timeoutId);
-      console.warn('Async cloud operation failed gracefully:', err);
+      console.warn('Async cloud operation fallback:', err);
       return fallbackValue;
     }),
     timeoutPromise
@@ -78,12 +90,14 @@ async function saveToServerCloudSync(userId: string, userEmail: string, packageD
         packageData
       })
     });
-    const data = await res.json();
-    return Boolean(data?.success);
+    if (res.ok) {
+      const data = await res.json();
+      return Boolean(data?.success);
+    }
   } catch (err) {
-    console.warn('Server cloud-sync save error:', err);
-    return false;
+    console.warn('Server cloud-sync save note:', err);
   }
+  return false;
 }
 
 /**
@@ -96,12 +110,14 @@ async function loadFromServerCloudSync(userId: string, userEmail: string): Promi
     if (userEmail) params.set('userEmail', userEmail);
 
     const res = await fetch(`/api/cloud-sync/load?${params.toString()}`);
-    const data = await res.json();
-    if (data?.success && data?.exists && data?.packageData) {
-      return data.packageData as FullAccountSyncPackage;
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.success && data?.exists && data?.packageData) {
+        return data.packageData as FullAccountSyncPackage;
+      }
     }
   } catch (err) {
-    console.warn('Server cloud-sync load error:', err);
+    console.warn('Server cloud-sync load note:', err);
   }
   return null;
 }
@@ -110,17 +126,18 @@ async function loadFromServerCloudSync(userId: string, userEmail: string): Promi
  * Saves all system settings, configurations and drafts for a user to Firestore and Server
  */
 export async function syncUserSettingsToCloud(user: { uid: string; email?: string | null; displayName?: string | null; photoURL?: string | null }): Promise<void> {
-  if (!user || !user.uid) return;
+  if (!user || (!user.uid && !user.email)) return;
 
   const currentSystemConfig = getSavedSystemConfig();
   const currentDefaultSettings = getSavedDefaultSettings();
   const currentAiSettings = getSavedAISettings();
   const nowIso = new Date().toISOString();
+  const primaryKey = sanitizeDocKey(user.uid || user.email || '');
 
-  // Try Firestore with timeout
+  // Firestore Sync with timeout
   await withTimeout((async () => {
-    const userDocRef = doc(db, 'users', user.uid);
-    const settingsDocRef = doc(db, 'user_settings', user.uid);
+    const userDocRef = doc(db, 'users', primaryKey);
+    const settingsDocRef = doc(db, 'user_settings', primaryKey);
 
     await setDoc(userDocRef, {
       uid: user.uid,
@@ -140,7 +157,21 @@ export async function syncUserSettingsToCloud(user: { uid: string; email?: strin
       updatedAt: serverTimestamp(),
       syncedAt: nowIso
     }, { merge: true });
-  })(), 3000);
+
+    // Mirror to email key if different
+    if (user.email && sanitizeDocKey(user.email) !== primaryKey) {
+      const emailSettingsRef = doc(db, 'user_settings', sanitizeDocKey(user.email));
+      await setDoc(emailSettingsRef, {
+        uid: user.uid,
+        userEmail: user.email,
+        systemConfig: currentSystemConfig,
+        defaultSettings: currentDefaultSettings,
+        aiSettings: currentAiSettings,
+        updatedAt: serverTimestamp(),
+        syncedAt: nowIso
+      }, { merge: true });
+    }
+  })(), 5000);
 }
 
 /**
@@ -153,7 +184,42 @@ export async function loadUserSettingsFromCloud(userId: string, userEmail = ''):
 } | null> {
   if (!userId && !userEmail) return null;
 
-  // 1. Try Server API first (Fast & Reliable across all devices)
+  const primaryKey = sanitizeDocKey(userId || userEmail);
+  const emailKey = sanitizeDocKey(userEmail);
+
+  // 1. Try Firestore direct first
+  const firestoreResult = await withTimeout((async () => {
+    let snap = await getDoc(doc(db, 'user_settings', primaryKey));
+    if (!snap.exists() && emailKey && emailKey !== primaryKey) {
+      snap = await getDoc(doc(db, 'user_settings', emailKey));
+    }
+
+    if (snap && snap.exists()) {
+      const data = snap.data();
+      if (data.systemConfig) {
+        localStorage.setItem('taqdeer_system_config_v2', JSON.stringify(data.systemConfig));
+        window.dispatchEvent(new CustomEvent('taqdeer_system_config_changed', { detail: data.systemConfig }));
+      }
+      if (data.defaultSettings) {
+        localStorage.setItem('taqdeer_default_settings', JSON.stringify(data.defaultSettings));
+        window.dispatchEvent(new CustomEvent('taqdeer_default_settings_changed', { detail: data.defaultSettings }));
+      }
+      if (data.aiSettings) {
+        localStorage.setItem('taqdeer_ai_settings_v1', JSON.stringify(data.aiSettings));
+        window.dispatchEvent(new CustomEvent('taqdeer_ai_settings_changed', { detail: data.aiSettings }));
+      }
+      return {
+        systemConfig: data.systemConfig,
+        defaultSettings: data.defaultSettings,
+        aiSettings: data.aiSettings
+      };
+    }
+    return null;
+  })(), 4000, null);
+
+  if (firestoreResult) return firestoreResult;
+
+  // 2. Try Server API
   const serverPackage = await loadFromServerCloudSync(userId, userEmail);
   if (serverPackage) {
     if (serverPackage.systemConfig) {
@@ -175,36 +241,7 @@ export async function loadUserSettingsFromCloud(userId: string, userEmail = ''):
     };
   }
 
-  // 2. Try Firestore fallback with timeout
-  const firestoreResult = await withTimeout((async () => {
-    if (!userId) return null;
-    const settingsDocRef = doc(db, 'user_settings', userId);
-    const snap = await getDoc(settingsDocRef);
-
-    if (snap.exists()) {
-      const data = snap.data();
-      if (data.systemConfig) {
-        localStorage.setItem('taqdeer_system_config_v2', JSON.stringify(data.systemConfig));
-        window.dispatchEvent(new CustomEvent('taqdeer_system_config_changed', { detail: data.systemConfig }));
-      }
-      if (data.defaultSettings) {
-        localStorage.setItem('taqdeer_default_settings', JSON.stringify(data.defaultSettings));
-        window.dispatchEvent(new CustomEvent('taqdeer_default_settings_changed', { detail: data.defaultSettings }));
-      }
-      if (data.aiSettings) {
-        localStorage.setItem('taqdeer_ai_settings_v1', JSON.stringify(data.aiSettings));
-        window.dispatchEvent(new CustomEvent('taqdeer_ai_settings_changed', { detail: data.aiSettings }));
-      }
-      return {
-        systemConfig: data.systemConfig,
-        defaultSettings: data.defaultSettings,
-        aiSettings: data.aiSettings
-      };
-    }
-    return null;
-  })(), 3000, null);
-
-  return firestoreResult;
+  return null;
 }
 
 /**
@@ -214,21 +251,22 @@ export async function saveCertificateToFirestore(
   cert: CertificateData, 
   user: { uid: string; email?: string | null }
 ): Promise<void> {
-  if (!cert || !user?.uid) return;
+  if (!cert || (!user?.uid && !user?.email)) return;
 
+  const userKey = sanitizeDocKey(user.uid || user.email || '');
   const certId = cert.id || `cert_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
-  const certDocRef = doc(db, 'user_certificates', `${user.uid}_${certId}`);
+  const certDocRef = doc(db, 'user_certificates', `${userKey}_${certId}`);
 
   await withTimeout(
     setDoc(certDocRef, {
       ...cert,
       id: certId,
-      userId: user.uid,
+      userId: user.uid || userKey,
       userEmail: user.email || '',
       savedAt: new Date().toISOString(),
       updatedAt: serverTimestamp()
     }, { merge: true }),
-    2500
+    3500
   );
 }
 
@@ -240,8 +278,9 @@ export async function deleteCertificateFromFirestore(
   userId: string
 ): Promise<void> {
   if (!certId || !userId) return;
-  const certDocRef = doc(db, 'user_certificates', `${userId}_${certId}`);
-  await withTimeout(deleteDoc(certDocRef), 2500);
+  const userKey = sanitizeDocKey(userId);
+  const certDocRef = doc(db, 'user_certificates', `${userKey}_${certId}`);
+  await withTimeout(deleteDoc(certDocRef), 3500);
 }
 
 /**
@@ -261,13 +300,16 @@ export async function loadUserCertificatesFromFirestore(userId: string): Promise
       certs.push(docSnap.data() as CertificateData);
     });
     return certs;
-  })(), 3500, []);
+  })(), 4500, []);
 
   return res || [];
 }
 
+// Global timestamp to prevent echo re-applying from real-time events
+let lastLocalSaveTimestamp = 0;
+
 /**
- * Full Sync: Upload all local certificates, drafts, batches and settings to Cloud (Server + Firestore)
+ * Full Sync: Upload all local certificates, drafts, batches and settings to Cloud (Firestore + Server)
  */
 export async function syncFullAccountToCloud(user: { uid: string; email?: string | null; displayName?: string | null; photoURL?: string | null }): Promise<{
   success: boolean;
@@ -279,8 +321,23 @@ export async function syncFullAccountToCloud(user: { uid: string; email?: string
 
   const userId = user.uid || user.email || 'user';
   const userEmail = user.email || '';
+  const primaryKey = sanitizeDocKey(userId);
+  const emailKey = sanitizeDocKey(userEmail);
+  const nowIso = new Date().toISOString();
+  lastLocalSaveTimestamp = Date.now();
 
-  // 1. Gather all local data
+  // Safety check: Ensure active workspace in localStorage belongs to this user before uploading
+  if (typeof window !== 'undefined') {
+    const activeKey = localStorage.getItem('taqdeer_active_account_key') || 'guest';
+    const rawTarget = user.uid || user.email || '';
+    const targetUserKey = 'acc_' + rawTarget.replace(/[^a-zA-Z0-9_\-@.]/g, '_').toLowerCase();
+    if (activeKey !== 'guest' && activeKey !== targetUserKey) {
+      console.warn(`[CloudSync] Skipped sync: active workspace (${activeKey}) does not match syncing user (${targetUserKey})`);
+      return { success: false, certsCount: 0, draftsCount: 0, batchesCount: 0 };
+    }
+  }
+
+  // 1. Gather all local data from workspace
   const currentSystemConfig = getSavedSystemConfig();
   const currentDefaultSettings = getSavedDefaultSettings();
   const currentAiSettings = getSavedAISettings();
@@ -351,13 +408,21 @@ export async function syncFullAccountToCloud(user: { uid: string; email?: string
     console.warn(e);
   }
 
+  let autoArchiveConfig: AutoArchiveConfig | undefined = undefined;
+  try {
+    autoArchiveConfig = getAutoArchiveConfig();
+  } catch (e) {
+    console.warn(e);
+  }
+
   const syncPackage: FullAccountSyncPackage = {
-    updatedAt: new Date().toISOString(),
+    updatedAt: nowIso,
     userId,
     userEmail,
     systemConfig: currentSystemConfig,
     defaultSettings: currentDefaultSettings,
     aiSettings: currentAiSettings,
+    autoArchiveConfig: autoArchiveConfig,
     certificates: certs,
     batches: batches,
     drafts: drafts,
@@ -369,41 +434,51 @@ export async function syncFullAccountToCloud(user: { uid: string; email?: string
     defaultMargins: defaultMargins
   };
 
-  // 2. High-speed Server Cloud Sync
-  await saveToServerCloudSync(userId, userEmail, syncPackage);
+  // 2. Firestore Sync as PRIMARY cloud persistence
+  const firestorePromise = (async () => {
+    try {
+      const dataBundleDocRef = doc(db, 'user_data_bundles', primaryKey);
+      const bundlePayload = {
+        userId,
+        userEmail,
+        certsCount: certs.length,
+        batchesCount: batches.length,
+        draftsCount: drafts.length,
+        certificates: certs.slice(0, 100),
+        batches: batches.slice(0, 50),
+        drafts: drafts.slice(0, 50),
+        customTemplates: customTemplates.slice(0, 50),
+        signaturePresets: signaturePresets.slice(0, 30),
+        studentGroups: studentGroups.slice(0, 50),
+        archiveMetadata: archiveMetadata.slice(0, 100),
+        autosaveCert: autosaveCert || null,
+        defaultMargins: defaultMargins || null,
+        autoArchiveConfig: autoArchiveConfig || null,
+        systemConfig: currentSystemConfig,
+        defaultSettings: currentDefaultSettings,
+        aiSettings: currentAiSettings,
+        updatedAt: nowIso,
+        syncedAt: nowIso
+      };
 
-  // 3. Firestore Sync in parallel (defensive & non-blocking)
-  withTimeout((async () => {
-    await syncUserSettingsToCloud(user);
+      await setDoc(dataBundleDocRef, bundlePayload, { merge: true });
 
-    // Save individual certificates up to 50 items
-    const limitedCerts = certs.slice(0, 50);
-    for (const cert of limitedCerts) {
-      await saveCertificateToFirestore(cert, user);
+      // If email key differs, mirror bundle to email key for cross-login retrieval
+      if (emailKey && emailKey !== primaryKey && emailKey !== 'anonymous') {
+        const emailBundleDocRef = doc(db, 'user_data_bundles', emailKey);
+        await setDoc(emailBundleDocRef, bundlePayload, { merge: true });
+      }
+
+      await syncUserSettingsToCloud(user);
+    } catch (fsErr) {
+      console.warn('Firestore primary sync warning:', fsErr);
     }
+  })();
 
-    const dataBundleDocRef = doc(db, 'user_data_bundles', userId);
-    await setDoc(dataBundleDocRef, {
-      userId,
-      userEmail,
-      certsCount: certs.length,
-      batchesCount: batches.length,
-      draftsCount: drafts.length,
-      batches: batches.slice(0, 30),
-      drafts: drafts.slice(0, 30),
-      customTemplates: customTemplates.slice(0, 30),
-      signaturePresets: signaturePresets.slice(0, 20),
-      studentGroups: studentGroups.slice(0, 30),
-      archiveMetadata: archiveMetadata.slice(0, 50),
-      autosaveCert: autosaveCert || null,
-      defaultMargins: defaultMargins || null,
-      systemConfig: currentSystemConfig,
-      defaultSettings: currentDefaultSettings,
-      aiSettings: currentAiSettings,
-      updatedAt: serverTimestamp(),
-      syncedAt: new Date().toISOString()
-    }, { merge: true });
-  })(), 4000);
+  // 3. Parallel Server Cloud Sync
+  const serverPromise = saveToServerCloudSync(userId, userEmail, syncPackage);
+
+  await Promise.allSettled([firestorePromise, serverPromise]);
 
   return {
     success: true,
@@ -414,7 +489,7 @@ export async function syncFullAccountToCloud(user: { uid: string; email?: string
 }
 
 /**
- * Pull and merge all account data from Cloud (Server + Firestore) to local device
+ * Pull and merge all account data from Cloud (Firestore & Server) to local device
  */
 export async function restoreAccountFromCloud(userId: string, userEmail = ''): Promise<{
   certsCount: number;
@@ -427,7 +502,96 @@ export async function restoreAccountFromCloud(userId: string, userEmail = ''): P
   let restoredDraftsCount = 0;
   let restoredBatchesCount = 0;
 
-  // 1. Try Server Package first
+  const primaryKey = sanitizeDocKey(userId || userEmail);
+  const emailKey = sanitizeDocKey(userEmail);
+
+  // 1. Try Firestore First (Real Cloud Database)
+  try {
+    let snap = await withTimeout(getDoc(doc(db, 'user_data_bundles', primaryKey)), 4000, null);
+    if ((!snap || !snap.exists()) && emailKey && emailKey !== primaryKey && emailKey !== 'anonymous') {
+      snap = await withTimeout(getDoc(doc(db, 'user_data_bundles', emailKey)), 4000, null);
+    }
+
+    if (snap && snap.exists()) {
+      const bundle = snap.data();
+
+      // Restore System Settings
+      if (bundle.systemConfig) {
+        localStorage.setItem('taqdeer_system_config_v2', JSON.stringify(bundle.systemConfig));
+        window.dispatchEvent(new CustomEvent('taqdeer_system_config_changed', { detail: bundle.systemConfig }));
+      }
+      // Restore Default Settings
+      if (bundle.defaultSettings) {
+        localStorage.setItem('taqdeer_default_settings', JSON.stringify(bundle.defaultSettings));
+        window.dispatchEvent(new CustomEvent('taqdeer_default_settings_changed', { detail: bundle.defaultSettings }));
+      }
+      // Restore AI Settings
+      if (bundle.aiSettings) {
+        localStorage.setItem('taqdeer_ai_settings_v1', JSON.stringify(bundle.aiSettings));
+        window.dispatchEvent(new CustomEvent('taqdeer_ai_settings_changed', { detail: bundle.aiSettings }));
+      }
+      // Restore Margins
+      if (bundle.defaultMargins) {
+        localStorage.setItem('taqdeer_default_margins', JSON.stringify(bundle.defaultMargins));
+      }
+      // Restore Autosaved / Current Certificate Fields & Signatures
+      if (bundle.autosaveCert) {
+        localStorage.setItem('taqdeer_autosave_certificate', JSON.stringify(bundle.autosaveCert));
+        window.dispatchEvent(new CustomEvent('taqdeer_autosave_cert_updated', { detail: bundle.autosaveCert }));
+      }
+      // Restore Auto Archive Config
+      if (bundle.autoArchiveConfig) {
+        localStorage.setItem('taqdeer_auto_archive_config_v1', JSON.stringify(bundle.autoArchiveConfig));
+      }
+      // Restore Signatures
+      if (bundle.signaturePresets && Array.isArray(bundle.signaturePresets)) {
+        localStorage.setItem('taqdeer_saved_signature_presets', JSON.stringify(bundle.signaturePresets));
+      }
+      // Restore Custom Templates
+      if (bundle.customTemplates && Array.isArray(bundle.customTemplates)) {
+        localStorage.setItem('taqdeer_custom_user_templates_v1', JSON.stringify(bundle.customTemplates));
+        window.dispatchEvent(new CustomEvent('taqdeer_custom_templates_changed', { detail: bundle.customTemplates }));
+      }
+      // Restore Student Groups
+      if (bundle.studentGroups && Array.isArray(bundle.studentGroups)) {
+        localStorage.setItem('taqdeer_student_groups_v1', JSON.stringify(bundle.studentGroups));
+        window.dispatchEvent(new CustomEvent('taqdeer_student_groups_changed', { detail: bundle.studentGroups }));
+      }
+      // Restore Archive
+      if (bundle.archiveMetadata && Array.isArray(bundle.archiveMetadata)) {
+        localStorage.setItem('taqdeer_archive_metadata_v1', JSON.stringify(bundle.archiveMetadata));
+        window.dispatchEvent(new CustomEvent('taqdeer_archive_changed'));
+      }
+      // Restore Batches
+      if (bundle.batches && Array.isArray(bundle.batches)) {
+        localStorage.setItem('taqdeer_batch_history_v1', JSON.stringify(bundle.batches));
+        restoredBatchesCount = bundle.batches.length;
+      }
+      // Restore Drafts
+      if (bundle.drafts && Array.isArray(bundle.drafts)) {
+        localStorage.setItem('taqdeer_saved_drafts_and_templates', JSON.stringify(bundle.drafts));
+        restoredDraftsCount = bundle.drafts.length;
+        window.dispatchEvent(new CustomEvent('taqdeer_drafts_changed', { detail: bundle.drafts }));
+      }
+      // Restore Certificates
+      if (bundle.certificates && Array.isArray(bundle.certificates)) {
+        localStorage.setItem('taqdeer_saved_certs', JSON.stringify(bundle.certificates));
+        restoredCertsCount = bundle.certificates.length;
+      }
+
+      window.dispatchEvent(new Event('storage'));
+
+      return {
+        certsCount: restoredCertsCount,
+        draftsCount: restoredDraftsCount,
+        batchesCount: restoredBatchesCount
+      };
+    }
+  } catch (fsErr) {
+    console.warn('Firestore restore warning:', fsErr);
+  }
+
+  // 2. Try Server Package Fallback
   const serverPackage = await loadFromServerCloudSync(userId, userEmail);
   if (serverPackage) {
     // Restore Settings
@@ -448,56 +612,34 @@ export async function restoreAccountFromCloud(userId: string, userEmail = ''): P
     }
     if (serverPackage.autosaveCert) {
       localStorage.setItem('taqdeer_autosave_certificate', JSON.stringify(serverPackage.autosaveCert));
+      window.dispatchEvent(new CustomEvent('taqdeer_autosave_cert_updated', { detail: serverPackage.autosaveCert }));
+    }
+    if (serverPackage.autoArchiveConfig) {
+      localStorage.setItem('taqdeer_auto_archive_config_v1', JSON.stringify(serverPackage.autoArchiveConfig));
+    }
+    if (serverPackage.signaturePresets && Array.isArray(serverPackage.signaturePresets)) {
+      localStorage.setItem('taqdeer_saved_signature_presets', JSON.stringify(serverPackage.signaturePresets));
     }
 
-    // Merge Certificates
+    // Set Certificates
     if (serverPackage.certificates && Array.isArray(serverPackage.certificates)) {
-      try {
-        const localRaw = localStorage.getItem('taqdeer_saved_certs');
-        const localCerts: CertificateData[] = localRaw ? JSON.parse(localRaw) : [];
-        const map = new Map<string, CertificateData>();
-        localCerts.forEach(c => map.set(c.id || c.verificationCode || Math.random().toString(), c));
-        serverPackage.certificates.forEach(c => map.set(c.id || c.verificationCode || Math.random().toString(), c));
-        const merged = Array.from(map.values());
-        localStorage.setItem('taqdeer_saved_certs', JSON.stringify(merged));
-        restoredCertsCount = merged.length;
-      } catch (e) {
-        console.warn(e);
-      }
+      localStorage.setItem('taqdeer_saved_certs', JSON.stringify(serverPackage.certificates));
+      restoredCertsCount = serverPackage.certificates.length;
     }
 
-    // Merge Drafts
+    // Set Drafts
     if (serverPackage.drafts && Array.isArray(serverPackage.drafts)) {
-      try {
-        const localDrafts = getSavedDrafts();
-        const map = new Map<string, DraftCertificateItem>();
-        localDrafts.forEach(d => map.set(d.id, d));
-        serverPackage.drafts.forEach(d => map.set(d.id, d));
-        const mergedDrafts = Array.from(map.values());
-        localStorage.setItem('taqdeer_saved_drafts_and_templates', JSON.stringify(mergedDrafts));
-        restoredDraftsCount = mergedDrafts.length;
-      } catch (e) {
-        console.warn(e);
-      }
+      localStorage.setItem('taqdeer_saved_drafts_and_templates', JSON.stringify(serverPackage.drafts));
+      restoredDraftsCount = serverPackage.drafts.length;
+      window.dispatchEvent(new CustomEvent('taqdeer_drafts_changed', { detail: serverPackage.drafts }));
     }
 
-    // Merge Batches
+    // Set Batches
     if (serverPackage.batches && Array.isArray(serverPackage.batches)) {
-      try {
-        const localRaw = localStorage.getItem('taqdeer_batch_history_v1');
-        const localBatches: BatchRecord[] = localRaw ? JSON.parse(localRaw) : [];
-        const map = new Map<string, BatchRecord>();
-        localBatches.forEach(b => map.set(b.id, b));
-        serverPackage.batches.forEach(b => map.set(b.id, b));
-        const mergedBatches = Array.from(map.values());
-        localStorage.setItem('taqdeer_batch_history_v1', JSON.stringify(mergedBatches));
-        restoredBatchesCount = mergedBatches.length;
-      } catch (e) {
-        console.warn(e);
-      }
+      localStorage.setItem('taqdeer_batch_history_v1', JSON.stringify(serverPackage.batches));
+      restoredBatchesCount = serverPackage.batches.length;
     }
 
-    // Merge Student Groups
     if (serverPackage.studentGroups && Array.isArray(serverPackage.studentGroups)) {
       try {
         localStorage.setItem('taqdeer_student_groups_v1', JSON.stringify(serverPackage.studentGroups));
@@ -507,7 +649,6 @@ export async function restoreAccountFromCloud(userId: string, userEmail = ''): P
       }
     }
 
-    // Merge Custom Templates
     if (serverPackage.customTemplates && Array.isArray(serverPackage.customTemplates)) {
       try {
         localStorage.setItem('taqdeer_custom_user_templates_v1', JSON.stringify(serverPackage.customTemplates));
@@ -517,16 +658,6 @@ export async function restoreAccountFromCloud(userId: string, userEmail = ''): P
       }
     }
 
-    // Merge Signature Presets
-    if (serverPackage.signaturePresets && Array.isArray(serverPackage.signaturePresets)) {
-      try {
-        localStorage.setItem('taqdeer_saved_signature_presets', JSON.stringify(serverPackage.signaturePresets));
-      } catch (e) {
-        console.warn(e);
-      }
-    }
-
-    // Merge Archive Metadata
     if (serverPackage.archiveMetadata && Array.isArray(serverPackage.archiveMetadata)) {
       try {
         localStorage.setItem('taqdeer_archive_metadata_v1', JSON.stringify(serverPackage.archiveMetadata));
@@ -536,6 +667,8 @@ export async function restoreAccountFromCloud(userId: string, userEmail = ''): P
       }
     }
 
+    window.dispatchEvent(new Event('storage'));
+
     return {
       certsCount: restoredCertsCount,
       draftsCount: restoredDraftsCount,
@@ -543,72 +676,85 @@ export async function restoreAccountFromCloud(userId: string, userEmail = ''): P
     };
   }
 
-  // 2. Firestore fallback if Server Sync was empty
-  await loadUserSettingsFromCloud(userId, userEmail);
-  const cloudCerts = await loadUserCertificatesFromFirestore(userId);
-  if (cloudCerts.length > 0) {
-    try {
-      const localRaw = localStorage.getItem('taqdeer_saved_certs');
-      const localCerts: CertificateData[] = localRaw ? JSON.parse(localRaw) : [];
-      const map = new Map<string, CertificateData>();
-      localCerts.forEach(c => map.set(c.id || c.verificationCode || Math.random().toString(), c));
-      cloudCerts.forEach(c => map.set(c.id || c.verificationCode || Math.random().toString(), c));
-      const merged = Array.from(map.values());
-      localStorage.setItem('taqdeer_saved_certs', JSON.stringify(merged));
-      restoredCertsCount = merged.length;
-    } catch (e) {
-      console.warn('Failed to merge cloud certs:', e);
-    }
-  }
+  return {
+    certsCount: 0,
+    draftsCount: 0,
+    batchesCount: 0
+  };
+}
+
+/**
+ * Real-Time Multi-Device Synchronization Listener
+ * Listens to Firestore changes made on another device/tab and updates local state automatically
+ */
+export function subscribeToAccountCloudSync(
+  user: { uid?: string; email?: string | null },
+  onUpdate?: (updatedAt: string) => void
+): Unsubscribe | (() => void) {
+  if (!user || (!user.uid && !user.email)) return () => {};
+
+  const primaryKey = sanitizeDocKey(user.uid || user.email || '');
 
   try {
-    const dataBundleDocRef = doc(db, 'user_data_bundles', userId);
-    const snap = await withTimeout(getDoc(dataBundleDocRef), 3000, null);
-    if (snap && snap.exists()) {
-      const bundle = snap.data();
-      if (bundle.drafts && Array.isArray(bundle.drafts)) {
-        localStorage.setItem('taqdeer_saved_drafts_and_templates', JSON.stringify(bundle.drafts));
-        restoredDraftsCount = bundle.drafts.length;
+    const docRef = doc(db, 'user_data_bundles', primaryKey);
+    const unsubscribe = onSnapshot(docRef, (docSnap) => {
+      // Ignore if local save just triggered this within 3.5 seconds
+      if (Date.now() - lastLocalSaveTimestamp < 3500) {
+        return;
       }
-      if (bundle.batches && Array.isArray(bundle.batches)) {
-        localStorage.setItem('taqdeer_batch_history_v1', JSON.stringify(bundle.batches));
-        restoredBatchesCount = bundle.batches.length;
-      }
-      if (bundle.customTemplates && Array.isArray(bundle.customTemplates)) {
-        localStorage.setItem('taqdeer_custom_user_templates_v1', JSON.stringify(bundle.customTemplates));
-        window.dispatchEvent(new CustomEvent('taqdeer_custom_templates_changed', { detail: bundle.customTemplates }));
-      }
-      if (bundle.studentGroups && Array.isArray(bundle.studentGroups)) {
-        localStorage.setItem('taqdeer_student_groups_v1', JSON.stringify(bundle.studentGroups));
-        window.dispatchEvent(new CustomEvent('taqdeer_student_groups_changed', { detail: bundle.studentGroups }));
-      }
-      if (bundle.signaturePresets && Array.isArray(bundle.signaturePresets)) {
-        localStorage.setItem('taqdeer_saved_signature_presets', JSON.stringify(bundle.signaturePresets));
-      }
-      if (bundle.autosaveCert) {
-        localStorage.setItem('taqdeer_autosave_certificate', JSON.stringify(bundle.autosaveCert));
-      }
-      if (bundle.defaultMargins) {
-        localStorage.setItem('taqdeer_default_margins', JSON.stringify(bundle.defaultMargins));
-      }
-      if (bundle.systemConfig) {
-        localStorage.setItem('taqdeer_system_config_v2', JSON.stringify(bundle.systemConfig));
-        window.dispatchEvent(new CustomEvent('taqdeer_system_config_changed', { detail: bundle.systemConfig }));
-      }
-      if (bundle.defaultSettings) {
-        localStorage.setItem('taqdeer_default_settings', JSON.stringify(bundle.defaultSettings));
-        window.dispatchEvent(new CustomEvent('taqdeer_default_settings_changed', { detail: bundle.defaultSettings }));
-      }
-    }
-  } catch (e) {
-    console.warn('Failed to restore data bundle:', e);
-  }
 
-  return {
-    certsCount: restoredCertsCount,
-    draftsCount: restoredDraftsCount,
-    batchesCount: restoredBatchesCount
-  };
+      if (docSnap.exists()) {
+        const bundle = docSnap.data();
+        if (bundle) {
+          // Check if incoming update is valid and newer
+          if (bundle.systemConfig) {
+            localStorage.setItem('taqdeer_system_config_v2', JSON.stringify(bundle.systemConfig));
+            window.dispatchEvent(new CustomEvent('taqdeer_system_config_changed', { detail: bundle.systemConfig }));
+          }
+          if (bundle.defaultSettings) {
+            localStorage.setItem('taqdeer_default_settings', JSON.stringify(bundle.defaultSettings));
+            window.dispatchEvent(new CustomEvent('taqdeer_default_settings_changed', { detail: bundle.defaultSettings }));
+          }
+          if (bundle.aiSettings) {
+            localStorage.setItem('taqdeer_ai_settings_v1', JSON.stringify(bundle.aiSettings));
+            window.dispatchEvent(new CustomEvent('taqdeer_ai_settings_changed', { detail: bundle.aiSettings }));
+          }
+          if (bundle.defaultMargins) {
+            localStorage.setItem('taqdeer_default_margins', JSON.stringify(bundle.defaultMargins));
+          }
+          if (bundle.autosaveCert) {
+            localStorage.setItem('taqdeer_autosave_certificate', JSON.stringify(bundle.autosaveCert));
+            window.dispatchEvent(new CustomEvent('taqdeer_autosave_cert_updated', { detail: bundle.autosaveCert }));
+          }
+          if (bundle.autoArchiveConfig) {
+            localStorage.setItem('taqdeer_auto_archive_config_v1', JSON.stringify(bundle.autoArchiveConfig));
+          }
+          if (bundle.signaturePresets && Array.isArray(bundle.signaturePresets)) {
+            localStorage.setItem('taqdeer_saved_signature_presets', JSON.stringify(bundle.signaturePresets));
+          }
+          if (bundle.studentGroups && Array.isArray(bundle.studentGroups)) {
+            localStorage.setItem('taqdeer_student_groups_v1', JSON.stringify(bundle.studentGroups));
+            window.dispatchEvent(new CustomEvent('taqdeer_student_groups_changed', { detail: bundle.studentGroups }));
+          }
+          if (bundle.customTemplates && Array.isArray(bundle.customTemplates)) {
+            localStorage.setItem('taqdeer_custom_user_templates_v1', JSON.stringify(bundle.customTemplates));
+            window.dispatchEvent(new CustomEvent('taqdeer_custom_templates_changed', { detail: bundle.customTemplates }));
+          }
+
+          if (onUpdate && bundle.updatedAt) {
+            onUpdate(bundle.updatedAt);
+          }
+        }
+      }
+    }, (error) => {
+      console.warn('Realtime cloud sync listener notice:', error);
+    });
+
+    return unsubscribe;
+  } catch (err) {
+    console.warn('Failed to attach realtime sync listener:', err);
+    return () => {};
+  }
 }
 
 export interface UserVerificationCloudRecord {
@@ -641,7 +787,7 @@ export async function saveUserVerificationToFirestore(
 ): Promise<boolean> {
   if (!userId) return false;
   try {
-    const cleanUserId = userId.trim();
+    const cleanUserId = sanitizeDocKey(userId);
     const docRef = doc(db, 'user_verifications', cleanUserId);
     const nowIso = new Date().toISOString();
     
@@ -686,7 +832,7 @@ export async function saveUserVerificationToFirestore(
 export async function loadUserVerificationFromFirestore(userId: string): Promise<UserVerificationCloudRecord | null> {
   if (!userId) return null;
   try {
-    const docRef = doc(db, 'user_verifications', userId.trim());
+    const docRef = doc(db, 'user_verifications', sanitizeDocKey(userId));
     const snap = await withTimeout(getDoc(docRef), 3500, null);
     if (snap && snap.exists()) {
       return snap.data() as UserVerificationCloudRecord;
@@ -696,3 +842,4 @@ export async function loadUserVerificationFromFirestore(userId: string): Promise
   }
   return null;
 }
+
