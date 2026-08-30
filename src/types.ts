@@ -297,7 +297,6 @@ export interface CertificateData {
   customGridTemplateAreas?: string;          // User-defined CSS Grid Template Areas string (e.g. '"header header" "title title" "body stamps" "signatures signatures"')
   customGridTemplateColumns?: string;        // Optional custom grid template columns (e.g. "1fr 1fr", "220px 1fr")
   customGridTemplateRows?: string;           // Optional custom grid template rows (e.g. "auto auto 1fr auto")
-  barcodeLinkTarget?: 'portal' | 'drive';    // Destination for QR/Barcode link: 'portal' (بوابة التحقق) or 'drive' (رابط جوجل درايف المباشر)
   qrCodeData: string;
   showQrCode: boolean;
   showVerificationBox?: boolean;             // Alias/sync for showing or hiding verification box

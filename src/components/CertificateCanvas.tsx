@@ -6,7 +6,6 @@ import { getGradientCss } from '../utils/gradientUtils';
 import { getTodayHijriDate, getTodayGregorianDate } from '../utils/defaultSettings';
 import { validateGridTemplateAreas } from '../utils/gridValidator';
 import { getCertificateDimensions } from '../utils/exportUtils';
-import { getCertificateBarcodeUrl } from '../utils/systemConfig';
 import {
   Award,
   Star,
@@ -557,8 +556,6 @@ export const CertificateCanvas: React.FC<Props> = ({
     });
   }, [data.verificationCode, data.id, data.certificateId, data.verificationPrefix, data.verificationCodePattern]);
 
-  const isDriveUploaded = !!(data.driveFileWebViewLink || data.driveFileUrl || data.isSavedCloud);
-
   // Measure container width dynamically to scale canvas to fit preview area
   useEffect(() => {
     if (!containerRef.current) return;
@@ -707,14 +704,13 @@ export const CertificateCanvas: React.FC<Props> = ({
     };
   }, [draggingKey, isDragModeActive, data.emojis, data.positions, onUpdateData, onUpdateEmojiPos, actualCanvasRef]);
 
-  // Generate dynamic QR Code for certificate verification based on system/certificate destination setting
+  // Generate dynamic QR Code for certificate verification (Links directly to Google Drive if available, otherwise to platform verification URL)
+  const isDriveUploaded = !!(data.driveFileWebViewLink || data.driveFileUrl);
   const qrTargetUrl = useMemo(() => {
-    return getCertificateBarcodeUrl(
-      verificationCode,
-      data.driveFileWebViewLink || data.driveFileUrl,
-      data.barcodeLinkTarget
-    );
-  }, [verificationCode, data.driveFileWebViewLink, data.driveFileUrl, data.barcodeLinkTarget]);
+    return isDriveUploaded
+      ? (data.driveFileWebViewLink || data.driveFileUrl!)
+      : `${window.location.origin}/verify?code=${verificationCode}`;
+  }, [isDriveUploaded, data.driveFileWebViewLink, data.driveFileUrl, verificationCode]);
 
   useEffect(() => {
     let isMounted = true;

@@ -581,10 +581,6 @@ export const EditorToolbar: React.FC<Props> = ({
   const isVerificationBoxLocked = isElementLocked(systemConfig, 'verificationBox');
   const isAspectRatioLocked = isElementLocked(systemConfig, 'aspectRatio');
 
-  const isSpellcheckEnabled = isFeatureEnabled(systemConfig, 'spellcheck');
-  const isPraiseBankEnabled = isFeatureEnabled(systemConfig, 'praiseBank');
-  const isAiFeaturesEnabled = isFeatureEnabled(systemConfig, 'aiFeatures');
-
   const handleOptimizeLayoutAi = async (targetPreset?: LayoutPreset) => {
     setIsAiOptimizingLayout(true);
     setPreviousCertDataBeforeLayoutAi(certificateData);
@@ -2410,18 +2406,16 @@ export const EditorToolbar: React.FC<Props> = ({
                     </span>
                   )}
                 </label>
-                {isAiFeaturesEnabled && (
-                  <button
-                    type="button"
-                    disabled={isTitleLocked}
-                    onClick={() => onOpenAiModal?.('improve', 'title')}
-                    className="text-[10px] font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 px-2 py-0.5 rounded-md border border-amber-300 flex items-center gap-1 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="اقتراح وتحسين عناوين الشهادة بالذكاء الاصطناعي"
-                  >
-                    <Sparkles className="w-3 h-3 text-amber-600" />
-                    <span>صياغة ذكية بالـ AI</span>
-                  </button>
-                )}
+                <button
+                  type="button"
+                  disabled={isTitleLocked}
+                  onClick={() => onOpenAiModal?.('improve', 'title')}
+                  className="text-[10px] font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 px-2 py-0.5 rounded-md border border-amber-300 flex items-center gap-1 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="اقتراح وتحسين عناوين الشهادة بالذكاء الاصطناعي"
+                >
+                  <Sparkles className="w-3 h-3 text-amber-600" />
+                  <span>صياغة ذكية بالـ AI</span>
+                </button>
               </div>
               <input
                 type="text"
@@ -2477,17 +2471,15 @@ export const EditorToolbar: React.FC<Props> = ({
                 <label className="block text-xs font-bold text-slate-700 flex items-center gap-1.5">
                   <span>🎗️ عبارة مقدمة التكريم (التمهيدية)</span>
                 </label>
-                {isAiFeaturesEnabled && (
-                  <button
-                    type="button"
-                    onClick={() => onOpenAiModal?.('improve', 'intro')}
-                    className="text-[10px] font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 px-2 py-0.5 rounded-md border border-amber-300 flex items-center gap-1 transition cursor-pointer"
-                    title="تحسين مقدمة التكريم بالذكاء الاصطناعي"
-                  >
-                    <Sparkles className="w-3 h-3 text-amber-600" />
-                    <span>صياغة ذكية بالـ AI</span>
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => onOpenAiModal?.('improve', 'intro')}
+                  className="text-[10px] font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 px-2 py-0.5 rounded-md border border-amber-300 flex items-center gap-1 transition cursor-pointer"
+                  title="تحسين مقدمة التكريم بالذكاء الاصطناعي"
+                >
+                  <Sparkles className="w-3 h-3 text-amber-600" />
+                  <span>صياغة ذكية بالـ AI</span>
+                </button>
               </div>
               <input
                 type="text"
@@ -2511,49 +2503,43 @@ export const EditorToolbar: React.FC<Props> = ({
               <div className="flex items-center justify-between mb-1.5 flex-wrap gap-1.5">
                 <label className="block text-xs font-bold text-slate-700">عبارة التقدير والشكر التفصيلية</label>
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  {isPraiseBankEnabled && onOpenAppreciationSuggestionsModal && (
-                    <button
-                      type="button"
-                      onClick={onOpenAppreciationSuggestionsModal}
-                      className="text-[10px] font-black text-indigo-900 bg-indigo-100 hover:bg-indigo-200 px-2 py-0.5 rounded-md border border-indigo-300 flex items-center gap-1 transition cursor-pointer"
-                      title="فتح بنك الصياغات الجاهزة والمصنفة للتقدير والثناء"
-                    >
-                      <BookOpen className="w-3 h-3 text-indigo-600" />
-                      <span>بنك الصياغات 💡</span>
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={onOpenAppreciationSuggestionsModal}
+                    className="text-[10px] font-black text-indigo-900 bg-indigo-100 hover:bg-indigo-200 px-2 py-0.5 rounded-md border border-indigo-300 flex items-center gap-1 transition cursor-pointer"
+                    title="فتح بنك الصياغات الجاهزة والمصنفة للتقدير والثناء"
+                  >
+                    <BookOpen className="w-3 h-3 text-indigo-600" />
+                    <span>بنك الصياغات 💡</span>
+                  </button>
 
-                  {isSpellcheckEnabled && onOpenProofreaderModal && (
-                    <button
-                      type="button"
-                      onClick={onOpenProofreaderModal}
-                      className={`text-[10px] font-black px-2 py-0.5 rounded-md border flex items-center gap-1 transition cursor-pointer ${
-                        liveProofread.fields.appreciationText.issues.length > 0
-                          ? 'bg-rose-100 text-rose-900 border-rose-300'
-                          : 'bg-emerald-100 text-emerald-900 border-emerald-300'
-                      }`}
-                      title="فحص وتدقيق هذه الفقرة لغوياً وإملائياً"
-                    >
-                      <SpellCheck className="w-3 h-3 text-current" />
-                      <span>
-                        {liveProofread.fields.appreciationText.issues.length > 0
-                          ? `تدقيق (${liveProofread.fields.appreciationText.issues.length} أخطاء)`
-                          : 'تدقيق إملائي ✍️'}
-                      </span>
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={onOpenProofreaderModal}
+                    className={`text-[10px] font-black px-2 py-0.5 rounded-md border flex items-center gap-1 transition cursor-pointer ${
+                      liveProofread.fields.appreciationText.issues.length > 0
+                        ? 'bg-rose-100 text-rose-900 border-rose-300'
+                        : 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                    }`}
+                    title="فحص وتدقيق هذه الفقرة لغوياً وإملائياً"
+                  >
+                    <SpellCheck className="w-3 h-3 text-current" />
+                    <span>
+                      {liveProofread.fields.appreciationText.issues.length > 0
+                        ? `تدقيق (${liveProofread.fields.appreciationText.issues.length} أخطاء)`
+                        : 'تدقيق إملائي ✍️'}
+                    </span>
+                  </button>
 
-                  {isAiFeaturesEnabled && (
-                    <button
-                      type="button"
-                      onClick={() => onOpenAiModal?.('improve', 'appreciation')}
-                      className="text-[10px] font-black text-amber-950 bg-gradient-to-r from-amber-200 to-amber-300 hover:from-amber-300 hover:to-amber-400 px-2 py-0.5 rounded-md border border-amber-400 shadow-2xs flex items-center gap-1 transition cursor-pointer"
-                      title="تحسين وبلاغة عبارة التقدير والشكر بالذكاء الاصطناعي"
-                    >
-                      <Sparkles className="w-3 h-3 text-amber-700 animate-pulse" />
-                      <span>تحسين بـ AI ✨</span>
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => onOpenAiModal?.('improve', 'appreciation')}
+                    className="text-[10px] font-black text-amber-950 bg-gradient-to-r from-amber-200 to-amber-300 hover:from-amber-300 hover:to-amber-400 px-2 py-0.5 rounded-md border border-amber-400 shadow-2xs flex items-center gap-1 transition cursor-pointer"
+                    title="تحسين وبلاغة عبارة التقدير والشكر بالذكاء الاصطناعي"
+                  >
+                    <Sparkles className="w-3 h-3 text-amber-700 animate-pulse" />
+                    <span>تحسين بـ AI ✨</span>
+                  </button>
                 </div>
               </div>
               <textarea
@@ -2586,18 +2572,16 @@ export const EditorToolbar: React.FC<Props> = ({
                   )}
                 </label>
                 <div className="flex items-center gap-2">
-                  {isAiFeaturesEnabled && (
-                    <button
-                      type="button"
-                      disabled={isPoemLocked}
-                      onClick={() => onOpenAiModal?.('improve', 'poem')}
-                      className="text-[10px] font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 px-2 py-0.5 rounded-md border border-amber-300 flex items-center gap-1 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                      title="اقتراح وتوليد أبيات شعرية راقية وحكم بالذكاء الاصطناعي"
-                    >
-                      <Sparkles className="w-3 h-3 text-amber-600" />
-                      <span>اقتراح أبيات بالـ AI</span>
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    disabled={isPoemLocked}
+                    onClick={() => onOpenAiModal?.('improve', 'poem')}
+                    className="text-[10px] font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 px-2 py-0.5 rounded-md border border-amber-300 flex items-center gap-1 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="اقتراح وتوليد أبيات شعرية راقية وحكم بالذكاء الاصطناعي"
+                  >
+                    <Sparkles className="w-3 h-3 text-amber-600" />
+                    <span>اقتراح أبيات بالـ AI</span>
+                  </button>
                   <label className="flex items-center gap-1.5 cursor-pointer text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200 shadow-2xs transition-colors">
                     <input
                       type="checkbox"

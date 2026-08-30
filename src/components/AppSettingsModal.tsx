@@ -54,11 +54,7 @@ import {
   GraduationCap,
   School,
   BookMarked,
-  Briefcase,
-  SpellCheck,
-  Globe,
-  FolderCheck,
-  Link
+  Briefcase
 } from 'lucide-react';
 import { CertificateData, FontOption, FrameStyle, LayoutPreset, AspectRatioOption, BadgeIconType, BadgeBgShape, VerificationBoxPattern, VerificationCodePattern } from '../types';
 import {
@@ -99,9 +95,7 @@ import {
   toggleSystemLockedElement,
   resetSystemConfig,
   SystemLockedElements,
-  SystemFeatureToggles,
-  setBarcodeLinkTarget,
-  isFeatureEnabled
+  SystemFeatureToggles
 } from '../utils/systemConfig';
 import { EXPORT_ENGINES } from '../utils/exportUtils';
 import { useDragScroll } from '../utils/useDragScroll';
@@ -252,24 +246,11 @@ export const AppSettingsModal: React.FC<Props> = ({
     };
   }, []);
 
-  const handleToggleFeature = (key: string, val?: boolean) => {
+  const handleToggleFeature = (key: keyof SystemFeatureToggles, val?: boolean) => {
     const updated = toggleSystemFeature(key, val);
     setSystemConfig(updated);
-    const isNowEnabled = isFeatureEnabled(updated, key);
     if (onShowToast) {
-      onShowToast(`تم ${isNowEnabled ? 'تفعيل' : 'إيقاف'} الخاصية بنجاح ⚙️`);
-    }
-  };
-
-  const handleSetBarcodeLinkTarget = (target: 'portal' | 'drive') => {
-    const updated = setBarcodeLinkTarget(target);
-    setSystemConfig(updated);
-    if (onShowToast) {
-      onShowToast(
-        target === 'portal'
-          ? 'تم ضبط الباركود ليفتح بوابة التحقق الرسمية للشهادة على النظام 🌐'
-          : 'تم ضبط الباركود ليفتح ملف الشهادة على Google Drive مباشرة 📁'
-      );
+      onShowToast(`تم ${updated.features[key] ? 'تفعيل' : 'إيقاف'} الخاصية بنجاح ⚙️`);
     }
   };
 
@@ -3082,76 +3063,6 @@ export const AppSettingsModal: React.FC<Props> = ({
             
             {/* Column 1: System Feature Toggles & Control Center */}
             <div className="space-y-5">
-
-              {/* Barcode Link Destination on Drive Save Setting Card */}
-              <div className="bg-gradient-to-br from-white to-amber-50/50 p-5 rounded-2xl border border-amber-300 shadow-sm space-y-4">
-                <div className="flex items-center justify-between border-b border-amber-200 pb-3">
-                  <div className="flex items-center gap-2">
-                    <div className="p-1.5 rounded-lg bg-amber-500 text-slate-950 shadow-xs">
-                      <QrCode className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h3 className="font-extrabold text-sm text-slate-900">
-                        رابط الباركود عند توثيق الشهادات على Drive
-                      </h3>
-                      <p className="text-[11px] text-slate-500 mt-0.5">
-                        حدد الوجهة التي تفتح عند مسح باركود وQR الشهادة بعد رفعها على السحابة
-                      </p>
-                    </div>
-                  </div>
-                  <span className="text-[11px] text-amber-900 font-black bg-amber-100 px-2.5 py-0.5 rounded-full border border-amber-300 shrink-0">
-                    {systemConfig.barcodeLinkTarget === 'drive' ? '📁 ملف Drive' : '🌐 بوابة التحقق'}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => handleSetBarcodeLinkTarget('portal')}
-                    className={`p-3.5 rounded-xl border text-right transition cursor-pointer flex flex-col justify-between gap-2 ${
-                      systemConfig.barcodeLinkTarget === 'portal' || !systemConfig.barcodeLinkTarget
-                        ? 'bg-amber-500 text-slate-950 border-amber-500 shadow-md font-black ring-2 ring-amber-400/40'
-                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Globe className="w-4 h-4" />
-                        <span className="text-xs font-black">بوابة التحقق على النظام</span>
-                      </div>
-                      {(systemConfig.barcodeLinkTarget === 'portal' || !systemConfig.barcodeLinkTarget) && (
-                        <CheckCircle2 className="w-4 h-4 text-slate-950" />
-                      )}
-                    </div>
-                    <p className={`text-[11px] leading-relaxed ${systemConfig.barcodeLinkTarget === 'portal' || !systemConfig.barcodeLinkTarget ? 'text-slate-900' : 'text-slate-500'}`}>
-                      يفتح صفحة التحقق والاعتماد للشهادة على النظام لعرض التفاصيل وتنزيل الوثيقة الرسمية.
-                    </p>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleSetBarcodeLinkTarget('drive')}
-                    className={`p-3.5 rounded-xl border text-right transition cursor-pointer flex flex-col justify-between gap-2 ${
-                      systemConfig.barcodeLinkTarget === 'drive'
-                        ? 'bg-amber-500 text-slate-950 border-amber-500 shadow-md font-black ring-2 ring-amber-400/40'
-                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <FolderCheck className="w-4 h-4" />
-                        <span className="text-xs font-black">ملف Google Drive مباشرة</span>
-                      </div>
-                      {systemConfig.barcodeLinkTarget === 'drive' && (
-                        <CheckCircle2 className="w-4 h-4 text-slate-950" />
-                      )}
-                    </div>
-                    <p className={`text-[11px] leading-relaxed ${systemConfig.barcodeLinkTarget === 'drive' ? 'text-slate-900' : 'text-slate-500'}`}>
-                      يفتح رابط ملف الشهادة على Google Drive مباشرة للتحميل والعرض السحابي الفوري.
-                    </p>
-                  </button>
-                </div>
-              </div>
               
               {/* Feature Toggles Card */}
               <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
@@ -3170,91 +3081,79 @@ export const AppSettingsModal: React.FC<Props> = ({
                 <div className="space-y-2.5 max-h-[460px] overflow-y-auto pr-1">
                   {[
                     {
-                      key: 'spellcheck',
-                      title: 'التدقيق اللغوي والإملائي (Arabic Proofreader)',
-                      desc: 'فحص وتصحيح الكلمات والعبارات إملائياً ولغوياً وإظهار أزرار التدقيق في المحرر',
-                      icon: SpellCheck
-                    },
-                    {
-                      key: 'praiseBank',
-                      title: 'بنك صياغات التقدير والثناء (Praise & Phrasing Bank)',
-                      desc: 'إظهار بنك الصياغات الجاهزة والمصنفة للتقدير والثناء لتسريع كتابة نصوص التكريم',
-                      icon: BookOpen
-                    },
-                    {
-                      key: 'autoArchive',
+                      key: 'autoArchive' as keyof SystemFeatureToggles,
                       title: 'الأرشفة التلقائية في المكتبة السحابية (Cloud Library)',
                       desc: 'حفظ وتصنيف الشهادات المكتملة تلقائياً في الأرشيف السحابي حسب التاريخ والمدرسة',
                       icon: Cloud
                     },
                     {
-                      key: 'autoGenderInflection',
+                      key: 'autoGenderInflection' as keyof SystemFeatureToggles,
                       title: 'محرك التوافق اللغوي والتذكير والتأنيث (طالب / طالبة)',
                       desc: 'تحويل الأفعال والصفات وصيغ التكريم تلقائياً عند التوليد الفردي والجماعي',
                       icon: Sparkles
                     },
                     {
-                      key: 'aiFeatures',
+                      key: 'aiFeatures' as keyof SystemFeatureToggles,
                       title: 'مساعد الذكاء الاصطناعي وتوليد النصوص (Gemini / OpenAI)',
                       desc: 'تفعيل زر التوليد الذكي لصياغة نصوص التكريم والثناء البلاغي',
                       icon: Bot
                     },
                     {
-                      key: 'qrVerification',
+                      key: 'qrVerification' as keyof SystemFeatureToggles,
                       title: 'نظام التحقق الرقمي ومربع الـ QR والباركود',
                       desc: 'توليد باركود وQR للتحقق الفوري من صحة ومطابقة الشهادات إلكترونياً',
                       icon: QrCode
                     },
                     {
-                      key: 'crispVectorPdf',
+                      key: 'crispVectorPdf' as keyof SystemFeatureToggles,
                       title: 'تصدير الطباعة فائق الدقة (Crisp Vector PDF)',
                       desc: 'ضمان نقاء الخطوط والزخارف ودقة الطباعة حتى مقاسات البوسترات الكبيرة',
                       icon: Printer
                     },
                     {
-                      key: 'batchReviewModal',
+                      key: 'batchReviewModal' as keyof SystemFeatureToggles,
                       title: 'نافذة المراجعة والتحقق من الطلاب قبل التوليد الجماعي',
                       desc: 'عرض جدول الأسماء ومطابقة الصيغ قبل إنشاء وطباعة الدفعة',
                       icon: FileCheck2
                     },
                     {
-                      key: 'autoSaveDrafts',
+                      key: 'autoSaveDrafts' as keyof SystemFeatureToggles,
                       title: 'الحفظ التلقائي للمسودات واستعادة العمل',
                       desc: 'حفظ التعديلات لحظة بلحظة لمنع فقدان البيانات عند إغلاق المتصفح',
                       icon: Save
                     },
                     {
-                      key: 'watermark',
+                      key: 'watermark' as keyof SystemFeatureToggles,
                       title: 'العلامة المائية الأمنية لمنع التزوير',
                       desc: 'إظهار نص أمني شبه شفاف بخلفية الشهادة',
                       icon: ShieldCheck
                     },
                     {
-                      key: 'soundEffects',
+                      key: 'soundEffects' as keyof SystemFeatureToggles,
                       title: 'المؤثرات الصوتية والتفاعلية',
                       desc: 'تشغيل نغمات تأكيدية خفيفة عند الحفظ، التصدير، وإنجاز الدفعات',
                       icon: Activity
                     },
                     {
-                      key: 'strictQrSecurity',
+                      key: 'strictQrSecurity' as keyof SystemFeatureToggles,
                       title: 'التشفير الأمني المشدد لبيانات الـ QR',
                       desc: 'تضمين رمز التوثيق المشفر وتاريخ الإصدار لمنع التلاعب',
                       icon: Lock
                     },
                     {
-                      key: 'printCropMarks',
+                      key: 'printCropMarks' as keyof SystemFeatureToggles,
                       title: 'علامات القص وهوامش المطابع (Crop Marks)',
                       desc: 'إظهار خطوط إرشادية حول الإطار لتسهيل القص الاحترافي بعد الطباعة',
                       icon: Layout
                     },
                     {
-                      key: 'cloudAutoSync',
+                      key: 'cloudAutoSync' as keyof SystemFeatureToggles,
                       title: 'المزامنة السحابية الفورية مع مساحة التخزين',
                       desc: 'مزامنة القوالب والشهادات مع التخزين السحابي المحلي',
                       icon: Wifi
                     }
                   ].map((feat) => {
-                    const isEnabled = isFeatureEnabled(systemConfig, feat.key);
+                    const isEnabled = Boolean(systemConfig.features[feat.key]);
                     const Icon = feat.icon;
                     return (
                       <div

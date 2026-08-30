@@ -26,14 +26,8 @@ import { AppreciationSuggestionsModal } from './components/AppreciationSuggestio
 import { ExportFormat } from './types';
 import { User } from 'firebase/auth';
 import { initAuthListener, getCurrentUser, checkRedirectAuthResult } from './services/googleDriveService';
-import {
-  saveActiveWorkspaceVault,
-  switchAndIsolateAccount,
-  isAccountSwitching,
-  getActiveAccountKey,
-  getAccountKey
-} from './services/accountIsolationManager';
-import { syncFullAccountToCloud, restoreAccountFromCloud, subscribeToAccountCloudSync } from './services/cloudDatabaseService';
+import { saveActiveWorkspaceVault, switchAndIsolateAccount } from './services/accountIsolationManager';
+import { syncFullAccountToCloud } from './services/cloudDatabaseService';
 import {
   sanitizeOklchInDoc,
   waitForImagesToLoad,
@@ -363,36 +357,15 @@ export default function App() {
   // Listen for Google/Firebase Auth changes & Account Workspace Isolation switches
   useEffect(() => {
     // Check if returning from Google Redirect Auth (e.g. on Vercel / mobile)
-    checkRedirectAuthResult().then(async (res) => {
+    checkRedirectAuthResult().then((res) => {
       if (res?.user) {
         setCurrentUser(res.user);
-        try {
-          await switchAndIsolateAccount(res.user);
-          await restoreAccountFromCloud(res.user.uid, res.user.email || '');
-          const freshData = getAutosavedInitialData();
-          setHistory([freshData]);
-          setHistoryIndex(0);
-        } catch (err) {
-          console.warn('Account switch after redirect error:', err);
-        }
-        setToastMessage(`أهلاً بك ${res.user.displayName || 'مستخدم Google'}! تم تسجيل الدخول واسترجاع بياناتك بنجاح ✨`);
+        switchAndIsolateAccount(res.user).catch(err => console.warn('Account switch after redirect error:', err));
+        setToastMessage(`أهلاً بك ${res.user.displayName || 'مستخدم Google'}! تم تسجيل الدخول بنجاح ✨`);
       }
     }).catch(e => console.warn('checkRedirectAuthResult notice:', e));
 
-    const unsub = initAuthListener(async (user) => {
-      const activeKey = getActiveAccountKey();
-      const userKey = getAccountKey(user);
-
-      if (activeKey !== userKey) {
-        try {
-          await switchAndIsolateAccount(user);
-          const freshData = getAutosavedInitialData();
-          setHistory([freshData]);
-          setHistoryIndex(0);
-        } catch (err) {
-          console.warn('Auth switch error:', err);
-        }
-      }
+    const unsub = initAuthListener((user) => {
       setCurrentUser(user);
     });
 
@@ -401,128 +374,30 @@ export default function App() {
       setHistory([freshData]);
       setHistoryIndex(0);
       if (e?.detail?.user !== undefined) {
-        setCurrentUser(e?.detail?.user);
-      }
-    };
-
-    const handleAutosaveCertUpdated = (e: any) => {
-      if (e?.detail && typeof e.detail === 'object' && e.detail.title) {
-        setHistory([e.detail]);
-        setHistoryIndex(0);
-      } else {
-        const freshData = getAutosavedInitialData();
-        setHistory([freshData]);
-        setHistoryIndex(0);
+        setCurrentUser(e.detail.user);
       }
     };
 
     window.addEventListener('taqdeer_account_switched', handleAccountSwitched);
-    window.addEventListener('taqdeer_autosave_cert_updated', handleAutosaveCertUpdated);
 
     return () => {
       unsub();
       window.removeEventListener('taqdeer_account_switched', handleAccountSwitched);
-      window.removeEventListener('taqdeer_autosave_cert_updated', handleAutosaveCertUpdated);
     };
   }, []);
 
-  // Real-time Cloud Sync & Multi-Device Live Synchronization
-  useEffect(() => {
-    if (!currentUser || (!currentUser.uid && !currentUser.email)) return;
-
-    // 1. Subscribe to Firestore live updates from other devices/tabs
-    const unsubscribeCloud = subscribeToAccountCloudSync(currentUser, (updatedAt) => {
-      if (isAccountSwitching()) return;
-      const freshData = getAutosavedInitialData();
-      setHistory([freshData]);
-      setHistoryIndex(0);
-      console.log('Real-time cloud update synchronized:', updatedAt);
-    });
-
-    // 2. Periodic background sync every 25 seconds for reliable multi-device replication
-    const intervalId = setInterval(() => {
-      if (isAccountSwitching()) return;
-      const activeKey = getActiveAccountKey();
-      const userKey = getAccountKey(currentUser);
-      if (activeKey !== userKey) return;
-
-      saveActiveWorkspaceVault(currentUser);
-      syncFullAccountToCloud(currentUser).catch((err) => {
-        console.warn('Periodic background sync notice:', err);
-      });
-    }, 25000);
-
-    // 3. Flush sync before page unload or tab close
-    const handleBeforeUnload = () => {
-      if (isAccountSwitching()) return;
-      const activeKey = getActiveAccountKey();
-      const userKey = getAccountKey(currentUser);
-      if (activeKey !== userKey) return;
-
-      saveActiveWorkspaceVault(currentUser);
-      syncFullAccountToCloud(currentUser).catch(() => {});
-    };
-    window.addEventListener('beforeunload', handleBeforeUnload);
-
-    return () => {
-      if (typeof unsubscribeCloud === 'function') {
-        unsubscribeCloud();
-      }
-      clearInterval(intervalId);
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-    };
-  }, [currentUser]);
-
-  // Fast debounced cloud sync & local vault snapshot whenever certificate or settings are updated
+  // Debounced cloud sync & local vault snapshot on active edits for logged-in accounts
   useEffect(() => {
     if (!currentUser || (!currentUser.uid && !currentUser.email)) return;
     const timer = setTimeout(() => {
-      if (isAccountSwitching()) return;
-      const activeKey = getActiveAccountKey();
-      const userKey = getAccountKey(currentUser);
-      if (activeKey !== userKey) return;
-
       saveActiveWorkspaceVault(currentUser);
       syncFullAccountToCloud(currentUser).catch((err) => {
         console.warn('Debounced background sync notice:', err);
       });
-    }, 1500);
+    }, 3000);
 
     return () => clearTimeout(timer);
   }, [certificateData, currentUser]);
-
-  // Sync on global settings change events
-  useEffect(() => {
-    if (!currentUser || (!currentUser.uid && !currentUser.email)) return;
-
-    const handleConfigChanged = () => {
-      if (isAccountSwitching()) return;
-      const activeKey = getActiveAccountKey();
-      const userKey = getAccountKey(currentUser);
-      if (activeKey !== userKey) return;
-
-      saveActiveWorkspaceVault(currentUser);
-      syncFullAccountToCloud(currentUser).catch((err) => {
-        console.warn('Sync on settings change note:', err);
-      });
-    };
-
-    window.addEventListener('taqdeer_system_config_changed', handleConfigChanged);
-    window.addEventListener('taqdeer_default_settings_changed', handleConfigChanged);
-    window.addEventListener('taqdeer_ai_settings_changed', handleConfigChanged);
-    window.addEventListener('taqdeer_custom_templates_changed', handleConfigChanged);
-    window.addEventListener('taqdeer_student_groups_changed', handleConfigChanged);
-    window.addEventListener('taqdeer_drafts_changed', handleConfigChanged);
-
-    return () => {
-      window.removeEventListener('taqdeer_system_config_changed', handleConfigChanged);
-      window.removeEventListener('taqdeer_default_settings_changed', handleConfigChanged);
-      window.removeEventListener('taqdeer_ai_settings_changed', handleConfigChanged);
-      window.removeEventListener('taqdeer_custom_templates_changed', handleConfigChanged);
-      window.removeEventListener('taqdeer_student_groups_changed', handleConfigChanged);
-      window.removeEventListener('taqdeer_drafts_changed', handleConfigChanged);
-    };
-  }, [currentUser]);
 
   const canvasRef = useRef<HTMLDivElement>(null);
 

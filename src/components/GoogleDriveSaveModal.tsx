@@ -9,7 +9,6 @@ import {
   clearAccessToken
 } from '../services/googleDriveService';
 import { generateVerificationCode } from '../utils/qrUtils';
-import { getSavedSystemConfig, getCertificateBarcodeUrl } from '../utils/systemConfig';
 import { User } from 'firebase/auth';
 import {
   Cloud,
@@ -24,10 +23,7 @@ import {
   Database,
   ArrowRight,
   ShieldCheck,
-  Sparkles,
-  QrCode,
-  Globe,
-  FolderCheck
+  Sparkles
 } from 'lucide-react';
 import { captureCertificateCanvas, findCertificateCanvasElement } from '../utils/exportUtils';
 import { GoogleInFrameButton } from './GoogleInFrameButton';
@@ -60,9 +56,6 @@ export const GoogleDriveSaveModal: React.FC<Props> = ({
   const [uploadSuccess, setUploadSuccess] = useState(false);
   const [cloudOnlySuccess, setCloudOnlySuccess] = useState(false);
   const [driveUrl, setDriveUrl] = useState<string>(certificateData.driveFileWebViewLink || '');
-  const [barcodeTarget, setBarcodeTarget] = useState<'portal' | 'drive'>(() => {
-    return certificateData.barcodeLinkTarget || getSavedSystemConfig().barcodeLinkTarget || 'portal';
-  });
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -72,7 +65,6 @@ export const GoogleDriveSaveModal: React.FC<Props> = ({
       setCloudOnlySuccess(false);
       setUploadSuccess(!!certificateData.driveFileWebViewLink);
       setDriveUrl(certificateData.driveFileWebViewLink || '');
-      setBarcodeTarget(certificateData.barcodeLinkTarget || getSavedSystemConfig().barcodeLinkTarget || 'portal');
 
       // Default mode: if already uploaded to Drive, open drive tab, else start on cloud-only tab
       if (certificateData.driveFileWebViewLink) {
@@ -291,23 +283,14 @@ const handleLogin = () => {
         ? certificateData.id
         : `cloud-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
 
-      const vCode = certificateData.verificationCode || generateVerificationCode();
-      const targetBarcodeUrl = getCertificateBarcodeUrl(
-        vCode,
-        driveRes.webViewLink,
-        barcodeTarget
-      );
-
       const updatedFields: Partial<CertificateData> = {
         id: certId,
-        verificationCode: vCode,
         isSavedCloud: true,
         driveFileId: driveRes.fileId,
         driveFileWebViewLink: driveRes.webViewLink,
         driveFileUrl: driveRes.webContentLink,
         driveUploadedAt: new Date().toISOString(),
-        barcodeLinkTarget: barcodeTarget,
-        qrCodeData: targetBarcodeUrl,
+        qrCodeData: driveRes.webViewLink, // QR Code links directly to Google Drive download/view
       };
 
       const fullUpdatedCert: CertificateData = {
@@ -603,63 +586,6 @@ const handleLogin = () => {
                 </div>
               )}
 
-              {/* Barcode Link Destination Selector */}
-              <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-2.5 text-right">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <QrCode className="w-4 h-4 text-amber-600" />
-                    <span className="text-xs font-black text-slate-800">وجهة رابط الباركود وQR عند مسحه:</span>
-                  </div>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
-                    {barcodeTarget === 'drive' ? '📁 ملف Drive' : '🌐 بوابة التحقق'}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setBarcodeTarget('portal')}
-                    className={`p-2.5 rounded-xl border text-right transition cursor-pointer flex flex-col justify-between gap-1.5 ${
-                      barcodeTarget === 'portal'
-                        ? 'bg-amber-500 text-slate-950 border-amber-500 shadow-xs font-black ring-1 ring-amber-400'
-                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5">
-                        <Globe className="w-3.5 h-3.5" />
-                        <span className="text-[11px] font-bold">بوابة التحقق على النظام</span>
-                      </div>
-                      {barcodeTarget === 'portal' && <CheckCircle2 className="w-3.5 h-3.5 text-slate-950" />}
-                    </div>
-                    <p className={`text-[10px] leading-relaxed ${barcodeTarget === 'portal' ? 'text-slate-900' : 'text-slate-500'}`}>
-                      يفتح صفحة التحقق والاعتماد للشهادة على النظام.
-                    </p>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setBarcodeTarget('drive')}
-                    className={`p-2.5 rounded-xl border text-right transition cursor-pointer flex flex-col justify-between gap-1.5 ${
-                      barcodeTarget === 'drive'
-                        ? 'bg-amber-500 text-slate-950 border-amber-500 shadow-xs font-black ring-1 ring-amber-400'
-                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5">
-                        <FolderCheck className="w-3.5 h-3.5" />
-                        <span className="text-[11px] font-bold">ملف Drive مباشرة</span>
-                      </div>
-                      {barcodeTarget === 'drive' && <CheckCircle2 className="w-3.5 h-3.5 text-slate-950" />}
-                    </div>
-                    <p className={`text-[10px] leading-relaxed ${barcodeTarget === 'drive' ? 'text-slate-900' : 'text-slate-500'}`}>
-                      يفتح ملف الشهادة الأصلي على Google Drive للتحميل الفوري.
-                    </p>
-                  </button>
-                </div>
-              </div>
-
               {/* Action Button */}
               {user && (
                 <button
@@ -692,12 +618,10 @@ const handleLogin = () => {
                 <div className="bg-emerald-50 border border-emerald-300 p-3.5 sm:p-4 rounded-2xl space-y-3 text-right">
                   <div className="flex items-center gap-2 text-emerald-950 font-black text-xs sm:text-sm">
                     <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-                    <span>تم حفظ وتوثيق الشهادة بنجاح على Google Drive! ☁️🎉</span>
+                    <span>تم حفظ الشهادة بنجاح على Google Drive! ☁️🎉</span>
                   </div>
                   <p className="text-[11px] text-emerald-800 leading-relaxed">
-                    {barcodeTarget === 'drive'
-                      ? 'أصبح باركود QR الخاص بهذه الشهادة يوجه الآن مباشرة إلى رابط ملف الشهادة على Google Drive.'
-                      : 'أصبح باركود QR الخاص بهذه الشهادة يوجه إلى بوابة التحقق الرسمية على النظام، مع ربط ملف Google Drive بالشهادة.'}
+                    أصبح باركود QR الخاص بهذه الشهادة يوجه الآن مباشرة إلى رابط التحقق والتحميل الأصلي على Google Drive.
                   </p>
 
                   <div className="bg-white p-2.5 rounded-xl border border-emerald-200 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">

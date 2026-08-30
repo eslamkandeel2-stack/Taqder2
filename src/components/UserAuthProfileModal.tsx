@@ -510,27 +510,17 @@ export const UserAuthProfileModal: React.FC<UserAuthProfileModalProps> = ({
   const handleLogout = async () => {
     try {
       setIsLoading(true);
-      const outgoingUser = currentUser || (unifiedAccount ? {
-        uid: unifiedAccount.userId,
-        userId: unifiedAccount.userId,
-        email: unifiedAccount.email || unifiedAccount.googleEmail,
-        displayName: unifiedAccount.displayName || unifiedAccount.username
-      } : null);
-
-      // 1. Isolate and secure outgoing account's workspace before clearing credentials
-      await switchAndIsolateAccount(null, outgoingUser as any);
-
-      // 2. Sign out of auth providers & clear session
       await googleSignOut();
       saveStoredUnifiedAccount(null);
       setUnifiedAccount(null);
       
+      await switchAndIsolateAccount(null, currentUser);
       onUserChange(null);
       setLastSyncResult(null);
       setKnownAccounts(getKnownAccounts());
       setActiveTab('login');
 
-      onShowToast('تم تسجيل الخروج وتأمين بيانات الحساب في مساحتك السحابية بنجاح 🔒');
+      onShowToast('تم تسجيل الخروج وتأمين بيانات الحساب بنجاح 🔒');
     } catch (e: any) {
       console.error(e);
       onShowToast('حدث خطأ أثناء تسجيل الخروج');

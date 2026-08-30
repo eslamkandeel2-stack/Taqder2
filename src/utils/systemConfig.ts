@@ -29,15 +29,11 @@ export interface SystemFeatureToggles {
   enablePrintCropMarks: boolean;
   enableStrictQrSecurity: boolean;
   enableCloudAutoSync: boolean;
-  enableSpellcheck: boolean; // التدقيق اللغوي والإملائي
-  enablePraiseBank: boolean; // بنك صياغات التقدير والثناء
-  [key: string]: boolean;
 }
 
 export interface SystemSettingsConfig {
   version: string;
   updatedAt: string;
-  barcodeLinkTarget: 'portal' | 'drive'; // 'portal': بوابة التحقق المعتمدة على النظام, 'drive': ملف الشهادة على Google Drive مباشرة
   features: SystemFeatureToggles;
   lockedElements: SystemLockedElements;
 }
@@ -45,7 +41,6 @@ export interface SystemSettingsConfig {
 export const DEFAULT_SYSTEM_CONFIG: SystemSettingsConfig = {
   version: '2026.2',
   updatedAt: new Date().toISOString(),
-  barcodeLinkTarget: 'portal',
   features: {
     enableAutoArchive: true,
     enableAutoGenderInflection: true,
@@ -59,8 +54,6 @@ export const DEFAULT_SYSTEM_CONFIG: SystemSettingsConfig = {
     enablePrintCropMarks: false,
     enableStrictQrSecurity: true,
     enableCloudAutoSync: true,
-    enableSpellcheck: true,
-    enablePraiseBank: true,
   },
   lockedElements: {
     schoolName: false,
@@ -92,7 +85,6 @@ export function getSavedSystemConfig(): SystemSettingsConfig {
       return {
         ...DEFAULT_SYSTEM_CONFIG,
         ...parsed,
-        barcodeLinkTarget: parsed.barcodeLinkTarget || DEFAULT_SYSTEM_CONFIG.barcodeLinkTarget,
         features: {
           ...DEFAULT_SYSTEM_CONFIG.features,
           ...(parsed.features || {})
@@ -128,78 +120,20 @@ export function saveSystemConfig(config: SystemSettingsConfig): void {
 }
 
 /**
- * Toggles a single feature flag (normalizes keys like 'spellcheck' and 'enableSpellcheck')
+ * Toggles a single feature flag
  */
-export function toggleSystemFeature(rawKey: string, value?: boolean): SystemSettingsConfig {
+export function toggleSystemFeature(key: keyof SystemFeatureToggles, value?: boolean): SystemSettingsConfig {
   const current = getSavedSystemConfig();
-  
-  // Normalize key to 'enableX' if passed without 'enable'
-  let normalizedKey = rawKey;
-  if (!normalizedKey.startsWith('enable')) {
-    normalizedKey = `enable${rawKey.charAt(0).toUpperCase()}${rawKey.slice(1)}`;
-  }
-
-  const currentVal = isFeatureEnabled(current, normalizedKey);
-  const newValue = value !== undefined ? value : !currentVal;
-
+  const newValue = value !== undefined ? value : !current.features[key];
   const updated: SystemSettingsConfig = {
     ...current,
     features: {
       ...current.features,
-      [normalizedKey]: newValue,
-      [rawKey]: newValue
+      [key]: newValue
     }
   };
   saveSystemConfig(updated);
   return updated;
-}
-
-/**
- * Updates barcode link destination setting
- */
-export function setBarcodeLinkTarget(target: 'portal' | 'drive'): SystemSettingsConfig {
-  const current = getSavedSystemConfig();
-  const updated: SystemSettingsConfig = {
-    ...current,
-    barcodeLinkTarget: target
-  };
-  saveSystemConfig(updated);
-  return updated;
-}
-
-/**
- * Gets the resolved barcode / QR code URL for a certificate based on system settings and certificate state
- */
-export function getCertificateBarcodeUrl(
-  certOrCode: CertificateData | string,
-  driveLinkOrTarget?: string | null | 'portal' | 'drive',
-  overrideTarget?: 'portal' | 'drive'
-): string {
-  const config = getSavedSystemConfig();
-  
-  if (typeof certOrCode === 'object' && certOrCode !== null) {
-    const cert = certOrCode as CertificateData;
-    const target = (typeof driveLinkOrTarget === 'string' && (driveLinkOrTarget === 'portal' || driveLinkOrTarget === 'drive')
-      ? driveLinkOrTarget
-      : overrideTarget || cert.barcodeLinkTarget || config.barcodeLinkTarget || 'portal');
-    const code = cert.verificationCode || cert.id || 'TAQDEER';
-    if (target === 'drive' && (cert.driveFileWebViewLink || cert.driveFileUrl)) {
-      return cert.driveFileWebViewLink || cert.driveFileUrl!;
-    }
-    const origin = typeof window !== 'undefined' && window.location.origin ? window.location.origin : 'https://taqdeer.app';
-    return `${origin}/verify?code=${encodeURIComponent(code)}`;
-  } else {
-    const code = typeof certOrCode === 'string' && certOrCode ? certOrCode : 'TAQDEER';
-    const driveLink = typeof driveLinkOrTarget === 'string' && (driveLinkOrTarget.startsWith('http') || driveLinkOrTarget.startsWith('//'))
-      ? driveLinkOrTarget
-      : null;
-    const target = overrideTarget || (driveLinkOrTarget === 'portal' || driveLinkOrTarget === 'drive' ? driveLinkOrTarget : config.barcodeLinkTarget || 'portal');
-    if (target === 'drive' && driveLink) {
-      return driveLink;
-    }
-    const origin = typeof window !== 'undefined' && window.location.origin ? window.location.origin : 'https://taqdeer.app';
-    return `${origin}/verify?code=${encodeURIComponent(code)}`;
-  }
 }
 
 /**
@@ -245,44 +179,16 @@ export function isElementLocked(
 
 /**
  * Checks if a specific feature is enabled (supports either (key, config) or (config, key))
- * Normalizes keys with or without 'enable' prefix.
  */
 export function isFeatureEnabled(
-  arg1: string | SystemSettingsConfig,
-  arg2?: string | SystemSettingsConfig
+  arg1: keyof SystemFeatureToggles | SystemSettingsConfig,
+  arg2?: keyof SystemFeatureToggles | SystemSettingsConfig
 ): boolean {
-  let key: string;
-  let config: SystemSettingsConfig;
-
   if (typeof arg1 === 'string') {
-    key = arg1;
-    config = (typeof arg2 === 'object' && arg2 ? arg2 : getSavedSystemConfig()) as SystemSettingsConfig;
+    const config = (typeof arg2 === 'object' && arg2 ? arg2 : getSavedSystemConfig()) as SystemSettingsConfig;
+    return !!config?.features?.[arg1 as keyof SystemFeatureToggles];
   } else if (typeof arg1 === 'object' && arg1 && typeof arg2 === 'string') {
-    config = arg1;
-    key = arg2;
-  } else {
-    return true;
+    return !!arg1?.features?.[arg2 as keyof SystemFeatureToggles];
   }
-
-  const features = config?.features as any;
-  if (!features) return true;
-
-  // Direct match
-  if (key in features && features[key] !== undefined) {
-    return Boolean(features[key]);
-  }
-
-  // Normalized with 'enable'
-  const withEnable = key.startsWith('enable') ? key : `enable${key.charAt(0).toUpperCase()}${key.slice(1)}`;
-  if (withEnable in features && features[withEnable] !== undefined) {
-    return Boolean(features[withEnable]);
-  }
-
-  // Normalized without 'enable'
-  const withoutEnable = key.startsWith('enable') ? key.slice(6, 7).toLowerCase() + key.slice(7) : key;
-  if (withoutEnable in features && features[withoutEnable] !== undefined) {
-    return Boolean(features[withoutEnable]);
-  }
-
-  return true;
+  return false;
 }
