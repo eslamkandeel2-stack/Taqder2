@@ -707,16 +707,6 @@ export const CertificateCanvas: React.FC<Props> = ({
     };
   }, [draggingKey, isDragModeActive, data.emojis, data.positions, onUpdateData, onUpdateEmojiPos, actualCanvasRef]);
 
-  const [systemConfigVersion, setSystemConfigVersion] = useState<number>(0);
-
-  useEffect(() => {
-    const handleConfigChange = () => {
-      setSystemConfigVersion((v) => v + 1);
-    };
-    window.addEventListener('taqdeer_system_config_changed', handleConfigChange);
-    return () => window.removeEventListener('taqdeer_system_config_changed', handleConfigChange);
-  }, []);
-
   // Generate dynamic QR Code for certificate verification based on system/certificate destination setting
   const qrTargetUrl = useMemo(() => {
     return getCertificateBarcodeUrl(
@@ -724,7 +714,7 @@ export const CertificateCanvas: React.FC<Props> = ({
       data.driveFileWebViewLink || data.driveFileUrl,
       data.barcodeLinkTarget
     );
-  }, [verificationCode, data.driveFileWebViewLink, data.driveFileUrl, data.barcodeLinkTarget, systemConfigVersion]);
+  }, [verificationCode, data.driveFileWebViewLink, data.driveFileUrl, data.barcodeLinkTarget]);
 
   useEffect(() => {
     let isMounted = true;

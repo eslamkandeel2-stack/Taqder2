@@ -23,7 +23,6 @@ import { HistoryManagerModal } from './components/HistoryManagerModal';
 import { ExportPreviewModal } from './components/ExportPreviewModal';
 import { ArabicProofreaderModal } from './components/ArabicProofreaderModal';
 import { AppreciationSuggestionsModal } from './components/AppreciationSuggestionsModal';
-import { getSavedSystemConfig, isFeatureEnabled, SystemSettingsConfig } from './utils/systemConfig';
 import { ExportFormat } from './types';
 import { User } from 'firebase/auth';
 import { initAuthListener, getCurrentUser, checkRedirectAuthResult } from './services/googleDriveService';
@@ -208,25 +207,11 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'editor' | 'batch' | 'dashboard' | 'cloud' | 'verify' | 'ai' | 'settings'>(initialUrlState.tab);
   const [urlVerifyCode, setUrlVerifyCode] = useState<string>(initialUrlState.code);
   const [isStandalonePortal, setIsStandalonePortal] = useState<boolean>(initialUrlState.isStandalone);
-  const [systemConfig, setSystemConfig] = useState<SystemSettingsConfig>(() => getSavedSystemConfig());
   
   // History State for Undo / Redo - initialized with LocalStorage autosaved draft if present
   const [history, setHistory] = useState<CertificateData[]>(() => [getAutosavedInitialData()]);
   const [historyIndex, setHistoryIndex] = useState<number>(0);
   const [lastAutosavedTime, setLastAutosavedTime] = useState<string | null>(null);
-
-  // Subscribe to system config changes
-  useEffect(() => {
-    const handleConfigChange = (e: any) => {
-      if (e.detail) {
-        setSystemConfig(e.detail);
-      } else {
-        setSystemConfig(getSavedSystemConfig());
-      }
-    };
-    window.addEventListener('taqdeer_system_config_changed', handleConfigChange);
-    return () => window.removeEventListener('taqdeer_system_config_changed', handleConfigChange);
-  }, []);
 
   // Check URL query parameters for direct verification link or standalone portal mode
   useEffect(() => {
@@ -868,16 +853,14 @@ export default function App() {
               </div>
 
               <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto shrink-0 py-0.5">
-                {isFeatureEnabled(systemConfig, 'aiFeatures') && (
-                  <button
-                    onClick={() => handleOpenAiModal('improve', 'appreciation')}
-                    className="px-2.5 py-1.5 bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow-2xs hover:brightness-105 transition flex items-center justify-center gap-1 text-center truncate cursor-pointer"
-                    title="صياغة العبارات بالذكاء الاصطناعي"
-                  >
-                    <Sparkles className="w-3.5 h-3.5 shrink-0" />
-                    <span className="truncate">صياغة AI</span>
-                  </button>
-                )}
+                <button
+                  onClick={() => handleOpenAiModal('improve', 'appreciation')}
+                  className="px-2.5 py-1.5 bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow-2xs hover:brightness-105 transition flex items-center justify-center gap-1 text-center truncate cursor-pointer"
+                  title="صياغة العبارات بالذكاء الاصطناعي"
+                >
+                  <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">صياغة AI</span>
+                </button>
 
                 <button
                   onClick={handlePrint}
