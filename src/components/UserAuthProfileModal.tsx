@@ -196,12 +196,12 @@ export const UserAuthProfileModal: React.FC<UserAuthProfileModalProps> = ({
       // Check if user is registered in system database
       const loginRes = await loginWithGoogle({ email, googleId, displayName, photoURL });
       
-      if (loginRes.requiresVerification) {
+      if (loginRes.requiresVerification && loginRes.verificationCode) {
         setPendingUserId(loginRes.userId || '');
         setPendingEmail(email);
-        setSystemGeneratedCode(null);
+        setSystemGeneratedCode(loginRes.verificationCode);
         setVerificationPending(true);
-        onShowToast(`تم إرسال كود التحقق إلى بريدك الإلكتروني (${email}). يرجى مراجعة البريد وإدخال الرمز لتفعيل الحساب.`);
+        onShowToast('حساب Google مسجل حديثاً! يرجى إدخال كود التحقق لتفعيل الحساب وضمان الأمان.');
         return;
       }
 
@@ -268,14 +268,13 @@ export const UserAuthProfileModal: React.FC<UserAuthProfileModalProps> = ({
 
     try {
       setIsLoading(true);
-      const cleanEmail = quickEmailInput.trim().toLowerCase();
-      const res = await requestQuickEmailLogin(cleanEmail);
-      if (res.requiresVerification || res.isNewRegistration || res.success) {
+      const res = await requestQuickEmailLogin(quickEmailInput.trim());
+      if (res.verificationCode) {
         setPendingUserId(res.userId || '');
-        setPendingEmail(cleanEmail);
-        setSystemGeneratedCode(null);
+        setPendingEmail(quickEmailInput.trim());
+        setSystemGeneratedCode(res.verificationCode);
         setVerificationPending(true);
-        onShowToast(`تم إرسال كود التحقق الأمني إلى بريدك (${cleanEmail}). يرجى كتابة الرمز لتأكيد الدخول 🚀`);
+        onShowToast('تم توليد كود التحقق الأمني! قم بتأكيده للدخول فوراً 🚀');
       }
     } catch (err: any) {
       console.error('Quick email login error:', err);
@@ -300,12 +299,12 @@ export const UserAuthProfileModal: React.FC<UserAuthProfileModalProps> = ({
         password: loginPassword.trim()
       });
 
-      if (res.requiresVerification) {
+      if (res.requiresVerification && res.verificationCode) {
         setPendingUserId(res.userId || '');
         setPendingEmail(res.account?.email || loginIdentifier);
-        setSystemGeneratedCode(null);
+        setSystemGeneratedCode(res.verificationCode);
         setVerificationPending(true);
-        onShowToast('هذا الحساب بانتظار إدخال كود التحقق المرسل لبريدك الإلكتروني للتفعيل.');
+        onShowToast('هذا الحساب بانتظار إدخال كود التحقق لتأكيد تفعيله.');
         return;
       }
 
@@ -342,12 +341,12 @@ export const UserAuthProfileModal: React.FC<UserAuthProfileModalProps> = ({
         displayName: regDisplayName.trim() || regUsername.trim()
       });
 
-      if (res.requiresVerification || res.success) {
+      if (res.verificationCode) {
         setPendingUserId(res.userId || '');
         setPendingEmail(regEmail.trim());
-        setSystemGeneratedCode(null);
+        setSystemGeneratedCode(res.verificationCode);
         setVerificationPending(true);
-        onShowToast(`تم إنشاء الحساب وإرسال كود التحقق إلى بريدك الإلكتروني (${regEmail.trim()}). أدخل الرمز لتفعيل الحساب.`);
+        onShowToast('تم إنشاء الحساب بنجاح! أدخل كود التحقق لتأكيد وتفعيل الحساب.');
       }
     } catch (err: any) {
       console.error('Register error:', err);
@@ -393,8 +392,10 @@ export const UserAuthProfileModal: React.FC<UserAuthProfileModalProps> = ({
         userId: pendingUserId,
         email: pendingEmail
       });
-      setSystemGeneratedCode(null);
-      onShowToast(`تم إرسال كود تحقق جديد إلى بريدك الإلكتروني (${pendingEmail || 'المسجل'}) 📩`);
+      if (res.verificationCode) {
+        setSystemGeneratedCode(res.verificationCode);
+        onShowToast('تم توليد كود تحقق جديد بنجاح! 🔑');
+      }
     } catch (err: any) {
       console.error('Resend error:', err);
       onShowToast(err.message || 'فشل إعادة إرسال الكود');
@@ -413,21 +414,21 @@ export const UserAuthProfileModal: React.FC<UserAuthProfileModalProps> = ({
 
     try {
       setIsLoading(true);
-      const userId = unifiedAccount?.userId || (currentUser as any)?.userId || currentUser?.uid || currentUser?.email || 'usr_current';
-      const userEmail = unifiedAccount?.email || (currentUser as any)?.email || '';
-      const userName = unifiedAccount?.username || (currentUser as any)?.username || (currentUser as any)?.displayName || '';
+      const userId = unifiedAccount?.userId || (currentUser as any)?.userId || currentUser?.uid;
+      if (!userId) {
+        onShowToast('يرجى تسجيل الدخول أولاً للتمكن من ربط الحساب');
+        return;
+      }
 
       const res = await requestLinkGoogleAccount({
         userId,
-        googleEmail: linkingGoogleEmail.trim(),
-        email: userEmail,
-        username: userName
+        googleEmail: linkingGoogleEmail.trim()
       });
 
-      if (res.success) {
-        setSystemLinkingCode(null);
+      if (res.linkingCode) {
+        setSystemLinkingCode(res.linkingCode);
         setLinkingPending(true);
-        onShowToast(`تم إرسال كود تأكيد الربط إلى بريدك (${linkingGoogleEmail}). يرجى مراجعة البريد وكتابة الرمز.`);
+        onShowToast(`تم توليد كود أمان لربط حساب Google (${linkingGoogleEmail}). أدخل الكود لإتمام الربط.`);
       }
     } catch (err: any) {
       console.error('Link request error:', err);
@@ -447,16 +448,11 @@ export const UserAuthProfileModal: React.FC<UserAuthProfileModalProps> = ({
 
     try {
       setIsLoading(true);
-      const userId = unifiedAccount?.userId || (currentUser as any)?.userId || currentUser?.uid || currentUser?.email || 'usr_current';
-      const userEmail = unifiedAccount?.email || (currentUser as any)?.email || '';
-      const userName = unifiedAccount?.username || (currentUser as any)?.username || (currentUser as any)?.displayName || '';
-
+      const userId = unifiedAccount?.userId || (currentUser as any)?.userId || currentUser?.uid;
       const res = await confirmLinkGoogleAccount({
         userId: userId || '',
         googleEmail: linkingGoogleEmail.trim(),
-        code: linkingCodeInput.trim(),
-        email: userEmail,
-        username: userName
+        code: linkingCodeInput.trim()
       });
 
       if (res.account) {
@@ -465,23 +461,7 @@ export const UserAuthProfileModal: React.FC<UserAuthProfileModalProps> = ({
         setLinkingPending(false);
         setSystemLinkingCode(null);
         setActiveTab('profile');
-
-        const updatedUser: UserLike = {
-          uid: res.account.userId,
-          userId: res.account.userId,
-          email: res.account.email || res.account.googleEmail || '',
-          displayName: res.account.displayName || res.account.username,
-          photoURL: res.account.photoURL || '',
-          googleEmail: res.account.googleEmail || '',
-          isVerified: true,
-          username: res.account.username
-        };
-        localStorage.setItem('taqdeer_gis_user', JSON.stringify(updatedUser));
-        await switchAndIsolateAccount(updatedUser, currentUser);
-        onUserChange(updatedUser as unknown as User);
-        setKnownAccounts(getKnownAccounts());
-
-        onShowToast(`تم ربط حساب Google (${res.account.googleEmail}) بحسابك بنجاح! جميع الصلاحيات متصلة الآن. 🎉`);
+        onShowToast(`تم ربط حساب Google بنجاح! يمكنك الآن تسجيل الدخول باسم المستخدم أو بحساب Google. 🎉`);
       }
     } catch (err: any) {
       console.error('Confirm link error:', err);
@@ -735,26 +715,37 @@ export const UserAuthProfileModal: React.FC<UserAuthProfileModalProps> = ({
               لضمان صحة وربط الحساب بقاعدة بيانات النظام وFirebase، يرجى تأكيد كود التحقق الأمني:
             </p>
 
-            {/* Email Inbox Notice Box */}
-            <div className="bg-amber-500/10 border border-amber-500/30 p-4 rounded-xl text-center space-y-2">
-              <div className="w-10 h-10 bg-amber-500/20 text-amber-400 rounded-full flex items-center justify-center mx-auto mb-1 border border-amber-500/40">
-                <Mail className="w-5 h-5 animate-bounce" />
+            {/* Generated Code Display Box */}
+            {systemGeneratedCode && (
+              <div className="bg-amber-500/15 border border-amber-500/40 p-3.5 rounded-xl text-center space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] text-amber-300 font-bold block">كود التحقق الأمني:</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (systemGeneratedCode) {
+                        setVerificationCodeInput(systemGeneratedCode);
+                        onShowToast('تمت التعبئة التلقائية لكود التحقق ✨');
+                      }
+                    }}
+                    className="px-2.5 py-1 bg-amber-500/25 hover:bg-amber-500 text-amber-300 hover:text-slate-950 font-bold text-[10px] rounded-lg transition border border-amber-500/40 flex items-center gap-1 cursor-pointer"
+                  >
+                    <Sparkles className="w-3 h-3" />
+                    <span>تعبئة الرمز تلقائياً</span>
+                  </button>
+                </div>
+
+                <div className="text-2xl font-black text-amber-400 tracking-widest font-mono select-all">
+                  {systemGeneratedCode}
+                </div>
+                <span className="text-[10px] text-slate-400 block">تم إرسال هذا الكود إلى بريدك الإلكتروني ({pendingEmail || 'المسجل'})</span>
               </div>
-              <span className="text-xs text-amber-300 font-bold block">
-                تم إرسال كود التحقق الأمني إلى بريدك الإلكتروني
-              </span>
-              <div className="inline-block px-3 py-1 bg-slate-900/80 rounded-lg border border-amber-500/20 text-xs font-mono font-bold text-amber-200 dir-ltr">
-                {pendingEmail || 'بريدك الإلكتروني'}
-              </div>
-              <p className="text-[11px] text-slate-300">
-                يرجى فتح صندوق الوارد (أو مجلد الرسائل غير المرغوب فيها Spam) ونسخ الرمز المكون من 6 أرقام وإدخاله بالأسفل.
-              </p>
-            </div>
+            )}
 
             {/* Firebase & Email Verification Notice */}
             <div className="flex items-center gap-2 text-[11px] text-emerald-400 bg-emerald-950/40 border border-emerald-500/30 p-2.5 rounded-xl">
               <ShieldCheck className="w-4 h-4 shrink-0 text-emerald-400" />
-              <span>يتم توثيق الحساب فورياً وربطه بقاعدة بيانات النظام وFirebase Firestore.</span>
+              <span>يتم إرسال كود التحقق عبر البريد وتخزين حالة التوثيق في قاعدة بيانات Firebase Firestore.</span>
             </div>
 
             <form onSubmit={handleConfirmVerificationCode} className="space-y-3 pt-1">
@@ -1028,18 +1019,14 @@ export const UserAuthProfileModal: React.FC<UserAuthProfileModalProps> = ({
               </form>
             ) : (
               <form onSubmit={handleConfirmLinkGoogle} className="space-y-3">
-                <div className="bg-amber-500/10 border border-amber-500/30 p-3.5 rounded-xl text-center space-y-1.5">
-                  <div className="flex items-center justify-center gap-1.5 text-amber-400 font-bold text-xs">
-                    <Mail className="w-4 h-4" />
-                    <span>تم إرسال كود تأكيد الربط إلى:</span>
+                {systemLinkingCode && (
+                  <div className="bg-amber-500/15 border border-amber-500/40 p-3 rounded-xl text-center space-y-1">
+                    <span className="text-[10px] text-amber-300 font-bold block">كود الأمان لربط حساب Google:</span>
+                    <div className="text-xl font-black text-amber-400 font-mono tracking-widest">
+                      {systemLinkingCode}
+                    </div>
                   </div>
-                  <div className="font-mono text-xs font-bold text-amber-200 dir-ltr bg-slate-900/80 px-2.5 py-1 rounded-lg inline-block border border-amber-500/20">
-                    {linkingGoogleEmail}
-                  </div>
-                  <p className="text-[11px] text-slate-300">
-                    يرجى مراجعة البريد الإلكتروني وكتابة كود الأمان المكون من 6 أرقام لتأكيد الربط.
-                  </p>
-                </div>
+                )}
 
                 <div>
                   <label className="block text-[11px] font-bold text-slate-300 mb-1">

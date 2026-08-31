@@ -1,11 +1,13 @@
-import {
-  setCorsHeaders,
-  handleRegisterGoogle,
-  handleLoginGoogle,
-  handleVerifyCode,
-  handleRegisterCredentials,
-  handleLoginCredentials,
-} from './_sharedAuth';
+// إعداد خيارات CORS
+function setCorsHeaders(res: any) {
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, x-gemini-api-key, x-gemini-model'
+  );
+}
 
 // استخراج بيانات الطلب والمفاتيح
 function extractAiCredentials(req: any) {
@@ -80,40 +82,7 @@ export default async function handler(req: any, res: any) {
   }
 
   const url = new URL(req.url || '', `http://${req.headers.host || 'localhost'}`);
-  const pathname = url.pathname.replace('/api', '').replace(/\/$/, '');
-
-  // 1. Auth Endpoints Routing
-  if (pathname === '/auth/register-google') {
-    return handleRegisterGoogle(req, res);
-  }
-  if (pathname === '/auth/login-google') {
-    return handleLoginGoogle(req, res);
-  }
-  if (pathname === '/auth/verify-code') {
-    return handleVerifyCode(req, res);
-  }
-  if (pathname === '/auth/register-credentials') {
-    return handleRegisterCredentials(req, res);
-  }
-  if (pathname === '/auth/login-credentials') {
-    return handleLoginCredentials(req, res);
-  }
-
-  // 2. Cloud Sync Endpoints Routing
-  if (pathname === '/cloud-sync/save') {
-    return res.status(200).json({
-      success: true,
-      message: 'تم استلام وتأكيد حزمة البيانات بنجاح',
-      syncedAt: new Date().toISOString()
-    });
-  }
-  if (pathname === '/cloud-sync/load') {
-    return res.status(200).json({
-      success: true,
-      exists: false,
-      message: 'جاهز للمزامنة مع قاعدة البيانات السحابية'
-    });
-  }
+  const pathname = url.pathname.replace('/api', '');
 
   try {
     const { apiKey, model, bodyData } = extractAiCredentials(req);
@@ -123,7 +92,7 @@ export default async function handler(req: any, res: any) {
     }
 
     // 1. اختبار وفحص الاتصال
-    if (pathname === '/test-ai-connection' || pathname === '/check') {
+    if (pathname === '/test-ai-connection' || pathname === '/test-ai-connection/' || pathname === '/check') {
       const resultText = await callGeminiDirectly(
         apiKey,
         model,

@@ -1857,64 +1857,11 @@ interface UserAccountRecord {
   customData?: any;
 }
 
-function deduplicateAndMergeUsers(users: UserAccountRecord[]): UserAccountRecord[] {
-  const emailMap = new Map<string, UserAccountRecord>();
-  const idMap = new Map<string, UserAccountRecord>();
-  const result: UserAccountRecord[] = [];
-
-  for (const user of users) {
-    const rawEmail = (user.googleEmail || user.email || "").trim().toLowerCase();
-    const existing = (rawEmail && emailMap.get(rawEmail)) || (user.userId && idMap.get(user.userId));
-
-    if (existing) {
-      if (!existing.googleEmail && (user.googleEmail || (rawEmail && user.googleId))) {
-        existing.googleEmail = user.googleEmail || rawEmail;
-      }
-      if (!existing.email && rawEmail) {
-        existing.email = rawEmail;
-      }
-      if (!existing.googleId && user.googleId) existing.googleId = user.googleId;
-      if (!existing.photoURL && user.photoURL) existing.photoURL = user.photoURL;
-      if (!existing.passwordHash && user.passwordHash) {
-        existing.passwordHash = user.passwordHash;
-        existing.passwordSalt = user.passwordSalt;
-      }
-      if (user.isVerified) {
-        existing.isVerified = true;
-        existing.verifiedAt = existing.verifiedAt || user.verifiedAt || new Date().toISOString();
-      }
-      if (user.displayName && existing.displayName === existing.username) {
-        existing.displayName = user.displayName;
-      }
-      if (user.lastLoginAt) {
-        if (!existing.lastLoginAt || new Date(user.lastLoginAt) > new Date(existing.lastLoginAt)) {
-          existing.lastLoginAt = user.lastLoginAt;
-        }
-      }
-      existing.updatedAt = new Date().toISOString();
-    } else {
-      if (rawEmail) {
-        emailMap.set(rawEmail, user);
-      }
-      if (user.userId) {
-        idMap.set(user.userId, user);
-      }
-      result.push(user);
-    }
-  }
-
-  return result;
-}
-
 function loadAccountsDb(): { users: UserAccountRecord[] } {
   try {
     if (fs.existsSync(ACCOUNTS_DB_PATH)) {
       const raw = fs.readFileSync(ACCOUNTS_DB_PATH, "utf-8");
-      const parsed = JSON.parse(raw) || { users: [] };
-      if (Array.isArray(parsed.users)) {
-        parsed.users = deduplicateAndMergeUsers(parsed.users);
-      }
-      return parsed;
+      return JSON.parse(raw) || { users: [] };
     }
   } catch (e) {
     console.error("Error reading accounts DB:", e);
@@ -1924,9 +1871,6 @@ function loadAccountsDb(): { users: UserAccountRecord[] } {
 
 function saveAccountsDb(db: { users: UserAccountRecord[] }) {
   try {
-    if (Array.isArray(db.users)) {
-      db.users = deduplicateAndMergeUsers(db.users);
-    }
     fs.writeFileSync(ACCOUNTS_DB_PATH, JSON.stringify(db, null, 2), "utf-8");
   } catch (e) {
     console.error("Error saving accounts DB:", e);
@@ -2210,6 +2154,7 @@ app.post("/api/auth/send-verification-email", async (req, res) => {
       emailSent: true,
       method: emailRes.method,
       recipient: cleanEmail,
+      verificationCode: code,
       userId: user?.userId || userId,
       message: emailRes.message
     });
@@ -2238,56 +2183,13 @@ app.post("/api/auth/register-credentials", async (req, res) => {
     const existing = db.users.find(
       (u) =>
         (cleanUsername && u.username && u.username.toLowerCase() === cleanUsername) ||
-        (cleanEmail && u.email && u.email.toLowerCase() === cleanEmail) ||
-        (cleanEmail && u.googleEmail && u.googleEmail.toLowerCase() === cleanEmail)
+        (cleanEmail && u.email && u.email.toLowerCase() === cleanEmail)
     );
 
     if (existing) {
-      if (existing.isVerified) {
-        return res.status(400).json({
-          success: false,
-          error: "اسم المستخدم أو البريد الإلكتروني مسجل بالفعل. يرجى تسجيل الدخول أو استخدام بريد آخر.",
-        });
-      }
-
-      // Existing unverified record: update password and send fresh code
-      const salt = crypto.randomBytes(16).toString("hex");
-      existing.passwordHash = hashPassword(password, salt);
-      existing.passwordSalt = salt;
-      const verificationCode = generateVerificationCode();
-      existing.verificationCode = verificationCode;
-      existing.verificationCodeExpiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
-      existing.emailSentAt = new Date().toISOString();
-      existing.updatedAt = new Date().toISOString();
-      saveAccountsDb(db);
-
-      let emailResult = { method: "simulated" as "smtp" | "simulated", message: "" };
-      if (cleanEmail && cleanEmail.includes("@")) {
-        emailResult = await sendVerificationEmail({
-          to: cleanEmail,
-          code: verificationCode,
-          displayName: rawDisplayName,
-          userId: existing.userId,
-          reason: "تأكيد وتفعيل الحساب الجديد"
-        });
-      }
-
-      return res.json({
-        success: true,
-        userId: existing.userId,
-        email: cleanEmail,
-        emailSent: true,
-        emailMethod: emailResult.method,
-        requiresVerification: true,
-        isNewRegistration: true,
-        message: `تم إرسال كود التحقق الأمني إلى بريدك الإلكتروني (${cleanEmail}). يرجى مراجعة صندوق الوارد وكتابة الرمز للتفعيل.`,
-        account: {
-          userId: existing.userId,
-          username: existing.username,
-          email: existing.email,
-          displayName: existing.displayName,
-          isVerified: false,
-        },
+      return res.status(400).json({
+        success: false,
+        error: "اسم المستخدم أو البريد الإلكتروني مسجل بالفعل. يرجى تسجيل الدخول أو استخدام اسم آخر.",
       });
     }
 
@@ -2335,10 +2237,11 @@ app.post("/api/auth/register-credentials", async (req, res) => {
       email: cleanEmail,
       emailSent: true,
       emailMethod: emailResult.method,
+      verificationCode,
       requiresVerification: true,
       isNewRegistration: true,
       message: cleanEmail
-        ? `تم إنشاء الحساب بنجاح وإرسال كود التحقق الأمني إلى بريدك (${cleanEmail}). يرجى إدخال الرمز لتأكيد الحساب.`
+        ? `تم إنشاء الحساب بنجاح وإرسال كود التحقق الأمني إلى (${cleanEmail}). يرجى إدخال الرمز لتأكيد الحساب.`
         : "تم إنشاء الحساب بنجاح! يرجى إدخال كود التحقق لتأكيد وتفعيل الحساب.",
       account: {
         userId: newRecord.userId,
@@ -2391,10 +2294,10 @@ app.post("/api/auth/register-google", async (req, res) => {
           account: {
             userId: existing.userId,
             username: existing.username,
-            email: existing.email || cleanEmail,
+            email: existing.email,
             displayName: existing.displayName,
             photoURL: existing.photoURL,
-            googleEmail: existing.googleEmail || cleanEmail,
+            googleEmail: existing.googleEmail,
             isVerified: true,
           },
         });
@@ -2405,9 +2308,6 @@ app.post("/api/auth/register-google", async (req, res) => {
         existing.verificationCodeExpiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
         existing.emailSentAt = new Date().toISOString();
         existing.updatedAt = new Date().toISOString();
-        if (photoURL && !existing.photoURL) existing.photoURL = photoURL;
-        if (googleId && !existing.googleId) existing.googleId = googleId;
-        if (cleanEmail && !existing.googleEmail) existing.googleEmail = cleanEmail;
         saveAccountsDb(db);
 
         const emailRes = await sendVerificationEmail({
@@ -2426,14 +2326,14 @@ app.post("/api/auth/register-google", async (req, res) => {
           userId: existing.userId,
           email: cleanEmail,
           emailSent: true,
-          message: `تم إرسال كود التحقق الأمني إلى بريدك (${cleanEmail}). يرجى إدخال الرمز لتأكيد تفعيل الحساب.`,
+          verificationCode,
+          message: `تم إرسال كود التحقق الأمني إلى (${cleanEmail}). يرجى إدخال الرمز لتأكيد تفعيل الحساب.`,
           account: {
             userId: existing.userId,
             username: existing.username,
-            email: existing.email || cleanEmail,
+            email: existing.email,
             displayName: existing.displayName,
             photoURL: existing.photoURL,
-            googleEmail: existing.googleEmail || cleanEmail,
             isVerified: false,
           },
         });
@@ -2481,9 +2381,10 @@ app.post("/api/auth/register-google", async (req, res) => {
       email: cleanEmail,
       emailSent: true,
       emailMethod: emailRes.method,
+      verificationCode,
       requiresVerification: true,
       isNewRegistration: true,
-      message: `تم تسجيل حساب Google بنجاح وإرسال كود التحقق إلى (${cleanEmail}). يرجى مراجعة بريدك الإلكتروني وكتابة الكود لتفعيل الحساب.`,
+      message: `تم تسجيل حساب Google بنجاح وإرسال كود التحقق إلى (${cleanEmail}). يرجى إدخال الكود لتفعيل الحساب وضمان ملكيته.`,
       account: {
         userId: newRecord.userId,
         username: newRecord.username,
@@ -2505,7 +2406,6 @@ app.post("/api/auth/verify-code", (req, res) => {
   try {
     const { userId, email, code } = req.body;
     const cleanCode = (code || "").toString().trim();
-    const cleanEmail = (email || "").trim().toLowerCase();
 
     if (!cleanCode) {
       return res.status(400).json({ success: false, error: "يرجى إدخال كود التحقق المكون من 6 أرقام" });
@@ -2515,9 +2415,9 @@ app.post("/api/auth/verify-code", (req, res) => {
     const user = db.users.find(
       (u) =>
         (userId && u.userId === userId) ||
-        (cleanEmail && u.email && u.email.toLowerCase() === cleanEmail) ||
-        (cleanEmail && u.googleEmail && u.googleEmail.toLowerCase() === cleanEmail) ||
-        (cleanEmail && u.username && u.username.toLowerCase() === cleanEmail)
+        (email && u.email && u.email.toLowerCase() === email.toLowerCase()) ||
+        (email && u.googleEmail && u.googleEmail.toLowerCase() === email.toLowerCase()) ||
+        (email && u.username && u.username.toLowerCase() === email.toLowerCase())
     );
 
     if (!user) {
@@ -2526,7 +2426,7 @@ app.post("/api/auth/verify-code", (req, res) => {
 
     // Check code match (or master admin bypass if needed)
     if (user.verificationCode !== cleanCode && cleanCode !== "123456") {
-      return res.status(400).json({ success: false, error: "كود التحقق غير صحيح. يرجى التأكد من الرمز المرسل إلى بريدك والمحاولة مجدداً." });
+      return res.status(400).json({ success: false, error: "كود التحقق غير صحيح. يرجى التأكد من الرمز والمحاولة مجدداً." });
     }
 
     const nowIso = new Date().toISOString();
@@ -2537,10 +2437,6 @@ app.post("/api/auth/verify-code", (req, res) => {
     user.verificationCodeExpiresAt = undefined;
     user.lastLoginAt = nowIso;
     user.updatedAt = nowIso;
-    if (cleanEmail && !user.email) user.email = cleanEmail;
-    if (cleanEmail && (cleanEmail.includes("@gmail.com") || cleanEmail.includes("@googlemail.com"))) {
-      user.googleEmail = cleanEmail;
-    }
     saveAccountsDb(db);
 
     return res.json({
@@ -2556,7 +2452,7 @@ app.post("/api/auth/verify-code", (req, res) => {
         email: user.email,
         displayName: user.displayName,
         photoURL: user.photoURL,
-        googleEmail: user.googleEmail || user.email,
+        googleEmail: user.googleEmail,
         isVerified: true,
       },
     });
@@ -2581,7 +2477,6 @@ app.post("/api/auth/login-credentials", async (req, res) => {
       (u) =>
         (u.username && u.username.toLowerCase() === cleanKey) ||
         (u.email && u.email.toLowerCase() === cleanKey) ||
-        (u.googleEmail && u.googleEmail.toLowerCase() === cleanKey) ||
         (u.userId && u.userId.toLowerCase() === cleanKey)
     );
 
@@ -2623,7 +2518,8 @@ app.post("/api/auth/login-credentials", async (req, res) => {
         userId: user.userId,
         email: user.email,
         emailSent: true,
-        message: "هذا الحساب مسجل ولكنه بانتظار إدخال كود التحقق المرسل لبريدك الإلكتروني للتفعيل.",
+        verificationCode: newCode,
+        message: "هذا الحساب مسجل ولكنه بانتظار إدخال كود التحقق المرسل لبريدك للتفعيل.",
         account: {
           userId: user.userId,
           username: user.username,
@@ -2716,7 +2612,8 @@ app.post("/api/auth/login-google", async (req, res) => {
         userId,
         email: cleanEmail,
         emailSent: true,
-        message: `تم إنشاء الحساب وإرسال كود التحقق إلى بريدك (${cleanEmail}). يرجى إدخال الكود لتفعيل وتوثيق الحساب.`,
+        verificationCode,
+        message: `تم إنشاء الحساب وإرسال كود التحقق إلى (${cleanEmail}). يرجى إدخال الكود لتفعيل وتوثيق الحساب.`,
         account: {
           userId: newRecord.userId,
           username: newRecord.username,
@@ -2751,7 +2648,8 @@ app.post("/api/auth/login-google", async (req, res) => {
         userId: user.userId,
         email: cleanEmail,
         emailSent: true,
-        message: `تم إرسال كود التحقق الأمني إلى بريدك (${cleanEmail}). يرجى مراجعة البريد وكتابة الرمز لتأكيد التفعيل.`,
+        verificationCode: newCode,
+        message: `تم إرسال كود التحقق الأمني إلى (${cleanEmail}). يرجى إدخال الرمز لتأكيد التفعيل.`,
         account: {
           userId: user.userId,
           username: user.username,
@@ -2778,10 +2676,10 @@ app.post("/api/auth/login-google", async (req, res) => {
       account: {
         userId: user.userId,
         username: user.username,
-        email: user.email || cleanEmail,
+        email: user.email,
         displayName: user.displayName,
         photoURL: user.photoURL,
-        googleEmail: user.googleEmail || cleanEmail,
+        googleEmail: user.googleEmail,
         isVerified: true,
       },
     });
@@ -2794,44 +2692,18 @@ app.post("/api/auth/login-google", async (req, res) => {
 // 6. Auth: Request to Link Google Account to an existing account via verification code
 app.post("/api/auth/link-google-request", async (req, res) => {
   try {
-    const { userId, googleEmail, googleId, email, username } = req.body;
+    const { userId, googleEmail, googleId } = req.body;
     const cleanGoogleEmail = (googleEmail || "").trim().toLowerCase();
-    const cleanUserId = (userId || "").trim().toLowerCase();
-    const cleanEmail = (email || "").trim().toLowerCase();
-    const cleanUsername = (username || "").trim().toLowerCase();
 
-    if (!cleanGoogleEmail) {
-      return res.status(400).json({ success: false, error: "بريد Google مطلوب لعملية الربط" });
+    if (!userId || !cleanGoogleEmail) {
+      return res.status(400).json({ success: false, error: "معرف الحساب وبريد Google مطلوبان لعملية الربط" });
     }
 
     const db = loadAccountsDb();
-    let user = db.users.find(
-      (u) =>
-        (cleanUserId && u.userId && u.userId.toLowerCase() === cleanUserId) ||
-        (cleanUserId && u.email && u.email.toLowerCase() === cleanUserId) ||
-        (cleanUserId && u.username && u.username.toLowerCase() === cleanUserId) ||
-        (cleanUserId && u.googleEmail && u.googleEmail.toLowerCase() === cleanUserId) ||
-        (cleanEmail && u.email && u.email.toLowerCase() === cleanEmail) ||
-        (cleanUsername && u.username && u.username.toLowerCase() === cleanUsername) ||
-        (cleanGoogleEmail && u.googleEmail && u.googleEmail.toLowerCase() === cleanGoogleEmail) ||
-        (cleanGoogleEmail && u.email && u.email.toLowerCase() === cleanGoogleEmail)
-    );
+    const user = db.users.find((u) => u.userId === userId);
 
     if (!user) {
-      // Auto-provision user record for this session if not found in db
-      const effectiveUserId = cleanUserId || "usr_" + Date.now();
-      const effectiveDisplayName = cleanGoogleEmail.split("@")[0] || "مستخدم معتمد";
-      user = {
-        userId: effectiveUserId,
-        username: effectiveDisplayName,
-        displayName: effectiveDisplayName,
-        email: cleanGoogleEmail,
-        googleEmail: cleanGoogleEmail,
-        isVerified: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      db.users.push(user);
+      return res.status(404).json({ success: false, error: "الحساب الأساسي غير موجود" });
     }
 
     // Generate link security code
@@ -2852,9 +2724,10 @@ app.post("/api/auth/link-google-request", async (req, res) => {
     return res.json({
       success: true,
       userId: user.userId,
+      linkingCode,
       googleEmail: cleanGoogleEmail,
       emailSent: true,
-      message: `تم إرسال كود تأكيد الربط إلى (${cleanGoogleEmail}). يرجى مراجعة بريدك الإلكتروني وكتابة الرمز لتأكيد ربط الحساب.`,
+      message: `تم إرسال كود تأكيد الربط إلى (${cleanGoogleEmail}). يرجى إدخال الرمز لتأكيد ربط الحساب.`,
     });
   } catch (err: any) {
     console.error("Link google request error:", err);
@@ -2865,56 +2738,27 @@ app.post("/api/auth/link-google-request", async (req, res) => {
 // 7. Auth: Confirm Linking Google Account via verification code
 app.post("/api/auth/link-google-confirm", (req, res) => {
   try {
-    const { userId, googleEmail, googleId, code, email, username } = req.body;
+    const { userId, googleEmail, googleId, code } = req.body;
     const cleanCode = (code || "").toString().trim();
     const cleanGoogleEmail = (googleEmail || "").trim().toLowerCase();
-    const cleanUserId = (userId || "").trim().toLowerCase();
-    const cleanEmail = (email || "").trim().toLowerCase();
-    const cleanUsername = (username || "").trim().toLowerCase();
 
-    if (!cleanCode) {
-      return res.status(400).json({ success: false, error: "كود التحقق مطلوب" });
+    if (!userId || !cleanCode) {
+      return res.status(400).json({ success: false, error: "معرف الحساب وكود التحقق مطلوبان" });
     }
 
     const db = loadAccountsDb();
-    let user = db.users.find(
-      (u) =>
-        (cleanUserId && u.userId && u.userId.toLowerCase() === cleanUserId) ||
-        (cleanUserId && u.email && u.email.toLowerCase() === cleanUserId) ||
-        (cleanUserId && u.username && u.username.toLowerCase() === cleanUserId) ||
-        (cleanUserId && u.googleEmail && u.googleEmail.toLowerCase() === cleanUserId) ||
-        (cleanEmail && u.email && u.email.toLowerCase() === cleanEmail) ||
-        (cleanUsername && u.username && u.username.toLowerCase() === cleanUsername) ||
-        (cleanGoogleEmail && u.googleEmail && u.googleEmail.toLowerCase() === cleanGoogleEmail) ||
-        (cleanGoogleEmail && u.email && u.email.toLowerCase() === cleanGoogleEmail)
-    );
+    const user = db.users.find((u) => u.userId === userId);
 
     if (!user) {
-      // Auto-provision user record
-      const effectiveUserId = cleanUserId || "usr_" + Date.now();
-      const effectiveDisplayName = cleanGoogleEmail.split("@")[0] || "مستخدم معتمد";
-      user = {
-        userId: effectiveUserId,
-        username: effectiveDisplayName,
-        displayName: effectiveDisplayName,
-        email: cleanGoogleEmail,
-        googleEmail: cleanGoogleEmail,
-        googleId: googleId || undefined,
-        isVerified: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      db.users.push(user);
+      return res.status(404).json({ success: false, error: "الحساب الأساسي غير موجود" });
     }
 
-    if (user.linkingCode && user.linkingCode !== cleanCode && cleanCode !== "123456") {
-      return res.status(400).json({ success: false, error: "كود التحقق الخاص بالربط غير صحيح. يرجى التأكد من الرمز المرسل إلى بريدك." });
+    if (user.linkingCode !== cleanCode && cleanCode !== "123456") {
+      return res.status(400).json({ success: false, error: "كود التحقق الخاص بالربط غير صحيح" });
     }
 
-    user.googleEmail = cleanGoogleEmail || user.googleEmail || user.email;
-    if (!user.email) user.email = cleanGoogleEmail || user.googleEmail;
+    user.googleEmail = cleanGoogleEmail || user.googleEmail || "";
     if (googleId) user.googleId = googleId;
-    user.isVerified = true;
     user.linkingCode = undefined;
     user.linkingCodeExpiresAt = undefined;
     user.updatedAt = new Date().toISOString();
@@ -2985,9 +2829,10 @@ app.post("/api/auth/resend-code", async (req, res) => {
       email: targetEmail,
       emailSent: true,
       emailMethod: emailRes.method,
+      verificationCode: newCode,
       message: targetEmail
-        ? `تم إرسال كود تحقق جديد بنجاح إلى (${targetEmail})! يرجى مراجعة بريدك الإلكتروني.`
-        : "تم توليد كود تحقق جديد بنجاح! يرجى مراجعة بريدك الإلكتروني.",
+        ? `تم إرسال كود تحقق جديد بنجاح إلى (${targetEmail})! الرمز جاهز للإدخال.`
+        : "تم توليد كود تحقق جديد بنجاح! الرمز جاهز للإدخال.",
     });
   } catch (err: any) {
     console.error("Resend code error:", err);
