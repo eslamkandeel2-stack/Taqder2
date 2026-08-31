@@ -21,6 +21,14 @@ declare global {
 
 export { auth };
 
+export const getCurrentDomainInfo = () => {
+  if (typeof window === 'undefined') return { hostname: '', origin: '', isVercel: false };
+  const hostname = window.location.hostname || '';
+  const origin = window.location.origin || '';
+  const isVercel = hostname.includes('vercel.app') || hostname.includes('now.sh');
+  return { hostname, origin, isVercel };
+};
+
 const provider = new GoogleAuthProvider();
 provider.addScope('https://www.googleapis.com/auth/drive.file');
 provider.addScope('https://www.googleapis.com/auth/gmail.send');
@@ -378,6 +386,9 @@ export const googleSignInWithRedirect = async (): Promise<void> => {
 };
 
 export const googleSignIn = async (): Promise<{ user: User; accessToken: string }> => {
+  const currentHost = typeof window !== 'undefined' ? window.location.hostname : '';
+  const isVercel = currentHost.includes('vercel.app') || currentHost.includes('now.sh');
+
   try {
     isSigningIn = true;
     const result = await signInWithPopup(auth, provider, browserPopupRedirectResolver);
@@ -390,7 +401,7 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
     localStorage.setItem(TOKEN_STORAGE_KEY, cachedAccessToken);
     return { user: result.user, accessToken: cachedAccessToken };
   } catch (error: any) {
-    console.warn('Firebase signInWithPopup returned notice, attempting Google Identity Services (GIS) token fallback:', error?.code || error?.message);
+    console.warn('Firebase signInWithPopup returned notice, checking cause:', error?.code || error?.message);
 
     // If user explicitly closed popup or canceled during Firebase popup
     if (error?.code === 'auth/popup-closed-by-user' || error?.code === 'auth/cancelled-popup-request') {
@@ -398,6 +409,22 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
       (cancelErr as any).code = 'auth/popup-closed-by-user';
       (cancelErr as any).isUserCancel = true;
       throw cancelErr;
+    }
+
+    // Specific detection for Unauthorized Domain on Vercel or custom hosts
+    if (
+      error?.code === 'auth/unauthorized-domain' ||
+      error?.message?.includes('unauthorized-domain') ||
+      error?.message?.includes('authorized domain')
+    ) {
+      const domainErr = new Error(
+        `نطاق الاستضافة (${currentHost}) يحتاج إلى تفعيل في Firebase Authentication أو استخدام "الدخول السريع برمز التحقق الفوري" المتاح فوراً بدون أي إعدادات.`
+      );
+      (domainErr as any).code = 'auth/unauthorized-domain';
+      (domainErr as any).isUnauthorizedDomain = true;
+      (domainErr as any).hostname = currentHost;
+      (domainErr as any).isVercel = isVercel;
+      throw domainErr;
     }
 
     try {
@@ -427,13 +454,19 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
         gisErr?.message?.toLowerCase()?.includes('blocked') ||
         gisErr?.message?.includes('حظر')
       ) {
-        const err = new Error('تم حظر النوافذ المنبثقة من قِبل المتصفح على جهازك. يمكنك استخدام "تسجيل الدخول المباشر بنفس الصفحة" أو "الدخول الفوري بحساب المعلم/المدرسة".');
+        const err = new Error(
+          'تم حظر النوافذ المنبثقة من قِبل المتصفح على جهازك. يمكنك استخدام "الدخول المباشر بنفس الصفحة (Redirect)" أو كتابة بريدك في "الدخول السريع برمز التحقق".'
+        );
         (err as any).code = 'auth/popup-blocked';
         (err as any).isPopupBlocked = true;
+        (err as any).hostname = currentHost;
+        (err as any).isVercel = isVercel;
         throw err;
       }
 
-      throw new Error(gisErr?.message || 'تعذر الاتصال بـ Google لربط الحساب. يمكنك تجربة "حفظ بالمكتبة السحابية" مباشرة دون الحاجة لـ Google Drive.');
+      throw new Error(
+        gisErr?.message || 'تعذر الاتصال بـ Google لربط الحساب. يمكنك استخدام الدخول السريع برمز التحقق أو الدخول باسم المستخدم.'
+      );
     }
   } finally {
     isSigningIn = false;

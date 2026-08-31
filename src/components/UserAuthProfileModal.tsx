@@ -30,7 +30,9 @@ import {
   Link as LinkIcon,
   Fingerprint,
   Send,
-  UserPlus
+  UserPlus,
+  Compass,
+  HelpCircle
 } from 'lucide-react';
 import { User } from 'firebase/auth';
 import { googleSignIn, googleSignInWithRedirect, googleSignOut } from '../services/googleDriveService';
@@ -1274,28 +1276,104 @@ export const UserAuthProfileModal: React.FC<UserAuthProfileModalProps> = ({
               />
             </div>
 
-            {/* Smart Popup-Blocker & Origin-Mismatch Helper */}
+            {/* Smart Popup-Blocker, Vercel Domain & Zero-Popup Helper */}
             {showPopupBlockedHelper && (
-              <div className="bg-amber-950/40 border border-amber-500/50 p-3.5 rounded-2xl space-y-2.5 animate-fadeIn">
-                <div className="flex items-center gap-2 text-amber-300 font-bold text-xs">
-                  <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
-                  <span>تنبيه بخصوص نافذة Google على الهاتف:</span>
+              <div className="bg-amber-950/50 border-2 border-amber-500/60 p-4 rounded-2xl space-y-3 animate-fadeIn shadow-xl">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-amber-300 font-bold text-xs">
+                    <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>تنبيه بخصوص حظر النوافذ المنبثقة ونطاق Vercel 🚀</span>
+                  </div>
+                  <span className="text-[10px] bg-amber-500/20 text-amber-300 font-bold px-2 py-0.5 rounded-full border border-amber-500/30">
+                    حلول فورية
+                  </span>
                 </div>
-                <p className="text-[11px] text-slate-300 leading-relaxed">
-                  تمنع Google فتح النوافذ المنبثقة على بعض متصفحات الجوال وتظهر خطأ <span className="font-mono text-amber-300 font-bold">origin_mismatch: 400</span>.
-                  <br />
-                  💡 يمكنك استخدام الحقل بالأعلى لكتابة بريدك والدخول فوراً بدون أي نوافذ منبثقة أو أخطاء.
+
+                <p className="text-[11px] text-slate-200 leading-relaxed">
+                  تقوم متصفحات الجوال ومواقع الاستضافة (مثل Vercel) بحظر النوافذ المنبثقة التلقائية أو تحتاج لتصريح النطاق. إليك الحلول المباشرة:
                 </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!quickEmailInput) setQuickEmailInput('eslam.kandeel2@gmail.com');
-                  }}
-                  className="w-full py-2 bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-slate-950 text-xs font-bold rounded-xl border border-amber-500/30 transition flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>تعبئة البريد والدخول السريع</span>
-                </button>
+
+                {/* Current Domain Box with Copy */}
+                <div className="bg-slate-900/90 p-2.5 rounded-xl border border-slate-700 flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <span className="block text-[10px] text-slate-400 font-bold">نطاق موقعك الحالي:</span>
+                    <span className="block font-mono text-xs text-amber-300 truncate dir-ltr text-left">
+                      {typeof window !== 'undefined' ? window.location.hostname : 'your-domain.vercel.app'}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (typeof window !== 'undefined') {
+                        navigator.clipboard.writeText(window.location.hostname);
+                        setCopiedDomain(true);
+                        setTimeout(() => setCopiedDomain(false), 2000);
+                        onShowToast('تم نسخ النطاق بنجاح! 📋');
+                      }
+                    }}
+                    className="px-2.5 py-1.5 bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-slate-950 text-[10px] font-bold rounded-lg border border-amber-500/40 transition shrink-0 flex items-center gap-1 cursor-pointer"
+                  >
+                    {copiedDomain ? <CheckCircle2 className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                    <span>{copiedDomain ? 'تم النسخ' : 'نسخ النطاق'}</span>
+                  </button>
+                </div>
+
+                {/* Instant Action Options */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!quickEmailInput) setQuickEmailInput('eslam.kandeel2@gmail.com');
+                      onShowToast('تم تعبئة البريد، اضغط على زر الدخول بالأسفل');
+                    }}
+                    className="py-2.5 px-3 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shadow-md"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>الدخول برمز التحقق الفوري (OTP)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        setIsLoading(true);
+                        await googleSignInWithRedirect();
+                      } catch (e: any) {
+                        onShowToast(e.message || 'تعذر بدء الانتقال المباشر');
+                      } finally {
+                        setIsLoading(false);
+                      }
+                    }}
+                    className="py-2.5 px-3 bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-bold rounded-xl border border-amber-500/40 transition flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Compass className="w-3.5 h-3.5" />
+                    <span>الدخول المباشر بنفس الصفحة (Redirect)</span>
+                  </button>
+                </div>
+
+                {/* Firebase Console Guide Accordion */}
+                <div className="pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowVercelGuide(!showVercelGuide)}
+                    className="text-[11px] text-amber-400 hover:text-amber-300 font-bold underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <HelpCircle className="w-3.5 h-3.5" />
+                    <span>{showVercelGuide ? 'إخفاء خطوات تفعيل النطاق في Firebase' : 'كيف أفعّل نطاق Vercel في Firebase لمرة واحدة؟'}</span>
+                  </button>
+
+                  {showVercelGuide && (
+                    <div className="mt-2 p-3 bg-slate-900/90 rounded-xl border border-slate-700 text-[11px] text-slate-300 space-y-1.5 leading-relaxed animate-fadeIn">
+                      <p className="font-bold text-amber-300">خطوات بسيطة (دقيقة واحدة):</p>
+                      <ol className="list-decimal list-inside space-y-1 text-slate-200">
+                        <li>افتح <strong>Firebase Console</strong> واذهب إلى مشروعك.</li>
+                        <li>اختر <strong>Authentication</strong> ثم تبويب <strong>Settings</strong>.</li>
+                        <li>اضغط على <strong>Authorized Domains</strong> ثم <strong>Add Domain</strong>.</li>
+                        <li>الصق النطاق المنسوخ أعلاه (<span className="font-mono text-amber-300">{typeof window !== 'undefined' ? window.location.hostname : 'vercel.app'}</span>) واضغط <strong>Save</strong>.</li>
+                      </ol>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 

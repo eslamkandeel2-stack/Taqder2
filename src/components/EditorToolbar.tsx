@@ -558,8 +558,12 @@ export const EditorToolbar: React.FC<Props> = ({
   const [systemConfig, setSystemConfig] = useState<SystemSettingsConfig>(getSavedSystemConfig());
 
   React.useEffect(() => {
-    const handleConfigChange = () => {
-      setSystemConfig(getSavedSystemConfig());
+    const handleConfigChange = (e?: any) => {
+      if (e?.detail) {
+        setSystemConfig(e.detail);
+      } else {
+        setSystemConfig(getSavedSystemConfig());
+      }
     };
     window.addEventListener('taqdeer_system_config_changed', handleConfigChange);
     return () => {
@@ -1519,110 +1523,118 @@ export const EditorToolbar: React.FC<Props> = ({
           <div className="space-y-4">
             
             {/* Linguistic Proofreading & Appreciation Suggestions Quick Bar */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              
-              {/* Arabic Proofreader Quick Card */}
-              <div className={`p-3 rounded-xl border flex items-center justify-between gap-2.5 transition shadow-2xs ${
-                liveProofread.totalIssues > 0
-                  ? 'bg-amber-50/90 border-amber-300'
-                  : 'bg-emerald-50/80 border-emerald-300'
-              }`}>
-                <div className="flex items-center gap-2.5">
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 font-bold ${
+            {(isSpellcheckEnabled || isPraiseBankEnabled) && (
+              <div className={`grid gap-2.5 ${isSpellcheckEnabled && isPraiseBankEnabled ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
+                
+                {/* Arabic Proofreader Quick Card */}
+                {isSpellcheckEnabled && (
+                  <div className={`p-3 rounded-xl border flex items-center justify-between gap-2.5 transition shadow-2xs ${
                     liveProofread.totalIssues > 0
-                      ? 'bg-amber-500 text-slate-950 shadow-xs'
-                      : 'bg-emerald-500 text-white shadow-xs'
+                      ? 'bg-amber-50/90 border-amber-300'
+                      : 'bg-emerald-50/80 border-emerald-300'
                   }`}>
-                    <SpellCheck className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-1.5">
-                      <h4 className="text-xs font-black text-slate-900">
-                        التدقيق اللغوي والإملائي
-                      </h4>
-                      {liveProofread.totalIssues > 0 ? (
-                        <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-rose-500 text-white animate-pulse">
-                          {liveProofread.totalIssues} ملاحظة
-                        </span>
-                      ) : (
-                        <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-emerald-500 text-white">
-                          سليم 100% ✨
-                        </span>
-                      )}
+                    <div className="flex items-center gap-2.5">
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 font-bold ${
+                        liveProofread.totalIssues > 0
+                          ? 'bg-amber-500 text-slate-950 shadow-xs'
+                          : 'bg-emerald-500 text-white shadow-xs'
+                      }`}>
+                        <SpellCheck className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <h4 className="text-xs font-black text-slate-900">
+                            التدقيق اللغوي والإملائي
+                          </h4>
+                          {liveProofread.totalIssues > 0 ? (
+                            <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-rose-500 text-white animate-pulse">
+                              {liveProofread.totalIssues} ملاحظة
+                            </span>
+                          ) : (
+                            <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-emerald-500 text-white">
+                              سليم 100% ✨
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-slate-600">
+                          {liveProofread.totalIssues > 0
+                            ? `اكتشف النظام ${liveProofread.totalIssues} ملاحظة في الهمزات/التاء/الضمائر`
+                            : 'نصوص الشهادة سليمة ومضبوطة لغوياً'}
+                        </p>
+                      </div>
                     </div>
-                    <p className="text-[10px] text-slate-600">
-                      {liveProofread.totalIssues > 0
-                        ? `اكتشف النظام ${liveProofread.totalIssues} ملاحظة في الهمزات/التاء/الضمائر`
-                        : 'نصوص الشهادة سليمة ومضبوطة لغوياً'}
-                    </p>
-                  </div>
-                </div>
 
-                <button
-                  type="button"
-                  onClick={onOpenProofreaderModal}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-black transition shrink-0 cursor-pointer shadow-2xs ${
-                    liveProofread.totalIssues > 0
-                      ? 'bg-amber-500 hover:bg-amber-400 text-slate-950'
-                      : 'bg-slate-800 hover:bg-slate-700 text-white'
-                  }`}
-                  title="فتح نافذة التدقيق الإملائي واللغوي الفوري"
-                >
-                  <span>{liveProofread.totalIssues > 0 ? 'معاينة وتصحيح' : 'فحص لغوي'}</span>
-                </button>
-              </div>
-
-              {/* Appreciation Phrasing Suggestions Bank Card */}
-              <div className="p-3 rounded-xl border border-indigo-200 bg-indigo-50/80 flex items-center justify-between gap-2.5 shadow-2xs">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs">
-                    <Sparkles className="w-4 h-4" />
+                    <button
+                      type="button"
+                      onClick={onOpenProofreaderModal}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-black transition shrink-0 cursor-pointer shadow-2xs ${
+                        liveProofread.totalIssues > 0
+                          ? 'bg-amber-500 hover:bg-amber-400 text-slate-950'
+                          : 'bg-slate-800 hover:bg-slate-700 text-white'
+                      }`}
+                      title="فتح نافذة التدقيق الإملائي واللغوي الفوري"
+                    >
+                      <span>{liveProofread.totalIssues > 0 ? 'معاينة وتصحيح' : 'فحص لغوي'}</span>
+                    </button>
                   </div>
-                  <div>
-                    <div className="flex items-center gap-1.5">
-                      <h4 className="text-xs font-black text-slate-900">
-                        بنك صياغات التقدير والثناء
-                      </h4>
-                      <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-indigo-600 text-white">
-                        جاهز 💡
-                      </span>
+                )}
+
+                {/* Appreciation Phrasing Suggestions Bank Card */}
+                {isPraiseBankEnabled && (
+                  <div className="p-3 rounded-xl border border-indigo-200 bg-indigo-50/80 flex items-center justify-between gap-2.5 shadow-2xs">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                        <Sparkles className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <h4 className="text-xs font-black text-slate-900">
+                            بنك صياغات التقدير والثناء
+                          </h4>
+                          <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-indigo-600 text-white">
+                            جاهز 💡
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-600">
+                          صيغ فخمة مصنفة للمواد والأنشطة والمسابقات
+                        </p>
+                      </div>
                     </div>
-                    <p className="text-[10px] text-slate-600">
-                      صيغ فخمة مصنفة للمواد والأنشطة والمسابقات
-                    </p>
+
+                    <button
+                      type="button"
+                      onClick={onOpenAppreciationSuggestionsModal}
+                      className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-black transition shrink-0 cursor-pointer shadow-2xs"
+                      title="استعراض بنك الصياغات ونصوص التقدير الراقية"
+                    >
+                      استعراض الصيغ
+                    </button>
                   </div>
-                </div>
+                )}
 
-                <button
-                  type="button"
-                  onClick={onOpenAppreciationSuggestionsModal}
-                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-black transition shrink-0 cursor-pointer shadow-2xs"
-                  title="استعراض بنك الصياغات ونصوص التقدير الراقية"
-                >
-                  استعراض الصيغ
-                </button>
               </div>
-
-            </div>
+            )}
 
             {/* AI Generator Banner */}
-            <div className="bg-gradient-to-r from-amber-50 to-amber-100/80 p-4 rounded-xl border border-amber-200 flex items-center justify-between gap-3">
-              <div>
-                <h4 className="text-xs font-bold text-amber-900 flex items-center gap-1.5 font-['Cairo']">
-                  <Sparkles className="w-4 h-4 text-amber-600 animate-spin" />
-                  صياغة نصوص التكريم بالذكاء الاصطناعي
-                </h4>
-                <p className="text-[11px] text-amber-800 mt-0.5">
-                  أدخل اسم الطالب والمجال وسيكتب لك Gemini نصاً مشجعاً وراقياً بضغطة زر!
-                </p>
+            {isAiFeaturesEnabled && (
+              <div className="bg-gradient-to-r from-amber-50 to-amber-100/80 p-4 rounded-xl border border-amber-200 flex items-center justify-between gap-3">
+                <div>
+                  <h4 className="text-xs font-bold text-amber-900 flex items-center gap-1.5 font-['Cairo']">
+                    <Sparkles className="w-4 h-4 text-amber-600 animate-spin" />
+                    صياغة نصوص التكريم بالذكاء الاصطناعي
+                  </h4>
+                  <p className="text-[11px] text-amber-800 mt-0.5">
+                    أدخل اسم الطالب والمجال وسيكتب لك Gemini نصاً مشجعاً وراقياً بضغطة زر!
+                  </p>
+                </div>
+                <button
+                  onClick={() => onOpenAiModal('improve', 'appreciation')}
+                  className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs rounded-lg transition shadow-2xs whitespace-nowrap cursor-pointer"
+                >
+                  توليد بـ AI
+                </button>
               </div>
-              <button
-                onClick={() => onOpenAiModal('improve', 'appreciation')}
-                className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs rounded-lg transition shadow-2xs whitespace-nowrap cursor-pointer"
-              >
-                توليد بـ AI
-              </button>
-            </div>
+            )}
 
             {/* Quick System Default Settings Bar */}
             <div className="bg-amber-50/70 border border-amber-300/80 rounded-xl p-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
@@ -3886,24 +3898,26 @@ export const EditorToolbar: React.FC<Props> = ({
 
                           {/* Action Buttons Row */}
                           <div className="flex flex-wrap items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => handleOptimizeLayoutAi()}
-                              disabled={isAiOptimizingLayout}
-                              className="px-3.5 py-1.5 bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-black text-xs rounded-xl shadow-md hover:shadow-amber-500/25 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                              {isAiOptimizingLayout ? (
-                                <>
-                                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                                  <span>جاري التحليل الهندسي بالذكاء الاصطناعي...</span>
-                                </>
-                              ) : (
-                                <>
-                                  <Sparkles className="w-3.5 h-3.5" />
-                                  <span>تنسيق وملاءمة شاملة بالذكاء الاصطناعي ✨</span>
-                                </>
-                              )}
-                            </button>
+                            {isAiFeaturesEnabled && (
+                              <button
+                                type="button"
+                                onClick={() => handleOptimizeLayoutAi()}
+                                disabled={isAiOptimizingLayout}
+                                className="px-3.5 py-1.5 bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-black text-xs rounded-xl shadow-md hover:shadow-amber-500/25 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                {isAiOptimizingLayout ? (
+                                  <>
+                                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                    <span>جاري التحليل الهندسي بالذكاء الاصطناعي...</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Sparkles className="w-3.5 h-3.5" />
+                                    <span>تنسيق وملاءمة شاملة بالذكاء الاصطناعي ✨</span>
+                                  </>
+                                )}
+                              </button>
+                            )}
 
                             <button
                               type="button"
@@ -4094,15 +4108,17 @@ export const EditorToolbar: React.FC<Props> = ({
                               <div className="space-y-1.5">
                                 <div className="flex flex-wrap items-center justify-between text-[10px] font-bold text-slate-400 gap-1">
                                   <span>نماذج جاهزة للبدء السريع أو توليد مخصص:</span>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleOptimizeLayoutAi('custom-grid')}
-                                    disabled={isAiOptimizingLayout}
-                                    className="px-2 py-0.5 bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-black rounded-md flex items-center gap-1 cursor-pointer transition shadow-2xs text-[9.5px] disabled:opacity-50"
-                                  >
-                                    <Sparkles className="w-3 h-3" />
-                                    <span>توليد شبكة مخصصة بالذكاء الاصطناعي</span>
-                                  </button>
+                                  {isAiFeaturesEnabled && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOptimizeLayoutAi('custom-grid')}
+                                      disabled={isAiOptimizingLayout}
+                                      className="px-2 py-0.5 bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-black rounded-md flex items-center gap-1 cursor-pointer transition shadow-2xs text-[9.5px] disabled:opacity-50"
+                                    >
+                                      <Sparkles className="w-3 h-3" />
+                                      <span>توليد شبكة مخصصة بالذكاء الاصطناعي</span>
+                                    </button>
+                                  )}
                                 </div>
                                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-1.5">
                                   {CUSTOM_GRID_SNIPPETS.map((snip) => (
@@ -5209,19 +5225,21 @@ export const EditorToolbar: React.FC<Props> = ({
                     </div>
 
                     {/* ✨ AI Auto-Tune Button */}
-                    <button
-                      type="button"
-                      disabled={isAiTuningBg}
-                      onClick={handleAiTuneBackground}
-                      className="w-full p-2.5 bg-gradient-to-r from-amber-600 via-amber-700 to-yellow-600 hover:from-amber-700 hover:to-yellow-700 text-white font-bold text-xs rounded-xl shadow-md transition flex items-center justify-center gap-2"
-                    >
-                      <Sparkles className={`w-4 h-4 text-yellow-200 ${isAiTuningBg ? 'animate-spin' : 'animate-bounce'}`} />
-                      <span>
-                        {isAiTuningBg
-                          ? 'جاري ضبط ألوان وعبارات الشهادة بالذكاء الاصطناعي...'
-                          : '✨ ضبط العبارات والألوان بالذكاء الاصطناعي على الصورة المرفوعة'}
-                      </span>
-                    </button>
+                    {isAiFeaturesEnabled && (
+                      <button
+                        type="button"
+                        disabled={isAiTuningBg}
+                        onClick={handleAiTuneBackground}
+                        className="w-full p-2.5 bg-gradient-to-r from-amber-600 via-amber-700 to-yellow-600 hover:from-amber-700 hover:to-yellow-700 text-white font-bold text-xs rounded-xl shadow-md transition flex items-center justify-center gap-2"
+                      >
+                        <Sparkles className={`w-4 h-4 text-yellow-200 ${isAiTuningBg ? 'animate-spin' : 'animate-bounce'}`} />
+                        <span>
+                          {isAiTuningBg
+                            ? 'جاري ضبط ألوان وعبارات الشهادة بالذكاء الاصطناعي...'
+                            : '✨ ضبط العبارات والألوان بالذكاء الاصطناعي على الصورة المرفوعة'}
+                        </span>
+                      </button>
+                    )}
 
                     {aiTuneStatus && (
                       <div className="p-2 bg-amber-100 text-amber-950 text-[11px] font-bold rounded-lg border border-amber-300 text-center animate-pulse">
@@ -5825,16 +5843,18 @@ export const EditorToolbar: React.FC<Props> = ({
                         <span>خلفية شفافة</span>
                       </button>
 
-                      <button
-                        type="button"
-                        onClick={handleRemoveLogoBgAi}
-                        disabled={isAiRemovingLogoBg}
-                        className="px-2 py-1.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white rounded-lg text-[11px] font-bold border border-amber-600 flex items-center justify-center gap-1 transition shadow-2xs disabled:opacity-50 cursor-pointer"
-                        title="حذف خلفية الشعار بالذكاء الاصطناعي"
-                      >
-                        <Sparkles className={`w-3.5 h-3.5 text-amber-200 ${isAiRemovingLogoBg ? 'animate-spin' : ''}`} />
-                        <span>حذف ذكي</span>
-                      </button>
+                      {isAiFeaturesEnabled && (
+                        <button
+                          type="button"
+                          onClick={handleRemoveLogoBgAi}
+                          disabled={isAiRemovingLogoBg}
+                          className="px-2 py-1.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white rounded-lg text-[11px] font-bold border border-amber-600 flex items-center justify-center gap-1 transition shadow-2xs disabled:opacity-50 cursor-pointer"
+                          title="حذف خلفية الشعار بالذكاء الاصطناعي"
+                        >
+                          <Sparkles className={`w-3.5 h-3.5 text-amber-200 ${isAiRemovingLogoBg ? 'animate-spin' : ''}`} />
+                          <span>حذف ذكي</span>
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -6361,7 +6381,7 @@ export const EditorToolbar: React.FC<Props> = ({
               )}
 
               {/* AI & Smart Auto-Adjust Buttons */}
-              <div className="grid grid-cols-2 gap-2">
+              <div className={`grid gap-2 ${isAiFeaturesEnabled ? 'grid-cols-2' : 'grid-cols-1'}`}>
                 <button
                   type="button"
                   onClick={handleAutoSafeMargins}
@@ -6371,15 +6391,17 @@ export const EditorToolbar: React.FC<Props> = ({
                   <span>ضبط تلقائي للإطار</span>
                 </button>
 
-                <button
-                  type="button"
-                  disabled={isAiOptimizingMargins}
-                  onClick={handleAiOptimizeMargins}
-                  className="py-1.5 px-2.5 rounded-lg text-[11px] font-bold bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white shadow-2xs flex items-center justify-center gap-1.5 transition active:scale-98 disabled:opacity-70"
-                >
-                  <Sparkles className={`w-3.5 h-3.5 shrink-0 ${isAiOptimizingMargins ? 'animate-spin' : ''}`} />
-                  <span>{isAiOptimizingMargins ? 'جاري الضبط...' : 'ضبط بالذكاء الاصطناعي'}</span>
-                </button>
+                {isAiFeaturesEnabled && (
+                  <button
+                    type="button"
+                    disabled={isAiOptimizingMargins}
+                    onClick={handleAiOptimizeMargins}
+                    className="py-1.5 px-2.5 rounded-lg text-[11px] font-bold bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white shadow-2xs flex items-center justify-center gap-1.5 transition active:scale-98 disabled:opacity-70"
+                  >
+                    <Sparkles className={`w-3.5 h-3.5 shrink-0 ${isAiOptimizingMargins ? 'animate-spin' : ''}`} />
+                    <span>{isAiOptimizingMargins ? 'جاري الضبط...' : 'ضبط بالذكاء الاصطناعي'}</span>
+                  </button>
+                )}
               </div>
 
               {/* Quick Presets */}
