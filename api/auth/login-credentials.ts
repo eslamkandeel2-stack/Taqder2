@@ -1,4 +1,4 @@
-import { setCorsHeaders, handleRegisterGoogle } from '../_sharedAuth';
+import { setCorsHeaders, handleLoginCredentials } from '../_sharedAuth';
 
 export default async function handler(req: any, res: any) {
   setCorsHeaders(res);
@@ -7,8 +7,8 @@ export default async function handler(req: any, res: any) {
     return res.status(200).end();
   }
 
-  if (req.method === 'POST' || req.method === 'GET') {
-    return handleRegisterGoogle(req, res);
+  if (req.method === 'POST') {
+    return handleLoginCredentials(req, res);
   }
 
   return res.status(405).json({ success: false, error: 'Method Not Allowed' });

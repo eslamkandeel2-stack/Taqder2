@@ -2078,16 +2078,17 @@ export const AppSettingsModal: React.FC<Props> = ({
                   </div>
 
                   <div className="p-3.5 bg-blue-50/70 rounded-xl border border-blue-200/60">
-                    <label className="block text-xs font-bold text-blue-950 mb-1">محرك وصيغة توثيق Google Drive الافتراضية</label>
-                    <div className="grid grid-cols-2 gap-2 mb-1">
+                    <label className="block text-xs font-bold text-blue-950 mb-1">محرك وصيغة ودقة توثيق Google Drive الافتراضية</label>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-1">
                       <select
                         value={defaultSettings.driveDefaultEngine || 'html2canvas'}
                         onChange={(e) => setDefaultSettings({ ...defaultSettings, driveDefaultEngine: e.target.value as any })}
                         className="w-full text-xs font-bold p-2 rounded-lg border border-blue-200 bg-white outline-none"
                       >
-                        <option value="html2canvas">html2canvas 🎨</option>
-                        <option value="modern-screenshot">Modern Screenshot ⚡</option>
-                        <option value="html-to-image">html-to-image 🖼️</option>
+                        <option value="html2canvas">html2canvas 🎨 (الأكثر استقراراً)</option>
+                        <option value="modern-screenshot">Modern Screenshot ⚡ (فائق السرعة)</option>
+                        <option value="html-to-image">html-to-image 🖼️ (دقة متناهية)</option>
+                        <option value="jspdf">jsPDF 📐 (معايرة هندسية)</option>
                       </select>
 
                       <select
@@ -2099,8 +2100,18 @@ export const AppSettingsModal: React.FC<Props> = ({
                         <option value="pdf">صيغة PDF (مستند موثق)</option>
                         <option value="jpeg">صيغة JPEG (حجم خفيف)</option>
                       </select>
+
+                      <select
+                        value={defaultSettings.driveDefaultDpi || 300}
+                        onChange={(e) => setDefaultSettings({ ...defaultSettings, driveDefaultDpi: parseInt(e.target.value) as any })}
+                        className="w-full text-xs font-bold p-2 rounded-lg border border-blue-200 bg-white outline-none"
+                      >
+                        <option value="150">150 DPI (معاينة خفيفة)</option>
+                        <option value="300">300 DPI (طباعة فائقة ⭐)</option>
+                        <option value="400">400 DPI (دقة ملكية فائقة)</option>
+                      </select>
                     </div>
-                    <p className="text-[10px] text-blue-800/80">المحرك والصيغة المعتمدة لرفع الشهادات ومزامنة روابط التوثيق مع Google Drive.</p>
+                    <p className="text-[10px] text-blue-800/80">المحرك والصيغة والدقة المعتمدة لرفع الشهادات ومزامنة روابط التوثيق مع Google Drive.</p>
                   </div>
                 </div>
 
