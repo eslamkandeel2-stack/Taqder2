@@ -121,7 +121,7 @@ export async function registerWithCredentials(params: {
     });
     if (res.ok) {
       const data = await res.json();
-      if (data.success) {
+      if (data.success && (data.userId || data.account)) {
         if (data.userId) {
           saveUserVerificationToFirestore(data.userId, {
             email: params.email || '',
@@ -215,7 +215,12 @@ export async function registerWithGoogle(params: {
     });
     if (res.ok) {
       const data = await res.json();
-      if (data.success) return data;
+      if (data.success && (data.userId || data.account || data.verificationCode)) {
+        if (data.account && !data.requiresVerification) {
+          saveStoredUnifiedAccount(data.account);
+        }
+        return data;
+      }
     }
   } catch (e) {
     console.warn('Server Google registration fallback:', e);
@@ -525,7 +530,7 @@ export async function loginWithGoogle(params: {
     });
     if (res.ok) {
       const data = await res.json();
-      if (data.success) {
+      if (data.success && (data.account || data.userId || data.verificationCode)) {
         if (data.account && !data.requiresVerification) {
           saveStoredUnifiedAccount(data.account);
         }
