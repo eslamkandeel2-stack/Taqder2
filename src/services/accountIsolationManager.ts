@@ -70,7 +70,8 @@ export function isAccountSwitching(): boolean {
  */
 export function getAccountKey(user?: UserLike | null): string {
   if (!user) return 'guest';
-  const rawKey = user.uid || user.userId || user.email || 'anonymous';
+  const cleanEmail = (user.googleEmail || user.email || '').trim().toLowerCase();
+  const rawKey = cleanEmail || user.userId || user.uid || 'anonymous';
   return 'acc_' + rawKey.replace(/[^a-zA-Z0-9_\-@.]/g, '_').toLowerCase();
 }
 
@@ -400,6 +401,26 @@ export interface KnownAccountRecord {
 
 const REGISTRY_STORAGE_KEY = 'taqdeer_saved_accounts_registry_v1';
 
+function deduplicateKnownAccounts(registry: KnownAccountRecord[]): KnownAccountRecord[] {
+  const seenEmails = new Set<string>();
+  const seenKeys = new Set<string>();
+  const clean: KnownAccountRecord[] = [];
+
+  for (const item of registry) {
+    const email = (item.googleEmail || item.email || '').trim().toLowerCase();
+    const key = item.accountKey;
+
+    if (email && seenEmails.has(email)) continue;
+    if (key && seenKeys.has(key)) continue;
+
+    if (email) seenEmails.add(email);
+    if (key) seenKeys.add(key);
+    clean.push(item);
+  }
+
+  return clean;
+}
+
 /**
  * Registers an active account in the device registry for quick isolated switching
  */
@@ -408,7 +429,16 @@ export function registerAccountInRegistry(user: UserLike): void {
   try {
     const key = getAccountKey(user);
     const registry = getKnownAccounts();
-    const existingIdx = registry.findIndex(a => a.accountKey === key);
+    const cleanEmail = (user.googleEmail || user.email || '').trim().toLowerCase();
+
+    const existingIdx = registry.findIndex(a => {
+      const aEmail = (a.googleEmail || a.email || '').trim().toLowerCase();
+      if (cleanEmail && aEmail && cleanEmail === aEmail) return true;
+      if (a.accountKey === key) return true;
+      if (user.uid && a.uid === user.uid) return true;
+      if (user.userId && a.userId === user.userId) return true;
+      return false;
+    });
 
     let certsCount = 0;
     try {
@@ -416,17 +446,19 @@ export function registerAccountInRegistry(user: UserLike): void {
       if (raw) certsCount = JSON.parse(raw).length;
     } catch {}
 
+    const prevRecord = existingIdx >= 0 ? registry[existingIdx] : undefined;
+
     const record: KnownAccountRecord = {
       accountKey: key,
-      uid: user.uid,
-      userId: user.userId || user.uid,
-      email: user.email || '',
-      displayName: user.displayName || 'مستخدم معتمد',
-      photoURL: user.photoURL || undefined,
-      googleEmail: user.googleEmail || undefined,
-      isVerified: user.isVerified ?? true,
+      uid: user.uid || prevRecord?.uid || 'usr_' + Date.now(),
+      userId: user.userId || prevRecord?.userId || user.uid,
+      email: cleanEmail || user.email || prevRecord?.email || '',
+      displayName: user.displayName || prevRecord?.displayName || 'مستخدم معتمد',
+      photoURL: user.photoURL || prevRecord?.photoURL || undefined,
+      googleEmail: user.googleEmail || prevRecord?.googleEmail || cleanEmail || undefined,
+      isVerified: user.isVerified ?? prevRecord?.isVerified ?? true,
       lastActive: new Date().toISOString(),
-      certsCount
+      certsCount: Math.max(certsCount, prevRecord?.certsCount || 0)
     };
 
     if (existingIdx >= 0) {
@@ -435,7 +467,8 @@ export function registerAccountInRegistry(user: UserLike): void {
       registry.unshift(record);
     }
 
-    localStorage.setItem(REGISTRY_STORAGE_KEY, JSON.stringify(registry.slice(0, 10)));
+    const deduplicated = deduplicateKnownAccounts(registry);
+    localStorage.setItem(REGISTRY_STORAGE_KEY, JSON.stringify(deduplicated.slice(0, 10)));
   } catch (err) {
     console.warn('Failed to register account in registry:', err);
   }
@@ -450,7 +483,9 @@ export function getKnownAccounts(): KnownAccountRecord[] {
     const raw = localStorage.getItem(REGISTRY_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed;
+      if (Array.isArray(parsed)) {
+        return deduplicateKnownAccounts(parsed);
+      }
     }
   } catch (err) {
     console.warn(err);
