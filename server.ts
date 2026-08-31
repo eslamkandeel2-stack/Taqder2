@@ -2512,7 +2512,7 @@ app.post("/api/auth/verify-code", (req, res) => {
     }
 
     const db = loadAccountsDb();
-    let user = db.users.find(
+    const user = db.users.find(
       (u) =>
         (userId && u.userId === userId) ||
         (cleanEmail && u.email && u.email.toLowerCase() === cleanEmail) ||
@@ -2521,31 +2521,11 @@ app.post("/api/auth/verify-code", (req, res) => {
     );
 
     if (!user) {
-      if (cleanEmail || userId) {
-        const fallbackUserId = userId || generateUserId("USR");
-        const fallbackEmail = cleanEmail || `${fallbackUserId.toLowerCase()}@user.taqdeer`;
-        const displayName = fallbackEmail.split("@")[0] || "مستخدم معتمد";
-        user = {
-          userId: fallbackUserId,
-          username: fallbackEmail.split("@")[0],
-          displayName: displayName,
-          email: fallbackEmail,
-          googleEmail: (fallbackEmail.includes("@gmail.com") || fallbackEmail.includes("@googlemail.com")) ? fallbackEmail : undefined,
-          isVerified: true,
-          verifiedAt: new Date().toISOString(),
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          linkedGoogle: (fallbackEmail.includes("@gmail.com") || fallbackEmail.includes("@googlemail.com"))
-        };
-        db.users.push(user);
-        saveAccountsDb(db);
-      } else {
-        return res.status(404).json({ success: false, error: "لم يتم العثور على الحساب المطلوب" });
-      }
+      return res.status(404).json({ success: false, error: "لم يتم العثور على الحساب المطلوب" });
     }
 
     // Check code match (or master admin bypass if needed)
-    if (user.verificationCode && user.verificationCode !== cleanCode && cleanCode !== "123456") {
+    if (user.verificationCode !== cleanCode && cleanCode !== "123456") {
       return res.status(400).json({ success: false, error: "كود التحقق غير صحيح. يرجى التأكد من الرمز المرسل إلى بريدك والمحاولة مجدداً." });
     }
 
