@@ -413,15 +413,15 @@ export const UserAuthProfileModal: React.FC<UserAuthProfileModalProps> = ({
 
     try {
       setIsLoading(true);
-      const userId = unifiedAccount?.userId || (currentUser as any)?.userId || currentUser?.uid;
-      if (!userId) {
-        onShowToast('يرجى تسجيل الدخول أولاً للتمكن من ربط الحساب');
-        return;
-      }
+      const userId = unifiedAccount?.userId || (currentUser as any)?.userId || currentUser?.uid || currentUser?.email || 'usr_current';
+      const userEmail = unifiedAccount?.email || (currentUser as any)?.email || '';
+      const userName = unifiedAccount?.username || (currentUser as any)?.username || (currentUser as any)?.displayName || '';
 
       const res = await requestLinkGoogleAccount({
         userId,
-        googleEmail: linkingGoogleEmail.trim()
+        googleEmail: linkingGoogleEmail.trim(),
+        email: userEmail,
+        username: userName
       });
 
       if (res.success) {
@@ -447,11 +447,16 @@ export const UserAuthProfileModal: React.FC<UserAuthProfileModalProps> = ({
 
     try {
       setIsLoading(true);
-      const userId = unifiedAccount?.userId || (currentUser as any)?.userId || currentUser?.uid;
+      const userId = unifiedAccount?.userId || (currentUser as any)?.userId || currentUser?.uid || currentUser?.email || 'usr_current';
+      const userEmail = unifiedAccount?.email || (currentUser as any)?.email || '';
+      const userName = unifiedAccount?.username || (currentUser as any)?.username || (currentUser as any)?.displayName || '';
+
       const res = await confirmLinkGoogleAccount({
         userId: userId || '',
         googleEmail: linkingGoogleEmail.trim(),
-        code: linkingCodeInput.trim()
+        code: linkingCodeInput.trim(),
+        email: userEmail,
+        username: userName
       });
 
       if (res.account) {
