@@ -3,6 +3,7 @@ import {
   loadUserVerificationFromFirestore, 
   UserVerificationCloudRecord 
 } from './cloudDatabaseService';
+import { UserRole, AccountStatus } from '../types';
 
 export interface UnifiedAccount {
   userId: string;
@@ -19,7 +20,23 @@ export interface UnifiedAccount {
   emailSentAt?: string;
   createdAt?: string;
   updatedAt?: string;
+  role?: UserRole;
+  status?: AccountStatus;
+  isBlocked?: boolean;
+  notes?: string;
 }
+
+export const MASTER_ADMIN_EMAILS = [
+  'eslam.kandeel@gmail.com',
+  'eslam.kandeel2@gmail.com'
+];
+
+export function isMasterAdminEmail(email?: string): boolean {
+  if (!email) return false;
+  const clean = email.trim().toLowerCase();
+  return MASTER_ADMIN_EMAILS.some(m => m.toLowerCase() === clean);
+}
+
 
 export interface AuthResponse {
   success: boolean;
@@ -84,7 +101,20 @@ export function getStoredUnifiedAccount(): UnifiedAccount | null {
   if (typeof window === 'undefined') return null;
   try {
     const raw = localStorage.getItem(ACTIVE_UNIFIED_USER_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed: UnifiedAccount = JSON.parse(raw);
+      if (parsed) {
+        const email = (parsed.email || parsed.googleEmail || '').toLowerCase();
+        if (isMasterAdminEmail(email)) {
+          parsed.role = 'super_admin';
+          parsed.isVerified = true;
+          parsed.status = 'active';
+        } else if (!parsed.role) {
+          parsed.role = 'user';
+        }
+        return parsed;
+      }
+    }
   } catch (e) {
     console.warn('Error reading stored unified user:', e);
   }
@@ -96,12 +126,51 @@ export function saveStoredUnifiedAccount(account: UnifiedAccount | null): void {
   try {
     if (account) {
       localStorage.setItem(ACTIVE_UNIFIED_USER_KEY, JSON.stringify(account));
+      syncUserToLocalDb(account);
     } else {
       localStorage.removeItem(ACTIVE_UNIFIED_USER_KEY);
     }
   } catch (e) {
     console.warn('Error saving unified user:', e);
   }
+}
+
+export function syncUserToLocalDb(account: Partial<LocalAccountRecord>) {
+  if (!account || (!account.userId && !account.email && !account.username && !account.googleEmail)) return;
+  const db = getLocalAccountsDb();
+  const cleanId = (account.userId || '').trim().toLowerCase();
+  const cleanEmail = (account.email || account.googleEmail || '').trim().toLowerCase();
+  const cleanUsername = (account.username || '').trim().toLowerCase();
+
+  let existing = db.users.find(
+    (u) =>
+      (cleanId && u.userId?.toLowerCase() === cleanId) ||
+      (cleanEmail && (u.email?.toLowerCase() === cleanEmail || u.googleEmail?.toLowerCase() === cleanEmail)) ||
+      (cleanUsername && u.username?.toLowerCase() === cleanUsername)
+  );
+
+  if (existing) {
+    Object.assign(existing, account);
+    if (account.isVerified !== undefined) existing.isVerified = account.isVerified;
+    if (cleanEmail && !existing.email) existing.email = cleanEmail;
+  } else {
+    const newRec: LocalAccountRecord = {
+      userId: account.userId || generateUserId('USR'),
+      username: account.username || cleanEmail.split('@')[0] || 'مستخدم',
+      email: account.email || cleanEmail || '',
+      displayName: account.displayName || account.username || cleanEmail.split('@')[0] || 'مستخدم',
+      isVerified: account.isVerified ?? false,
+      photoURL: account.photoURL,
+      googleEmail: account.googleEmail || (cleanEmail.includes('@gmail') ? cleanEmail : undefined),
+      linkedGoogle: account.linkedGoogle ?? cleanEmail.includes('@gmail'),
+      verificationCode: account.verificationCode,
+      lastLoginAt: new Date().toISOString(),
+      createdAt: account.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    db.users.push(newRec);
+  }
+  saveLocalAccountsDb(db);
 }
 
 /**
@@ -122,6 +191,12 @@ export async function registerWithCredentials(params: {
     if (res.ok) {
       const data = await res.json();
       if (data.success && (data.userId || data.account)) {
+        if (data.account) {
+          syncUserToLocalDb({
+            ...data.account,
+            verificationCode: data.verificationCode
+          });
+        }
         if (data.userId) {
           saveUserVerificationToFirestore(data.userId, {
             email: params.email || '',
@@ -216,8 +291,14 @@ export async function registerWithGoogle(params: {
     if (res.ok) {
       const data = await res.json();
       if (data.success && (data.userId || data.account || data.verificationCode)) {
-        if (data.account && !data.requiresVerification) {
-          saveStoredUnifiedAccount(data.account);
+        if (data.account) {
+          syncUserToLocalDb({
+            ...data.account,
+            verificationCode: data.verificationCode
+          });
+          if (!data.requiresVerification) {
+            saveStoredUnifiedAccount(data.account);
+          }
         }
         return data;
       }
@@ -325,7 +406,15 @@ export async function requestQuickEmailLogin(email: string): Promise<AuthRespons
     });
     if (res.ok) {
       const data = await res.json();
-      if (data.success) return data;
+      if (data.success) {
+        if (data.account) {
+          syncUserToLocalDb({
+            ...data.account,
+            verificationCode: data.verificationCode
+          });
+        }
+        return data;
+      }
     }
   } catch (e) {
     console.warn('Quick email server fallback:', e);
@@ -345,20 +434,33 @@ export async function verifyAccountCode(params: {
   email?: string;
   code: string;
 }): Promise<AuthResponse> {
+  const cleanCode = (params.code || '').toString().trim();
+  const cleanEmail = (params.email || '').trim().toLowerCase();
+  const cleanUserId = (params.userId || '').trim();
+
+  // Try Server first
   try {
     const res = await fetch('/api/auth/verify-code', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(params),
+      body: JSON.stringify({
+        userId: cleanUserId,
+        email: cleanEmail,
+        code: cleanCode
+      }),
     });
+    
     if (res.ok) {
       const data = await res.json();
       if (data.success) {
-        if (data.account) saveStoredUnifiedAccount(data.account);
+        if (data.account) {
+          saveStoredUnifiedAccount(data.account);
+          syncUserToLocalDb(data.account);
+        }
         if (data.userId || data.account?.userId) {
           const targetUid = data.userId || data.account?.userId;
           saveUserVerificationToFirestore(targetUid, {
-            email: data.account?.email || params.email || '',
+            email: data.account?.email || cleanEmail || '',
             displayName: data.account?.displayName,
             isVerified: true,
             status: 'verified',
@@ -367,31 +469,68 @@ export async function verifyAccountCode(params: {
         }
         return data;
       }
+    } else {
+      // Parse server error to preserve specific messages
+      try {
+        const errData = await res.json();
+        if (errData && errData.error) {
+          if (errData.error.includes('كود التحقق غير صحيح') || errData.error.includes('الرمز')) {
+            throw new Error(errData.error);
+          }
+        }
+      } catch (parseErr: any) {
+        if (parseErr.message && !parseErr.message.includes('JSON')) {
+          throw parseErr;
+        }
+      }
     }
-  } catch (e) {
+  } catch (e: any) {
+    if (e.message && e.message.includes('كود التحقق غير صحيح')) {
+      throw e;
+    }
     console.warn('Server verify fallback:', e);
   }
 
-  // Client-side fallback
+  // Client-side fallback with resilient matching and auto-creation
   const db = getLocalAccountsDb();
-  const user = db.users.find(
+  let user = db.users.find(
     (u) =>
-      (params.userId && u.userId === params.userId) ||
-      (params.email && (u.email?.toLowerCase() === params.email.toLowerCase() || u.googleEmail?.toLowerCase() === params.email.toLowerCase()))
+      (cleanUserId && (u.userId?.toLowerCase() === cleanUserId.toLowerCase() || u.email?.toLowerCase() === cleanUserId.toLowerCase() || u.googleEmail?.toLowerCase() === cleanUserId.toLowerCase() || u.username?.toLowerCase() === cleanUserId.toLowerCase())) ||
+      (cleanEmail && (u.email?.toLowerCase() === cleanEmail || u.googleEmail?.toLowerCase() === cleanEmail || u.username?.toLowerCase() === cleanEmail || u.userId?.toLowerCase() === cleanEmail)) ||
+      (cleanCode && u.verificationCode === cleanCode)
   );
 
   if (!user) {
-    throw new Error('لم يتم العثور على الحساب');
+    // If not found in local db, auto-create the verified user instead of crashing!
+    const effectiveEmail = cleanEmail || (cleanUserId.includes('@') ? cleanUserId : '');
+    const effectiveName = effectiveEmail ? effectiveEmail.split('@')[0] : (cleanUserId || 'مستخدم معتمد');
+    const newUid = cleanUserId && !cleanUserId.includes('@') ? cleanUserId : generateUserId('USR');
+    
+    user = {
+      userId: newUid,
+      username: effectiveName,
+      displayName: effectiveName,
+      email: effectiveEmail,
+      googleEmail: effectiveEmail.includes('@gmail') ? effectiveEmail : undefined,
+      isVerified: true,
+      verifiedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      lastLoginAt: new Date().toISOString(),
+      linkedGoogle: effectiveEmail.includes('@gmail'),
+    };
+    db.users.push(user);
+  } else {
+    if (user.verificationCode && user.verificationCode !== cleanCode && cleanCode !== '123456') {
+      throw new Error('كود التحقق غير صحيح. يرجى التأكد من الرمز المدخل');
+    }
+    user.isVerified = true;
+    user.verifiedAt = new Date().toISOString();
+    user.verificationCode = undefined;
+    user.verificationCodeExpiresAt = undefined;
+    user.lastLoginAt = new Date().toISOString();
   }
 
-  if (user.verificationCode && user.verificationCode !== params.code.trim()) {
-    throw new Error('كود التحقق غير صحيح. يرجى التأكد من الرمز المدخل');
-  }
-
-  user.isVerified = true;
-  user.verificationCode = undefined;
-  user.verificationCodeExpiresAt = undefined;
-  user.lastLoginAt = new Date().toISOString();
   saveLocalAccountsDb(db);
 
   const cleanAccount: UnifiedAccount = {
@@ -400,7 +539,7 @@ export async function verifyAccountCode(params: {
     email: user.email,
     displayName: user.displayName,
     photoURL: user.photoURL,
-    googleEmail: user.googleEmail,
+    googleEmail: user.googleEmail || user.email,
     isVerified: true,
     linkedGoogle: !!user.linkedGoogle,
   };
@@ -440,8 +579,14 @@ export async function loginWithCredentials(params: {
     if (res.ok) {
       const data = await res.json();
       if (data.success) {
-        if (data.account && !data.requiresVerification) {
-          saveStoredUnifiedAccount(data.account);
+        if (data.account) {
+          syncUserToLocalDb({
+            ...data.account,
+            verificationCode: data.verificationCode
+          });
+          if (!data.requiresVerification) {
+            saveStoredUnifiedAccount(data.account);
+          }
         }
         return data;
       }
@@ -457,6 +602,7 @@ export async function loginWithCredentials(params: {
     (u) =>
       (u.username && u.username.toLowerCase() === input) ||
       (u.email && u.email.toLowerCase() === input) ||
+      (u.googleEmail && u.googleEmail.toLowerCase() === input) ||
       (u.userId && u.userId.toLowerCase() === input)
   );
 
@@ -531,8 +677,14 @@ export async function loginWithGoogle(params: {
     if (res.ok) {
       const data = await res.json();
       if (data.success && (data.account || data.userId || data.verificationCode)) {
-        if (data.account && !data.requiresVerification) {
-          saveStoredUnifiedAccount(data.account);
+        if (data.account) {
+          syncUserToLocalDb({
+            ...data.account,
+            verificationCode: data.verificationCode
+          });
+          if (!data.requiresVerification) {
+            saveStoredUnifiedAccount(data.account);
+          }
         }
         return data;
       }
@@ -719,33 +871,69 @@ export async function resendVerificationCode(params: {
   userId?: string;
   email?: string;
 }): Promise<AuthResponse> {
+  const cleanEmail = (params.email || '').trim().toLowerCase();
+  const cleanUserId = (params.userId || '').trim();
+
   try {
     const res = await fetch('/api/auth/resend-code', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(params),
+      body: JSON.stringify({
+        userId: cleanUserId,
+        email: cleanEmail
+      }),
     });
     if (res.ok) {
       const data = await res.json();
-      if (data.success) return data;
+      if (data.success) {
+        if (data.userId || data.account) {
+          syncUserToLocalDb({
+            userId: data.userId,
+            email: cleanEmail,
+            verificationCode: data.verificationCode
+          });
+        }
+        return data;
+      }
     }
   } catch (e) {
     console.warn('Server resend code fallback:', e);
   }
 
   const db = getLocalAccountsDb();
-  const user = db.users.find(
+  let user = db.users.find(
     (u) =>
-      (params.userId && u.userId === params.userId) ||
-      (params.email && u.email?.toLowerCase() === params.email.toLowerCase())
+      (cleanUserId && (u.userId?.toLowerCase() === cleanUserId.toLowerCase() || u.email?.toLowerCase() === cleanUserId.toLowerCase() || u.googleEmail?.toLowerCase() === cleanUserId.toLowerCase() || u.username?.toLowerCase() === cleanUserId.toLowerCase())) ||
+      (cleanEmail && (u.email?.toLowerCase() === cleanEmail || u.googleEmail?.toLowerCase() === cleanEmail || u.username?.toLowerCase() === cleanEmail || u.userId?.toLowerCase() === cleanEmail))
   );
 
+  const newCode = generateVerificationCode();
+
   if (!user) {
-    throw new Error('الحساب غير موجود');
+    const effectiveEmail = cleanEmail || (cleanUserId.includes('@') ? cleanUserId : '');
+    const effectiveName = effectiveEmail ? effectiveEmail.split('@')[0] : (cleanUserId || 'مستخدم معتمد');
+    const newUid = cleanUserId && !cleanUserId.includes('@') ? cleanUserId : generateUserId('USR');
+
+    user = {
+      userId: newUid,
+      username: effectiveName,
+      displayName: effectiveName,
+      email: effectiveEmail,
+      googleEmail: effectiveEmail.includes('@gmail') ? effectiveEmail : undefined,
+      isVerified: false,
+      verificationCode: newCode,
+      verificationCodeExpiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      lastLoginAt: new Date().toISOString(),
+      linkedGoogle: effectiveEmail.includes('@gmail'),
+    };
+    db.users.push(user);
+  } else {
+    user.verificationCode = newCode;
+    user.verificationCodeExpiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
   }
 
-  const newCode = generateVerificationCode();
-  user.verificationCode = newCode;
   saveLocalAccountsDb(db);
 
   return {

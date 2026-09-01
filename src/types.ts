@@ -551,5 +551,59 @@ export interface ExportOptions {
   includeVerificationInExport?: boolean;
 }
 
+export type UserRole = 'super_admin' | 'admin' | 'supervisor' | 'user';
+export type AccountStatus = 'active' | 'pending' | 'blocked';
+
+export interface AdminUserRecord {
+  userId: string;
+  username: string;
+  email: string;
+  displayName: string;
+  googleId?: string;
+  googleEmail?: string;
+  photoURL?: string;
+  isVerified: boolean;
+  verifiedAt?: string;
+  verificationMethod?: string;
+  verificationCode?: string;
+  role: UserRole;
+  status: AccountStatus;
+  isBlocked?: boolean;
+  notes?: string;
+  createdAt: string;
+  updatedAt?: string;
+  lastLoginAt?: string;
+  linkedGoogle?: boolean;
+  certificatesCount?: number;
+  permissions?: string[];
+}
+
+export interface SystemAnnouncement {
+  id: string;
+  enabled: boolean;
+  message: string;
+  type: 'info' | 'success' | 'warning' | 'alert';
+  linkText?: string;
+  linkUrl?: string;
+  closable: boolean;
+  updatedAt: string;
+  updatedBy?: string;
+}
+
+export interface SystemAdminStats {
+  totalUsers: number;
+  verifiedUsers: number;
+  pendingUsers: number;
+  blockedUsers: number;
+  adminCount: number;
+  supervisorCount: number;
+  totalCertificatesIssued: number;
+  totalCloudSyncRecords: number;
+  totalEmailsSent: number;
+  serverUptime?: string;
+  lastBackupAt?: string;
+}
+
+
 
 

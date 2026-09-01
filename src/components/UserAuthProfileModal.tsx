@@ -367,9 +367,12 @@ export const UserAuthProfileModal: React.FC<UserAuthProfileModalProps> = ({
 
     try {
       setIsLoading(true);
+      const targetUserId = pendingUserId || unifiedAccount?.userId || '';
+      const targetEmail = pendingEmail || unifiedAccount?.email || unifiedAccount?.googleEmail || quickEmailInput.trim() || regEmail.trim() || loginIdentifier.trim() || (currentUser as any)?.email || '';
+      
       const res = await verifyAccountCode({
-        userId: pendingUserId,
-        email: pendingEmail,
+        userId: targetUserId,
+        email: targetEmail,
         code: verificationCodeInput.trim()
       });
 
@@ -389,12 +392,15 @@ export const UserAuthProfileModal: React.FC<UserAuthProfileModalProps> = ({
   const handleResendCode = async () => {
     try {
       setIsLoading(true);
+      const targetUserId = pendingUserId || unifiedAccount?.userId || '';
+      const targetEmail = pendingEmail || unifiedAccount?.email || unifiedAccount?.googleEmail || quickEmailInput.trim() || regEmail.trim() || loginIdentifier.trim() || (currentUser as any)?.email || '';
+
       const res = await resendVerificationCode({
-        userId: pendingUserId,
-        email: pendingEmail
+        userId: targetUserId,
+        email: targetEmail
       });
       setSystemGeneratedCode(null);
-      onShowToast(`تم إرسال كود تحقق جديد إلى بريدك الإلكتروني (${pendingEmail || 'المسجل'}) 📩`);
+      onShowToast(`تم إرسال كود تحقق جديد إلى بريدك الإلكتروني (${targetEmail || 'المسجل'}) 📩`);
     } catch (err: any) {
       console.error('Resend error:', err);
       onShowToast(err.message || 'فشل إعادة إرسال الكود');

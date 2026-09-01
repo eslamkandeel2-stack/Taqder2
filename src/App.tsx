@@ -12,6 +12,7 @@ import { DashboardAnalytics } from './components/DashboardAnalytics';
 import { CloudLibrary } from './components/CloudLibrary';
 import { AIAssistantChat } from './components/AIAssistantChat';
 import { AppSettingsModal } from './components/AppSettingsModal';
+import { AdminControlPanel } from './components/AdminControlPanel';
 import { VerificationModal } from './components/VerificationModal';
 import { VerificationPortal } from './components/VerificationPortal';
 import { GoogleDriveSaveModal } from './components/GoogleDriveSaveModal';
@@ -24,6 +25,8 @@ import { ExportPreviewModal } from './components/ExportPreviewModal';
 import { ArabicProofreaderModal } from './components/ArabicProofreaderModal';
 import { AppreciationSuggestionsModal } from './components/AppreciationSuggestionsModal';
 import { getSavedSystemConfig, isFeatureEnabled, SystemSettingsConfig } from './utils/systemConfig';
+import { getSystemAnnouncement } from './services/adminService';
+import { UnifiedAccount, getStoredUnifiedAccount } from './services/unifiedAuthService';
 import { ExportFormat } from './types';
 import { User } from 'firebase/auth';
 import { initAuthListener, getCurrentUser, checkRedirectAuthResult } from './services/googleDriveService';
@@ -194,7 +197,7 @@ const getInitialUrlState = () => {
     if (tab === 'verify' || finalCode) {
       return { isStandalone: false, code: finalCode, tab: 'verify' as const };
     }
-    if (tab && ['editor', 'batch', 'dashboard', 'cloud', 'verify', 'ai', 'settings'].includes(tab)) {
+    if (tab && ['editor', 'batch', 'dashboard', 'cloud', 'verify', 'ai', 'settings', 'admin'].includes(tab)) {
       return { isStandalone: false, code: finalCode, tab: tab as any };
     }
   } catch (e) {
@@ -205,7 +208,7 @@ const getInitialUrlState = () => {
 
 export default function App() {
   const initialUrlState = useMemo(() => getInitialUrlState(), []);
-  const [activeTab, setActiveTab] = useState<'editor' | 'batch' | 'dashboard' | 'cloud' | 'verify' | 'ai' | 'settings'>(initialUrlState.tab);
+  const [activeTab, setActiveTab] = useState<'editor' | 'batch' | 'dashboard' | 'cloud' | 'verify' | 'ai' | 'settings' | 'admin'>(initialUrlState.tab);
   const [urlVerifyCode, setUrlVerifyCode] = useState<string>(initialUrlState.code);
   const [isStandalonePortal, setIsStandalonePortal] = useState<boolean>(initialUrlState.isStandalone);
   const [systemConfig, setSystemConfig] = useState<SystemSettingsConfig>(() => getSavedSystemConfig());
@@ -374,6 +377,24 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(() => getCurrentUser());
+  const [unifiedUser, setUnifiedUser] = useState<UnifiedAccount | null>(() => getStoredUnifiedAccount());
+  const [systemAnnouncement, setSystemAnnouncement] = useState<any>(() => getSystemAnnouncement());
+
+  // Listen for announcement and unified user changes
+  useEffect(() => {
+    const handleAnnouncementChange = (e: any) => {
+      setSystemAnnouncement(e.detail || getSystemAnnouncement());
+    };
+    const handleUnifiedUserChange = (e: any) => {
+      setUnifiedUser(getStoredUnifiedAccount());
+    };
+    window.addEventListener('taqdeer_announcement_updated', handleAnnouncementChange);
+    window.addEventListener('taqdeer_unified_user_changed', handleUnifiedUserChange);
+    return () => {
+      window.removeEventListener('taqdeer_announcement_updated', handleAnnouncementChange);
+      window.removeEventListener('taqdeer_unified_user_changed', handleUnifiedUserChange);
+    };
+  }, []);
 
   // Listen for Google/Firebase Auth changes & Account Workspace Isolation switches
   useEffect(() => {
@@ -807,7 +828,7 @@ export default function App() {
         onOpenDraftsModal={() => setIsDraftsModalOpen(true)}
         onOpenHistoryModal={() => setIsHistoryManagerOpen(true)}
         onOpenUserAuthModal={() => setIsUserAuthModalOpen(true)}
-        currentUser={currentUser}
+        currentUser={unifiedUser || currentUser}
         canUndo={canUndo}
         canRedo={canRedo}
         onUndo={handleUndo}
@@ -817,6 +838,32 @@ export default function App() {
         onSaveNewToCloud={handleSaveNewToCloud}
         lastAutosavedTime={lastAutosavedTime}
       />
+
+      {/* Broadcast Announcement Banner if enabled */}
+      {systemAnnouncement && systemAnnouncement.enabled && (
+        <div className={`w-full py-2.5 px-4 text-xs font-bold text-center border-b flex items-center justify-center gap-2 select-none shadow-xs ${
+          systemAnnouncement.type === 'alert' 
+            ? 'bg-rose-950/90 text-rose-200 border-rose-800' 
+            : systemAnnouncement.type === 'warning'
+            ? 'bg-amber-950/90 text-amber-200 border-amber-800'
+            : systemAnnouncement.type === 'success'
+            ? 'bg-emerald-950/90 text-emerald-200 border-emerald-800'
+            : 'bg-blue-950/90 text-blue-200 border-blue-800'
+        }`}>
+          <span>📢</span>
+          <span>{systemAnnouncement.message}</span>
+          {systemAnnouncement.linkUrl && (
+            <a
+              href={systemAnnouncement.linkUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="underline text-amber-300 hover:text-white mr-2"
+            >
+              {systemAnnouncement.linkText || 'المزيد من التفاصيل ←'}
+            </a>
+          )}
+        </div>
+      )}
 
       {/* Main Container */}
       <main className="flex-1 max-w-[1550px] w-full mx-auto px-3 sm:px-6 lg:px-8 py-5 sm:py-6">
@@ -1070,6 +1117,15 @@ export default function App() {
             currentCertificate={certificateData}
             onUpdateCurrentCertificate={updateCertificateData}
             onShowToast={showToast}
+          />
+        )}
+
+        {/* TAB 8: ADMIN CONTROL PANEL */}
+        {activeTab === 'admin' && (
+          <AdminControlPanel
+            currentUser={unifiedUser}
+            onNavigateToTab={(tab) => setActiveTab(tab)}
+            onShowToast={(msg, type) => showToast(msg)}
           />
         )}
 
