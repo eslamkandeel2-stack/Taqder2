@@ -3841,6 +3841,144 @@ export const CertificateCanvas: React.FC<Props> = ({
                               </div>
                             )}
                           </div>
+                        ) : data.stamp.shape === 'andalusian' ? (
+                          <div
+                            className={`relative flex flex-col items-center justify-center p-1 text-center shadow-xs box-border leading-tight transition-all rounded-full select-none ${
+                              data.stamp.size === 'sm'
+                                ? 'w-20 h-20'
+                                : data.stamp.size === 'lg'
+                                ? 'w-32 h-32'
+                                : 'w-24 h-24'
+                            }`}
+                            style={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              margin: '0 auto',
+                              boxSizing: 'border-box',
+                              backgroundColor: data.stamp.color ? `${data.stamp.color}0c` : '#b453090c',
+                              color: data.stamp.color || '#b45309',
+                              filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.08))'
+                            }}
+                          >
+                            {/* SVG Islamic Andalusian Geometric Border */}
+                            <svg
+                              viewBox="0 0 200 200"
+                              className="absolute inset-0 w-full h-full pointer-events-none overflow-visible"
+                              style={{ color: data.stamp.color || '#b45309' }}
+                            >
+                              <defs>
+                                <radialGradient id="andalusianSealGlow" cx="50%" cy="50%" r="50%">
+                                  <stop offset="60%" stopColor="currentColor" stopOpacity="0.04" />
+                                  <stop offset="90%" stopColor="currentColor" stopOpacity="0.12" />
+                                  <stop offset="100%" stopColor="currentColor" stopOpacity="0.2" />
+                                </radialGradient>
+                              </defs>
+
+                              {/* Background circle */}
+                              <circle cx="100" cy="100" r="96" fill="url(#andalusianSealGlow)" />
+
+                              {/* Outermost scalloped / multi-star Islamic geometric rim */}
+                              <circle cx="100" cy="100" r="96" stroke="currentColor" strokeWidth="1.8" fill="none" />
+                              <circle cx="100" cy="100" r="92" stroke="currentColor" strokeWidth="0.75" strokeDasharray="2 3" fill="none" />
+
+                              {/* Outer 16-point Andalusian star / polygon network */}
+                              <rect x="14" y="14" width="172" height="172" rx="4" transform="rotate(0 100 100)" stroke="currentColor" strokeWidth="0.8" strokeOpacity="0.6" fill="none" />
+                              <rect x="14" y="14" width="172" height="172" rx="4" transform="rotate(45 100 100)" stroke="currentColor" strokeWidth="0.8" strokeOpacity="0.6" fill="none" />
+                              <rect x="18" y="18" width="164" height="164" rx="3" transform="rotate(22.5 100 100)" stroke="currentColor" strokeWidth="0.6" strokeOpacity="0.45" fill="none" />
+                              <rect x="18" y="18" width="164" height="164" rx="3" transform="rotate(67.5 100 100)" stroke="currentColor" strokeWidth="0.6" strokeOpacity="0.45" fill="none" />
+
+                              {/* Middle concentric ring with Islamic dentils */}
+                              <circle cx="100" cy="100" r="76" stroke="currentColor" strokeWidth="1.5" fill="none" />
+                              <circle cx="100" cy="100" r="71" stroke="currentColor" strokeWidth="0.75" strokeDasharray="3 3" fill="none" />
+
+                              {/* 8-pointed star (Rub el Hizb ۞ geometry) */}
+                              <rect x="37" y="37" width="126" height="126" transform="rotate(0 100 100)" stroke="currentColor" strokeWidth="1.2" strokeOpacity="0.85" fill="none" />
+                              <rect x="37" y="37" width="126" height="126" transform="rotate(45 100 100)" stroke="currentColor" strokeWidth="1.2" strokeOpacity="0.85" fill="none" />
+
+                              {/* Inner circular seal border */}
+                              <circle cx="100" cy="100" r="56" stroke="currentColor" strokeWidth="1.5" fill="none" />
+                              <circle cx="100" cy="100" r="52" stroke="currentColor" strokeWidth="0.7" strokeDasharray="1.5 2.5" fill="none" />
+
+                              {/* 8 Andalusian Arabesque Diamond accents around perimeter */}
+                              {[0, 45, 90, 135, 180, 225, 270, 315].map((angle, idx) => {
+                                const rad = (angle * Math.PI) / 180;
+                                const x = 100 + 84 * Math.cos(rad);
+                                const y = 100 + 84 * Math.sin(rad);
+                                return (
+                                  <g key={idx} transform={`translate(${x}, ${y}) rotate(${angle})`}>
+                                    <polygon points="0,-3.5 2.5,0 0,3.5 -2.5,0" fill="currentColor" opacity="0.8" />
+                                  </g>
+                                );
+                              })}
+
+                              {/* 8 Inner Geometric Stars / Dots */}
+                              {[22.5, 67.5, 112.5, 157.5, 202.5, 247.5, 292.5, 337.5].map((angle, idx) => {
+                                const rad = (angle * Math.PI) / 180;
+                                const x = 100 + 64 * Math.cos(rad);
+                                const y = 100 + 64 * Math.sin(rad);
+                                return (
+                                  <circle key={idx} cx={x} cy={y} r="1.2" fill="currentColor" opacity="0.75" />
+                                );
+                              })}
+
+                              {/* Top & Bottom Islamic decorative finials */}
+                              <path d="M 94 48 Q 100 44 106 48 Q 100 46 94 48 Z" fill="currentColor" opacity="0.9" />
+                              <circle cx="100" cy="43" r="1.5" fill="currentColor" opacity="0.9" />
+                              <path d="M 94 152 Q 100 156 106 152 Q 100 154 94 152 Z" fill="currentColor" opacity="0.9" />
+                              <circle cx="100" cy="157" r="1.5" fill="currentColor" opacity="0.9" />
+                            </svg>
+
+                            {/* Central Content with InlineEdit */}
+                            <div
+                              className="relative z-10 w-full px-2 max-w-full flex flex-col justify-center items-center text-center transition-transform"
+                              style={{
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                width: '100%',
+                                margin: '0 auto',
+                                transform: `translate(${data.stamp.textOffsetX || 0}px, ${data.stamp.textOffsetY || 0}px)`
+                              }}
+                            >
+                              <InlineEdit
+                                value={data.stamp.title}
+                                onChange={(val) => updateStampField('title', val)}
+                                placeholder="الختم الأندلسي"
+                                className="text-[9px] sm:text-[10px] font-black uppercase leading-tight max-w-full block break-words text-center tracking-tight"
+                                style={{
+                                  textAlign: 'center',
+                                  margin: '0 auto',
+                                  wordBreak: 'break-word',
+                                  overflowWrap: 'anywhere',
+                                  maxWidth: '100%',
+                                  width: '100%',
+                                  lineHeight: '1.15',
+                                  fontWeight: 900
+                                }}
+                              />
+                              <div className="flex items-center justify-center gap-1 my-0.5 opacity-70">
+                                <span className="text-[6px] leading-none">۞</span>
+                              </div>
+                              <InlineEdit
+                                value={data.stamp.subtext}
+                                onChange={(val) => updateStampField('subtext', val)}
+                                placeholder="معتمد رسمياً"
+                                className="text-[7px] font-bold opacity-90 max-w-full block break-words text-center"
+                                style={{
+                                  textAlign: 'center',
+                                  margin: '0 auto',
+                                  wordBreak: 'break-word',
+                                  overflowWrap: 'anywhere',
+                                  maxWidth: '100%',
+                                  width: '100%',
+                                  lineHeight: '1.15'
+                                }}
+                              />
+                            </div>
+                          </div>
                         ) : (
                           <div
                             className={`relative flex flex-col items-center justify-center p-2 text-center shadow-sm box-border leading-tight transition-all ${

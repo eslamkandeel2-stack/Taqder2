@@ -1711,6 +1711,7 @@ export const AppSettingsModal: React.FC<Props> = ({
                       className="w-full text-xs p-2 rounded-lg border border-slate-300 bg-white"
                     >
                       <option value="circle">دائري تقليدي</option>
+                      <option value="andalusian">الختم الأندلسي (زخارف إسلامية هندسية)</option>
                       <option value="wax">شمعي ملكي فاخر</option>
                       <option value="ribbon">شريطي مع وسام</option>
                       <option value="square">مربع هندسي</option>

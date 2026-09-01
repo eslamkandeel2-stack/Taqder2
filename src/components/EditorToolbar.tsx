@@ -7585,13 +7585,14 @@ export const EditorToolbar: React.FC<Props> = ({
                   ) : (
                     /* Designed Stamp Shapes & Text */
                     <div className="space-y-2">
-                      <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-5">
+                      <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-6">
                         {[
                           { id: 'circle', label: 'دائري' },
-                          { id: 'square', label: 'مربع دائري' },
-                          { id: 'rectangle', label: 'مستطيل' },
+                          { id: 'andalusian', label: 'الختم الأندلسي' },
                           { id: 'wax', label: 'شمعي' },
-                          { id: 'ribbon', label: 'ملكي' }
+                          { id: 'ribbon', label: 'ملكي' },
+                          { id: 'square', label: 'مربع دائري' },
+                          { id: 'rectangle', label: 'مستطيل' }
                         ].map((sh) => (
                           <button
                             key={sh.id}

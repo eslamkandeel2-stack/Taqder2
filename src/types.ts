@@ -123,7 +123,7 @@ export interface StampItem {
   title: string;
   subtext: string;
   color: string;
-  shape: 'circle' | 'square' | 'rectangle' | 'wax' | 'ribbon' | 'custom';
+  shape: 'circle' | 'square' | 'rectangle' | 'wax' | 'ribbon' | 'andalusian' | 'custom';
   imageUrl?: string; // Custom uploaded stamp image from device
   size?: 'sm' | 'md' | 'lg';
   opacity?: number; // Stamp opacity from 0.1 to 1.0

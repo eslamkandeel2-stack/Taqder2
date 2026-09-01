@@ -1,7 +1,6 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
-import nodemailer from 'nodemailer';
 
 export interface UserAccountRecord {
   userId: string;
@@ -28,7 +27,7 @@ export interface UserAccountRecord {
 }
 
 // In serverless / Vercel environment, /tmp is writable
-const IS_VERCEL = process.env.VERCEL === '1' || !!process.env.AWS_LAMBDA_FUNCTION_NAME;
+const IS_VERCEL = process.env.VERCEL === '1' || !!process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NODE_ENV === 'production';
 const DATA_DIR = IS_VERCEL
   ? '/tmp'
   : (fs.existsSync(path.join(process.cwd(), 'data')) ? path.join(process.cwd(), 'data') : '/tmp');
@@ -40,16 +39,22 @@ const DISPATCHED_EMAILS_PATH = path.join(DATA_DIR, 'dispatched_emails.json');
 let inMemoryUsers: UserAccountRecord[] = [];
 
 export function setCorsHeaders(res: any) {
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-  res.setHeader(
-    'Access-Control-Allow-Headers',
-    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization, x-ai-provider, x-gemini-api-key, x-gemini-model'
-  );
+  if (!res || typeof res.setHeader !== 'function') return;
+  try {
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
+    res.setHeader(
+      'Access-Control-Allow-Headers',
+      'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization, x-ai-provider, x-gemini-api-key, x-gemini-model'
+    );
+  } catch (e) {
+    // Header setting fallback
+  }
 }
 
 export function parseBodySafely(req: any): any {
+  if (!req) return {};
   if (req.body && typeof req.body === 'object') return req.body;
   if (typeof req.body === 'string' && req.body.trim() !== '') {
     try {
@@ -122,7 +127,11 @@ export function saveAccountsDb(db: { users: UserAccountRecord[] }) {
 }
 
 export function hashPassword(password: string, salt: string): string {
-  return crypto.createHash('sha256').update(password + ':' + salt).digest('hex');
+  try {
+    return crypto.createHash('sha256').update(password + ':' + salt).digest('hex');
+  } catch {
+    return Buffer.from(password + ':' + salt).toString('base64');
+  }
 }
 
 export function generateVerificationCode(): string {
@@ -135,7 +144,7 @@ export function generateUserId(prefix: string = 'USR'): string {
   return `${prefix}-${timeStr}-${rand}`;
 }
 
-export function createSmtpTransporter() {
+export async function createSmtpTransporter() {
   const host = process.env.SMTP_HOST;
   const user = process.env.SMTP_USER;
   const pass = process.env.SMTP_PASS;
@@ -143,13 +152,21 @@ export function createSmtpTransporter() {
   const secure = process.env.SMTP_SECURE === 'true' || port === 465;
 
   if (host && user && pass) {
-    return nodemailer.createTransport({
-      host,
-      port,
-      secure,
-      auth: { user, pass },
-      tls: { rejectUnauthorized: false }
-    });
+    try {
+      const nodemailerModule = await import('nodemailer');
+      const nodemailer = nodemailerModule.default || nodemailerModule;
+      if (typeof nodemailer?.createTransport === 'function') {
+        return nodemailer.createTransport({
+          host,
+          port,
+          secure,
+          auth: { user, pass },
+          tls: { rejectUnauthorized: false }
+        });
+      }
+    } catch (err) {
+      console.warn('SMTP nodemailer lazy import notice:', err);
+    }
   }
   return null;
 }
@@ -258,7 +275,7 @@ export async function sendVerificationEmail(params: {
     reason: params.reason
   });
 
-  const transporter = createSmtpTransporter();
+  const transporter = await createSmtpTransporter();
   let method: 'smtp' | 'simulated' = 'simulated';
 
   if (transporter) {

@@ -385,88 +385,100 @@ export const googleSignInWithRedirect = async (): Promise<void> => {
   }
 };
 
+// Preload Google Identity Services in advance to avoid popup blocking on user gesture
+if (typeof window !== 'undefined') {
+  loadGsiScript().catch((err) => console.warn('Preloading GSI script note:', err));
+}
+
 export const googleSignIn = async (): Promise<{ user: User; accessToken: string }> => {
   const currentHost = typeof window !== 'undefined' ? window.location.hostname : '';
   const isVercel = currentHost.includes('vercel.app') || currentHost.includes('now.sh');
 
   try {
     isSigningIn = true;
-    const result = await signInWithPopup(auth, provider, browserPopupRedirectResolver);
-    const credential = GoogleAuthProvider.credentialFromResult(result);
-    if (!credential?.accessToken) {
-      throw new Error('لم نتمكن من الحصول على مفتاح الوصول لحساب Google.');
-    }
 
-    cachedAccessToken = credential.accessToken;
-    localStorage.setItem(TOKEN_STORAGE_KEY, cachedAccessToken);
-    return { user: result.user, accessToken: cachedAccessToken };
-  } catch (error: any) {
-    console.warn('Firebase signInWithPopup returned notice, checking cause:', error?.code || error?.message);
-
-    // If user explicitly closed popup or canceled during Firebase popup
-    if (error?.code === 'auth/popup-closed-by-user' || error?.code === 'auth/cancelled-popup-request') {
-      const cancelErr = new Error('تم إلغاء عملية تسجيل الدخول أو إغلاق النافذة');
-      (cancelErr as any).code = 'auth/popup-closed-by-user';
-      (cancelErr as any).isUserCancel = true;
-      throw cancelErr;
-    }
-
-    // Specific detection for Unauthorized Domain on Vercel or custom hosts
-    if (
-      error?.code === 'auth/unauthorized-domain' ||
-      error?.message?.includes('unauthorized-domain') ||
-      error?.message?.includes('authorized domain')
-    ) {
-      const domainErr = new Error(
-        `نطاق الاستضافة (${currentHost}) يحتاج إلى تفعيل في Firebase Authentication أو استخدام "الدخول السريع برمز التحقق الفوري" المتاح فوراً بدون أي إعدادات.`
-      );
-      (domainErr as any).code = 'auth/unauthorized-domain';
-      (domainErr as any).isUnauthorizedDomain = true;
-      (domainErr as any).hostname = currentHost;
-      (domainErr as any).isVercel = isVercel;
-      throw domainErr;
-    }
+    // Refresh provider params to always force account selection popup
+    provider.setCustomParameters({
+      prompt: 'select_account'
+    });
 
     try {
-      const gisResult = await requestGisToken();
-      return gisResult;
-    } catch (gisErr: any) {
-      console.warn('Google Identity Services status:', gisErr?.code || gisErr?.message);
-
-      if (
-        gisErr?.code === 'auth/popup-closed-by-user' ||
-        gisErr?.isUserCancel ||
-        gisErr?.message?.includes('إغلاق') ||
-        gisErr?.message?.toLowerCase()?.includes('closed') ||
-        gisErr?.message?.toLowerCase()?.includes('cancel') ||
-        gisErr?.message?.includes('إلغاء') ||
-        error?.code === 'auth/popup-closed-by-user'
-      ) {
-        const err = new Error('تم إلغاء عملية تسجيل الدخول.');
-        (err as any).code = 'auth/popup-closed-by-user';
-        (err as any).isUserCancel = true;
-        throw err;
+      const result = await signInWithPopup(auth, provider, browserPopupRedirectResolver);
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if (!credential?.accessToken) {
+        throw new Error('لم نتمكن من الحصول على مفتاح الوصول لحساب Google.');
       }
 
-      if (
-        error?.code === 'auth/popup-blocked' ||
-        gisErr?.code === 'auth/popup-blocked' ||
-        gisErr?.message?.toLowerCase()?.includes('blocked') ||
-        gisErr?.message?.includes('حظر')
-      ) {
-        const err = new Error(
-          'تم حظر النوافذ المنبثقة من قِبل المتصفح على جهازك. يمكنك استخدام "الدخول المباشر بنفس الصفحة (Redirect)" أو كتابة بريدك في "الدخول السريع برمز التحقق".'
+      cachedAccessToken = credential.accessToken;
+      localStorage.setItem(TOKEN_STORAGE_KEY, cachedAccessToken);
+      return { user: result.user, accessToken: cachedAccessToken };
+    } catch (popupError: any) {
+      console.warn('Firebase popup attempt status, trying Google Identity Services account chooser fallback:', popupError?.code || popupError?.message);
+
+      // If user explicitly closed popup or canceled during Firebase popup
+      if (popupError?.code === 'auth/popup-closed-by-user' || popupError?.code === 'auth/cancelled-popup-request') {
+        const cancelErr = new Error('تم إلغاء عملية تسجيل الدخول أو إغلاق النافذة');
+        (cancelErr as any).code = 'auth/popup-closed-by-user';
+        (cancelErr as any).isUserCancel = true;
+        throw cancelErr;
+      }
+
+      // Seamless GIS OAuth fallback with account chooser prompt
+      try {
+        const gisResult = await requestGisToken();
+        return gisResult;
+      } catch (gisErr: any) {
+        console.warn('Google Identity Services fallback status:', gisErr?.code || gisErr?.message);
+
+        if (
+          gisErr?.code === 'auth/popup-closed-by-user' ||
+          gisErr?.isUserCancel ||
+          gisErr?.message?.includes('إغلاق') ||
+          gisErr?.message?.toLowerCase()?.includes('closed') ||
+          gisErr?.message?.toLowerCase()?.includes('cancel') ||
+          gisErr?.message?.includes('إلغاء')
+        ) {
+          const err = new Error('تم إلغاء عملية تسجيل الدخول.');
+          (err as any).code = 'auth/popup-closed-by-user';
+          (err as any).isUserCancel = true;
+          throw err;
+        }
+
+        if (
+          popupError?.code === 'auth/unauthorized-domain' ||
+          popupError?.message?.includes('unauthorized-domain') ||
+          popupError?.message?.includes('authorized domain')
+        ) {
+          const domainErr = new Error(
+            `نطاق الاستضافة (${currentHost}) يحتاج إلى إضافة في Firebase Console (Authentication > Settings > Authorized domains) أو استخدام الدخول السريع برمز التحقق الفوري.`
+          );
+          (domainErr as any).code = 'auth/unauthorized-domain';
+          (domainErr as any).isUnauthorizedDomain = true;
+          (domainErr as any).hostname = currentHost;
+          (domainErr as any).isVercel = isVercel;
+          throw domainErr;
+        }
+
+        if (
+          popupError?.code === 'auth/popup-blocked' ||
+          gisErr?.code === 'auth/popup-blocked' ||
+          gisErr?.message?.toLowerCase()?.includes('blocked') ||
+          gisErr?.message?.includes('حظر')
+        ) {
+          const err = new Error(
+            'تم حظر النوافذ المنبثقة من قِبل المتصفح على جهازك. يمكنك استخدام "الدخول المباشر بنفس الصفحة (Redirect)" أو كتابة بريدك في "الدخول السريع برمز التحقق".'
+          );
+          (err as any).code = 'auth/popup-blocked';
+          (err as any).isPopupBlocked = true;
+          (err as any).hostname = currentHost;
+          (err as any).isVercel = isVercel;
+          throw err;
+        }
+
+        throw new Error(
+          gisErr?.message || popupError?.message || 'تعذر الاتصال بـ Google لاختيار الحساب. يمكنك استخدام الدخول السريع برمز التحقق أو الدخول باسم المستخدم.'
         );
-        (err as any).code = 'auth/popup-blocked';
-        (err as any).isPopupBlocked = true;
-        (err as any).hostname = currentHost;
-        (err as any).isVercel = isVercel;
-        throw err;
       }
-
-      throw new Error(
-        gisErr?.message || 'تعذر الاتصال بـ Google لربط الحساب. يمكنك استخدام الدخول السريع برمز التحقق أو الدخول باسم المستخدم.'
-      );
     }
   } finally {
     isSigningIn = false;
