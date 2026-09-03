@@ -26,6 +26,7 @@ import {
   TemplateApplyMode,
   duplicateAndCustomizeTemplate
 } from '../utils/templateCustomizer';
+import { TemplateCertificatePreview } from './TemplateCertificatePreview';
 
 interface Props {
   isOpen: boolean;
@@ -255,63 +256,12 @@ export const TemplateGalleryModal: React.FC<Props> = ({
 
                     {/* MINI CERTIFICATE SHAPE PREVIEW CARD */}
                     <div className="p-3 bg-slate-200/50 flex-1 flex items-center justify-center relative group/preview">
-                      <div
-                        className="w-full aspect-[1.414] rounded-lg shadow-md relative overflow-hidden flex flex-col justify-between p-3 border transition-transform duration-300 group-hover:scale-[1.02]"
-                        style={{
-                          backgroundColor: d.backgroundColor || '#ffffff',
-                          color: d.textColor || '#0f172a',
-                          borderColor: d.primaryColor,
-                          borderWidth: '3px',
-                          borderStyle: 'double',
-                        }}
-                      >
-                        {/* Certificate Header Banner */}
-                        <div className="text-center space-y-0.5">
-                          <span
-                            className="text-[9px] font-bold block opacity-80"
-                            style={{ color: d.secondaryColor || d.primaryColor }}
-                          >
-                            {d.schoolName}
-                          </span>
-                          <h5
-                            className="text-[12px] font-black leading-tight line-clamp-1"
-                            style={{ color: d.primaryColor }}
-                          >
-                            {d.title}
-                          </h5>
-                        </div>
-
-                        {/* Middle Content Highlight */}
-                        <div className="my-1 text-center py-1.5 px-2 bg-white/70 rounded border border-black/5">
-                          <span className="text-[8px] block opacity-70">تُمنح هذه الشهادة إلى:</span>
-                          <span
-                            className="text-[11px] font-black block mt-0.5 line-clamp-1"
-                            style={{ color: d.primaryColor }}
-                          >
-                            {d.studentName}
-                          </span>
-                          <span className="text-[8px] block mt-0.5 line-clamp-1 opacity-90" style={{ color: d.textColor }}>
-                            {d.appreciationText}
-                          </span>
-                        </div>
-
-                        {/* Footer Mini Features */}
-                        <div className="flex items-center justify-between text-[8px] pt-1 border-t border-black/10">
-                          <div className="flex items-center gap-1">
-                            <span className="w-2.5 h-2.5 rounded-full bg-amber-500/80 inline-block" style={{ backgroundColor: d.primaryColor }} />
-                            <span className="font-bold opacity-80" style={{ color: d.primaryColor }}>
-                              {d.badgeTitle || 'وسام التميز'}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center gap-2">
-                            <div className="w-4 h-4 rounded-full border flex items-center justify-center text-[7px]" style={{ borderColor: d.secondaryColor, color: d.secondaryColor }}>
-                              ختم
-                            </div>
-                            <div className="w-6 h-1 border-b border-dashed border-slate-400" />
-                          </div>
-                        </div>
-                      </div>
+                      <TemplateCertificatePreview
+                        data={d}
+                        mode="card"
+                        showHoverZoom={true}
+                        className="border border-slate-300"
+                      />
 
                       {/* Hover Quick Overlay Actions */}
                       <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-[2px] opacity-0 group-hover/preview:opacity-100 transition-opacity flex items-center justify-center gap-2 p-3">
@@ -415,41 +365,13 @@ export const TemplateGalleryModal: React.FC<Props> = ({
                 </button>
               </div>
 
-              <div className="p-6 bg-slate-200/80 flex items-center justify-center">
-                <div
-                  className="w-full aspect-[1.414] rounded-xl shadow-2xl p-6 flex flex-col justify-between border-4 relative overflow-hidden"
-                  style={{
-                    backgroundColor: previewTemplate.defaultData.backgroundColor || '#ffffff',
-                    color: previewTemplate.defaultData.textColor || '#0f172a',
-                    borderColor: previewTemplate.defaultData.primaryColor,
-                    borderStyle: 'double'
-                  }}
-                >
-                  <div className="text-center space-y-1">
-                    <span className="text-xs font-bold block" style={{ color: previewTemplate.defaultData.secondaryColor }}>
-                      {previewTemplate.defaultData.schoolName}
-                    </span>
-                    <h3 className="text-xl font-black" style={{ color: previewTemplate.defaultData.primaryColor }}>
-                      {previewTemplate.defaultData.title}
-                    </h3>
-                  </div>
-
-                  <div className="text-center py-3 my-2 bg-white/80 rounded-xl border border-black/5 px-4 space-y-1">
-                    <span className="text-xs opacity-80 block">{previewTemplate.defaultData.recipientIntro}</span>
-                    <h2 className="text-2xl font-black" style={{ color: previewTemplate.defaultData.primaryColor }}>
-                      {previewTemplate.defaultData.studentName}
-                    </h2>
-                    <p className="text-xs leading-relaxed max-w-lg mx-auto">
-                      {previewTemplate.defaultData.appreciationText}
-                    </p>
-                  </div>
-
-                  <div className="flex items-center justify-between text-xs pt-2 border-t border-black/10">
-                    <span className="font-bold" style={{ color: previewTemplate.defaultData.primaryColor }}>
-                      {previewTemplate.defaultData.badgeTitle || 'وسام التميز'}
-                    </span>
-                    <span className="opacity-70">{previewTemplate.defaultData.signatures?.[0]?.name || 'توقيع معتمد'}</span>
-                  </div>
+              <div className="p-6 bg-slate-200/80 flex items-center justify-center max-h-[60vh] overflow-y-auto">
+                <div className="w-full max-w-2xl shadow-2xl rounded-2xl overflow-hidden">
+                  <TemplateCertificatePreview
+                    data={previewTemplate.defaultData}
+                    mode="modal"
+                    className="border-2 border-slate-300 shadow-2xl"
+                  />
                 </div>
               </div>
 

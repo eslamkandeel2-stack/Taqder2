@@ -63,7 +63,7 @@ export const ArabicProofreaderModal: React.FC<Props> = ({
   const [editingFieldKey, setEditingFieldKey] = useState<string | null>(null);
   const [editingFieldText, setEditingFieldText] = useState<string>('');
 
-  // Sync internal state with prop changes when opened
+  // Sync internal state when modal opens
   useEffect(() => {
     if (isOpen) {
       setCurrentCert(certificateData);
@@ -71,7 +71,7 @@ export const ArabicProofreaderModal: React.FC<Props> = ({
       setAiLinguisticNotes(null);
       setEditingFieldKey(null);
     }
-  }, [isOpen, certificateData]);
+  }, [isOpen]);
 
   // Run local linguistic proofreading engine
   const proofreadResult: CertificateProofreadResult = useMemo(() => {
@@ -133,8 +133,12 @@ export const ArabicProofreaderModal: React.FC<Props> = ({
     const updated = applySingleProofreadFix(currentCert, issue);
     setCurrentCert(updated);
     onApplyChanges(updated);
-    setAppliedIssueIds((prev) => new Set([...prev, issue.id]));
-    showToast(`تم تصحيح "${issue.originalWord}" إلى "${issue.suggestedWord}" بنجاح! ✨`);
+    setAppliedIssueIds((prev) => {
+      const next = new Set(prev);
+      next.add(issue.id);
+      return next;
+    });
+    showToast(`تم تصحيح "${issue.originalWord}" إلى "${issue.suggestedWord}" وتحديث الشهادة بنجاح! ✨`);
   };
 
   // Handle fixing all issues in a specific field
@@ -146,7 +150,7 @@ export const ArabicProofreaderModal: React.FC<Props> = ({
     };
     setCurrentCert(updated);
     onApplyChanges(updated);
-    showToast(`تم تطبيق التصحيح الكامل للحقل بنجاح! 🎯`);
+    showToast(`تم تطبيق التصحيح الكامل للحقل وتحديث الشهادة بنجاح! 🎯`);
   };
 
   // Handle manual inline save for a field
@@ -167,7 +171,10 @@ export const ArabicProofreaderModal: React.FC<Props> = ({
     const updated = applyAllProofreadFixes(currentCert, proofreadResult);
     setCurrentCert(updated);
     onApplyChanges(updated);
-    showToast('تم تطبيق وتصحيح كافة الملاحظات الإملائية واللغوية بنجاح! 🚀');
+    const allIds = new Set<string>();
+    allIssues.forEach((i) => allIds.add(i.id));
+    setAppliedIssueIds(allIds);
+    showToast('تم تطبيق وتصحيح كافة الملاحظات الإملائية واللغوية وحفظها في الشهادة بنجاح! 🚀');
   };
 
   // Copy text helper
@@ -817,10 +824,22 @@ export const ArabicProofreaderModal: React.FC<Props> = ({
           <div className="flex items-center gap-2 w-full sm:w-auto">
             <button
               type="button"
-              onClick={onClose}
-              className="flex-1 sm:flex-none px-5 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition cursor-pointer"
+              onClick={() => {
+                onApplyChanges(currentCert);
+                showToast('تم حفظ وتطبيق كافة التعديلات اللغوية على الشهادة بنجاح! ✨');
+                onClose();
+              }}
+              className="flex-1 sm:flex-none px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 rounded-xl text-xs font-black shadow-lg shadow-amber-950/40 transition flex items-center justify-center gap-1.5 cursor-pointer"
             >
-              تم وإغلاق
+              <CheckCircle2 className="w-4 h-4 text-slate-950" />
+              <span>تطبيق وحفظ التعديلات في الشهادة</span>
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 sm:flex-none px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-xs font-bold transition cursor-pointer"
+            >
+              إغلاق
             </button>
           </div>
         </div>
