@@ -40,7 +40,105 @@ const TOKEN_STORAGE_KEY = 'taqdeer_drive_access_token';
 const GIS_USER_STORAGE_KEY = 'taqdeer_gis_user';
 
 let isSigningIn = false;
-let cachedAccessToken: string | null = localStorage.getItem(TOKEN_STORAGE_KEY);
+let cachedAccessToken: string | null = typeof window !== 'undefined' ? localStorage.getItem(TOKEN_STORAGE_KEY) : null;
+
+/**
+ * Persists Google user credentials and session across all storage keys & dispatches events
+ */
+export const persistGoogleSession = (user: User, accessToken: string) => {
+  const token = accessToken || 'google_auth_token';
+  cachedAccessToken = token;
+  try {
+    localStorage.setItem(TOKEN_STORAGE_KEY, token);
+  } catch (e) {
+    console.warn('Storage set error:', e);
+  }
+
+  const email = user.email || '';
+  const displayName = user.displayName || email.split('@')[0] || 'حساب Google';
+  const photoURL = user.photoURL || '';
+  const userId = user.uid || ('GGL-' + (email ? email.replace(/[^a-zA-Z0-9]/g, '_') : Date.now().toString().slice(-6)));
+
+  const userObj = {
+    uid: userId,
+    userId: userId,
+    email: email,
+    displayName: displayName,
+    photoURL: photoURL,
+    googleEmail: email,
+    isVerified: true,
+    linkedGoogle: true,
+    username: email.split('@')[0] || 'user'
+  };
+
+  try {
+    localStorage.setItem(GIS_USER_STORAGE_KEY, JSON.stringify(userObj));
+  } catch (e) {
+    console.warn('Failed to store GIS user:', e);
+  }
+
+  const unifiedAcc = {
+    userId: userId,
+    username: email.split('@')[0] || 'user',
+    email: email,
+    googleEmail: email,
+    displayName: displayName,
+    photoURL: photoURL,
+    isVerified: true,
+    linkedGoogle: true,
+    lastLoginAt: new Date().toISOString()
+  };
+
+  try {
+    localStorage.setItem('taqdeer_unified_active_user_v1', JSON.stringify(unifiedAcc));
+  } catch (e) {
+    console.warn('Failed to store unified user:', e);
+  }
+
+  try {
+    const rawKey = (email || userId).replace(/[^a-zA-Z0-9_\-@.]/g, '_').toLowerCase();
+    localStorage.setItem('taqdeer_active_account_key', 'acc_' + rawKey);
+  } catch (e) {
+    console.warn('Failed to set active account key:', e);
+  }
+
+  // Register in known accounts registry
+  try {
+    const REGISTRY_KEY = 'taqdeer_known_accounts_registry';
+    const raw = localStorage.getItem(REGISTRY_KEY);
+    let accounts = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(accounts)) accounts = [];
+    const accountKey = 'acc_' + (email || userId).replace(/[^a-zA-Z0-9_\-@.]/g, '_').toLowerCase();
+    const existingIndex = accounts.findIndex((a: any) => a.accountKey === accountKey || a.userId === userId || (email && a.userEmail === email));
+    const now = new Date().toISOString();
+    const record = {
+      accountKey,
+      userId,
+      userEmail: email,
+      displayName,
+      photoURL,
+      lastActive: now,
+      isGoogle: true
+    };
+    if (existingIndex >= 0) {
+      accounts[existingIndex] = { ...accounts[existingIndex], ...record };
+    } else {
+      accounts.unshift(record);
+    }
+    localStorage.setItem(REGISTRY_KEY, JSON.stringify(accounts.slice(0, 10)));
+  } catch (e) {
+    console.warn('Failed to register account in registry:', e);
+  }
+
+  // Notify isolation manager & App
+  try {
+    window.dispatchEvent(new CustomEvent('taqdeer_account_switched', { detail: { user: userObj, accountKey: 'acc_' + (email || userId) } }));
+    window.dispatchEvent(new CustomEvent('taqdeer_auth_state_changed', { detail: userObj }));
+    window.dispatchEvent(new Event('storage'));
+  } catch (e) {
+    console.warn('Failed to dispatch auth events:', e);
+  }
+};
 
 export function getOAuthClientId(): string {
   return firebaseConfig.oAuthClientId || '460203543434-ubg52iibus6gua5jgp0eurv0nnotnctk.apps.googleusercontent.com';
@@ -130,6 +228,8 @@ export const handleGoogleIdToken = async (idToken: string): Promise<{ user: User
   } catch (syncErr) {
     console.warn('Auto sync cloud settings error:', syncErr);
   }
+
+  persistGoogleSession(finalUser, finalToken);
 
   return { user: finalUser, accessToken: finalToken };
 };
@@ -267,6 +367,8 @@ export const requestGisToken = async (): Promise<{ user: User; accessToken: stri
               console.warn('Auto sync cloud settings error:', syncErr);
             }
 
+            persistGoogleSession(mockUser, response.access_token);
+
             resolve({ user: mockUser, accessToken: response.access_token });
           } else {
             reject(new Error('لم يتم استلام مفتاح الوصول من Google.'));
@@ -306,39 +408,46 @@ export const initDriveAuth = (
   onAuthSuccess?: (user: User, token: string) => void,
   onAuthFailure?: () => void
 ) => {
-  // Check localStorage for saved GIS user & cached token
-  const savedGisUser = localStorage.getItem(GIS_USER_STORAGE_KEY);
-  if (!cachedAccessToken) {
-    cachedAccessToken = localStorage.getItem(TOKEN_STORAGE_KEY);
+  // Check active user in storage immediately
+  const activeUser = getCurrentUser();
+  const token = localStorage.getItem(TOKEN_STORAGE_KEY) || cachedAccessToken || 'google_auth_token';
+
+  if (activeUser && onAuthSuccess) {
+    onAuthSuccess(activeUser, token);
   }
 
-  if (savedGisUser && cachedAccessToken) {
-    try {
-      const parsedUser = JSON.parse(savedGisUser) as User;
-      if (onAuthSuccess) {
-        onAuthSuccess(parsedUser, cachedAccessToken);
-      }
-    } catch (e) {
-      console.warn('Invalid GIS user in storage:', e);
+  const handleCustomAuth = (e: any) => {
+    if (e?.detail && onAuthSuccess) {
+      const tok = localStorage.getItem(TOKEN_STORAGE_KEY) || cachedAccessToken || 'google_auth_token';
+      onAuthSuccess(e.detail as User, tok);
     }
-  }
+  };
+  window.addEventListener('taqdeer_auth_state_changed', handleCustomAuth);
 
-  return onAuthStateChanged(auth, async (user) => {
+  const unsub = onAuthStateChanged(auth, async (user) => {
     if (user) {
       if (!cachedAccessToken) {
         cachedAccessToken = localStorage.getItem(TOKEN_STORAGE_KEY);
       }
       if (onAuthSuccess) {
-        onAuthSuccess(user, cachedAccessToken || '');
+        onAuthSuccess(user, cachedAccessToken || 'google_auth_token');
       }
     } else {
-      if (!localStorage.getItem(GIS_USER_STORAGE_KEY)) {
-        cachedAccessToken = null;
-        localStorage.removeItem(TOKEN_STORAGE_KEY);
+      const current = getCurrentUser();
+      if (current) {
+        if (onAuthSuccess) {
+          onAuthSuccess(current, localStorage.getItem(TOKEN_STORAGE_KEY) || cachedAccessToken || 'google_auth_token');
+        }
+      } else {
         if (onAuthFailure) onAuthFailure();
       }
     }
   });
+
+  return () => {
+    unsub();
+    window.removeEventListener('taqdeer_auth_state_changed', handleCustomAuth);
+  };
 };
 
 export const checkRedirectAuthResult = async (): Promise<{ user: User; accessToken: string } | null> => {
@@ -346,11 +455,8 @@ export const checkRedirectAuthResult = async (): Promise<{ user: User; accessTok
     const result = await getRedirectResult(auth, browserPopupRedirectResolver);
     if (result && result.user) {
       const credential = GoogleAuthProvider.credentialFromResult(result);
-      const token = credential?.accessToken || localStorage.getItem(TOKEN_STORAGE_KEY) || '';
-      if (token) {
-        cachedAccessToken = token;
-        localStorage.setItem(TOKEN_STORAGE_KEY, token);
-      }
+      const token = credential?.accessToken || localStorage.getItem(TOKEN_STORAGE_KEY) || 'google_auth_token';
+      persistGoogleSession(result.user, token);
       try {
         await loadUserSettingsFromCloud(result.user.uid);
       } catch (e) {
@@ -397,7 +503,34 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
   try {
     isSigningIn = true;
 
-    // Refresh provider params to always force account selection popup
+    // 1. On Vercel: execute GIS Token Client FIRST inside the user click gesture.
+    // This opens Google's native account chooser popup without running into Firebase Authorized Domain blocks.
+    if (isVercel) {
+      try {
+        const gisResult = await requestGisToken();
+        persistGoogleSession(gisResult.user, gisResult.accessToken);
+        return gisResult;
+      } catch (gisErr: any) {
+        console.warn('Direct GIS on Vercel notice:', gisErr);
+        // If user explicitly closed/canceled popup
+        if (
+          gisErr?.code === 'auth/popup-closed-by-user' ||
+          gisErr?.isUserCancel ||
+          gisErr?.message?.includes('إغلاق') ||
+          gisErr?.message?.toLowerCase()?.includes('closed') ||
+          gisErr?.message?.toLowerCase()?.includes('cancel') ||
+          gisErr?.message?.includes('إلغاء')
+        ) {
+          const err = new Error('تم إلغاء عملية تسجيل الدخول أو إغلاق النافذة');
+          (err as any).code = 'auth/popup-closed-by-user';
+          (err as any).isUserCancel = true;
+          throw err;
+        }
+        // If GIS had other error, attempt Firebase popup below
+      }
+    }
+
+    // 2. Firebase popup attempt (standard on localhost/custom domain, or fallback)
     provider.setCustomParameters({
       prompt: 'select_account'
     });
@@ -422,82 +555,80 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
         }
       }
 
-      cachedAccessToken = token || 'google_auth_token';
-      localStorage.setItem(TOKEN_STORAGE_KEY, cachedAccessToken);
-      try {
-        localStorage.setItem(GIS_USER_STORAGE_KEY, JSON.stringify(result.user));
-      } catch (e) {
-        console.warn('Failed to store GIS user:', e);
+      const finalToken = token || 'google_auth_token';
+      persistGoogleSession(result.user, finalToken);
+
+      return { user: result.user, accessToken: finalToken };
+    } catch (popupError: any) {
+      console.warn('Firebase popup attempt status:', popupError?.code || popupError?.message);
+
+      // On non-Vercel, if Firebase popup failed, try GIS as fallback:
+      if (!isVercel) {
+        try {
+          const gisResult = await requestGisToken();
+          persistGoogleSession(gisResult.user, gisResult.accessToken);
+          return gisResult;
+        } catch (gisErr: any) {
+          console.warn('Google Identity Services fallback status:', gisErr?.code || gisErr?.message);
+        }
       }
 
-      return { user: result.user, accessToken: cachedAccessToken };
-    } catch (popupError: any) {
-      console.warn('Firebase popup attempt status, trying Google Identity Services account chooser fallback:', popupError?.code || popupError?.message);
+      // Check if user explicitly closed popup or canceled
+      if (
+        popupError?.code === 'auth/popup-closed-by-user' ||
+        popupError?.code === 'auth/cancelled-popup-request'
+      ) {
+        // On Vercel, Firebase auth/popup-closed-by-user can happen because the origin is unauthorized in Firebase!
+        if (isVercel) {
+          const domainErr = new Error(
+            `نطاق Vercel (${currentHost}) يحتاج إلى تصريح في Firebase Console (Authentication > Settings > Authorized domains) أو استخدام الدخول السريع برمز التحقق الفوري.`
+          );
+          (domainErr as any).code = 'auth/unauthorized-domain';
+          (domainErr as any).isUnauthorizedDomain = true;
+          (domainErr as any).hostname = currentHost;
+          (domainErr as any).isVercel = true;
+          throw domainErr;
+        }
 
-      // If user explicitly closed popup or canceled during Firebase popup
-      if (popupError?.code === 'auth/popup-closed-by-user' || popupError?.code === 'auth/cancelled-popup-request') {
         const cancelErr = new Error('تم إلغاء عملية تسجيل الدخول أو إغلاق النافذة');
         (cancelErr as any).code = 'auth/popup-closed-by-user';
         (cancelErr as any).isUserCancel = true;
         throw cancelErr;
       }
 
-      // Seamless GIS OAuth fallback with account chooser prompt
-      try {
-        const gisResult = await requestGisToken();
-        return gisResult;
-      } catch (gisErr: any) {
-        console.warn('Google Identity Services fallback status:', gisErr?.code || gisErr?.message);
-
-        if (
-          gisErr?.code === 'auth/popup-closed-by-user' ||
-          gisErr?.isUserCancel ||
-          gisErr?.message?.includes('إغلاق') ||
-          gisErr?.message?.toLowerCase()?.includes('closed') ||
-          gisErr?.message?.toLowerCase()?.includes('cancel') ||
-          gisErr?.message?.includes('إلغاء')
-        ) {
-          const err = new Error('تم إلغاء عملية تسجيل الدخول.');
-          (err as any).code = 'auth/popup-closed-by-user';
-          (err as any).isUserCancel = true;
-          throw err;
-        }
-
-        if (
-          popupError?.code === 'auth/unauthorized-domain' ||
-          popupError?.message?.includes('unauthorized-domain') ||
-          popupError?.message?.includes('authorized domain')
-        ) {
-          const domainErr = new Error(
-            `نطاق الاستضافة (${currentHost}) يحتاج إلى إضافة في Firebase Console (Authentication > Settings > Authorized domains) أو استخدام الدخول السريع برمز التحقق الفوري.`
-          );
-          (domainErr as any).code = 'auth/unauthorized-domain';
-          (domainErr as any).isUnauthorizedDomain = true;
-          (domainErr as any).hostname = currentHost;
-          (domainErr as any).isVercel = isVercel;
-          throw domainErr;
-        }
-
-        if (
-          popupError?.code === 'auth/popup-blocked' ||
-          gisErr?.code === 'auth/popup-blocked' ||
-          gisErr?.message?.toLowerCase()?.includes('blocked') ||
-          gisErr?.message?.includes('حظر')
-        ) {
-          const err = new Error(
-            'تم حظر النوافذ المنبثقة من قِبل المتصفح على جهازك. يمكنك استخدام "الدخول المباشر بنفس الصفحة (Redirect)" أو كتابة بريدك في "الدخول السريع برمز التحقق".'
-          );
-          (err as any).code = 'auth/popup-blocked';
-          (err as any).isPopupBlocked = true;
-          (err as any).hostname = currentHost;
-          (err as any).isVercel = isVercel;
-          throw err;
-        }
-
-        throw new Error(
-          gisErr?.message || popupError?.message || 'تعذر الاتصال بـ Google لاختيار الحساب. يمكنك استخدام الدخول السريع برمز التحقق أو الدخول باسم المستخدم.'
+      if (
+        popupError?.code === 'auth/unauthorized-domain' ||
+        popupError?.message?.includes('unauthorized-domain') ||
+        popupError?.message?.includes('authorized domain')
+      ) {
+        const domainErr = new Error(
+          `نطاق الاستضافة (${currentHost}) يحتاج إلى إضافة في Firebase Console (Authentication > Settings > Authorized domains) أو استخدام الدخول السريع برمز التحقق الفوري.`
         );
+        (domainErr as any).code = 'auth/unauthorized-domain';
+        (domainErr as any).isUnauthorizedDomain = true;
+        (domainErr as any).hostname = currentHost;
+        (domainErr as any).isVercel = isVercel;
+        throw domainErr;
       }
+
+      if (
+        popupError?.code === 'auth/popup-blocked' ||
+        popupError?.message?.toLowerCase()?.includes('blocked') ||
+        popupError?.message?.includes('حظر')
+      ) {
+        const err = new Error(
+          'تم حظر النوافذ المنبثقة من قِبل المتصفح على جهازك. يمكنك استخدام "الدخول المباشر بنفس الصفحة (Redirect)" أو كتابة بريدك في "الدخول السريع برمز التحقق".'
+        );
+        (err as any).code = 'auth/popup-blocked';
+        (err as any).isPopupBlocked = true;
+        (err as any).hostname = currentHost;
+        (err as any).isVercel = isVercel;
+        throw err;
+      }
+
+      throw new Error(
+        popupError?.message || 'تعذر الاتصال بـ Google لاختيار الحساب. يمكنك استخدام الدخول السريع برمز التحقق أو الدخول باسم المستخدم.'
+      );
     }
   } finally {
     isSigningIn = false;
@@ -557,13 +688,21 @@ export const initAuthListener = (onUserChanged: (user: User | null) => void) => 
     }
   }).catch((e) => console.warn('Redirect auth listener note:', e));
 
-  // Check initial cached user
+  // Check initial cached user immediately
   const initialUser = getCurrentUser();
   if (initialUser) {
     onUserChanged(initialUser);
   }
 
-  return onAuthStateChanged(auth, (firebaseUser) => {
+  // Listen to custom auth events
+  const handleCustomAuth = (e: any) => {
+    if (e?.detail) {
+      onUserChanged(e.detail as User);
+    }
+  };
+  window.addEventListener('taqdeer_auth_state_changed', handleCustomAuth);
+
+  const unsub = onAuthStateChanged(auth, (firebaseUser) => {
     if (firebaseUser) {
       onUserChanged(firebaseUser);
     } else {
@@ -575,6 +714,11 @@ export const initAuthListener = (onUserChanged: (user: User | null) => void) => 
       onUserChanged(null);
     }
   });
+
+  return () => {
+    unsub();
+    window.removeEventListener('taqdeer_auth_state_changed', handleCustomAuth);
+  };
 };
 
 export const clearAccessToken = () => {
@@ -592,6 +736,14 @@ export const googleSignOut = async () => {
   cachedAccessToken = null;
   localStorage.removeItem(TOKEN_STORAGE_KEY);
   localStorage.removeItem(GIS_USER_STORAGE_KEY);
+  localStorage.removeItem('taqdeer_unified_active_user_v1');
+  localStorage.removeItem('taqdeer_active_account_key');
+  try {
+    window.dispatchEvent(new CustomEvent('taqdeer_auth_state_changed', { detail: null }));
+    window.dispatchEvent(new Event('storage'));
+  } catch (e) {
+    console.warn('googleSignOut dispatch note:', e);
+  }
 };
 
 

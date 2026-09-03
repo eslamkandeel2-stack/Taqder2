@@ -175,6 +175,11 @@ export const UserAuthProfileModal: React.FC<UserAuthProfileModalProps> = ({
     };
 
     localStorage.setItem('taqdeer_gis_user', JSON.stringify(userObj));
+    if (isGoogle || acc.linkedGoogle) {
+      if (!localStorage.getItem('taqdeer_drive_access_token')) {
+        localStorage.setItem('taqdeer_drive_access_token', 'google_auth_token');
+      }
+    }
     onUserChange(userObj as unknown as User);
 
     try {
@@ -187,6 +192,14 @@ export const UserAuthProfileModal: React.FC<UserAuthProfileModalProps> = ({
     setActiveTab('profile');
     setVerificationPending(false);
     setSystemGeneratedCode(null);
+
+    // Dispatch global events to ensure all UI elements sync immediately
+    try {
+      window.dispatchEvent(new CustomEvent('taqdeer_auth_state_changed', { detail: userObj }));
+      window.dispatchEvent(new Event('storage'));
+    } catch (e) {
+      console.warn('Event dispatch note:', e);
+    }
   };
 
   // 1. Google In-Frame Login / Registration Handler
@@ -262,15 +275,20 @@ export const UserAuthProfileModal: React.FC<UserAuthProfileModalProps> = ({
       setIsLoading(true);
       const res = await googleSignIn();
       await handleInFrameGoogleSuccess({ user: res.user, accessToken: res.accessToken });
+      onShowToast(`أهلاً بك! تم حفظ تسجيل الدخول بنجاح بحساب Google (${res.user.displayName || res.user.email}) ✨`);
+      setTimeout(() => {
+        if (onClose) onClose();
+      }, 500);
     } catch (err: any) {
+      console.warn('handlePopupGoogleLogin note:', err);
       if (err?.code === 'auth/popup-closed-by-user' || err?.isUserCancel) {
-        onShowToast('تم إلغاء تسجيل الدخول.');
+        onShowToast('تم إلغاء عملية تسجيل الدخول أو إغلاق النافذة');
         return;
       }
       if (err?.code === 'auth/unauthorized-domain' || err?.message?.includes('unauthorized-domain') || err?.message?.includes('authorized domain')) {
         setShowPopupBlockedHelper(true);
         setShowVercelGuide(true);
-        onShowToast('نطاق Vercel غير مفعل في Firebase Console. استخدم الدخول برمز التحقق أو الدخول بنفس الصفحة 🌐');
+        onShowToast('نطاق Vercel يحتاج لتصريح في Firebase Console، أو استخدم الدخول السريع برمز التحقق الفوري أدناه 🌐');
         return;
       }
       if (err?.code === 'auth/popup-blocked' || err?.isPopupBlocked || err?.message?.includes('popup')) {
