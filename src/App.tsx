@@ -18,6 +18,7 @@ import { GoogleDriveSaveModal } from './components/GoogleDriveSaveModal';
 import { PrintPreviewModal } from './components/PrintPreviewModal';
 import { DirectShareModal } from './components/DirectShareModal';
 import { UserAuthProfileModal } from './components/UserAuthProfileModal';
+import { PrivacyPolicyPage } from './components/PrivacyPolicyPage';
 import { DraftsManagerModal } from './components/DraftsManagerModal';
 import { HistoryManagerModal } from './components/HistoryManagerModal';
 import { ExportPreviewModal } from './components/ExportPreviewModal';
@@ -160,10 +161,27 @@ const getAutosavedInitialData = (): CertificateData => {
 
 const getInitialUrlState = () => {
   if (typeof window === 'undefined') {
-    return { isStandalone: false, code: '', tab: 'editor' as const };
+    return { isStandalone: false, isPrivacyPage: false, code: '', tab: 'editor' as const };
   }
   try {
     const params = new URLSearchParams(window.location.search);
+    const pathname = window.location.pathname.toLowerCase();
+    const hash = window.location.hash.toLowerCase();
+
+    // Check if Privacy Policy page is requested via path, hash, or query param
+    const isPrivacy =
+      pathname === '/privacy' ||
+      pathname.startsWith('/privacy') ||
+      pathname === '/privacy-policy' ||
+      hash === '#/privacy' ||
+      hash === '#privacy' ||
+      params.get('page') === 'privacy' ||
+      params.get('tab') === 'privacy';
+
+    if (isPrivacy) {
+      return { isStandalone: false, isPrivacyPage: true, code: '', tab: 'editor' as const };
+    }
+
     const code =
       params.get('code') ||
       params.get('verify') ||
@@ -189,18 +207,18 @@ const getInitialUrlState = () => {
     const finalCode = (code || pathCode || '').trim();
 
     if (isPortal || window.location.pathname.startsWith('/verify')) {
-      return { isStandalone: true, code: finalCode, tab: 'verify' as const };
+      return { isStandalone: true, isPrivacyPage: false, code: finalCode, tab: 'verify' as const };
     }
     if (tab === 'verify' || finalCode) {
-      return { isStandalone: false, code: finalCode, tab: 'verify' as const };
+      return { isStandalone: false, isPrivacyPage: false, code: finalCode, tab: 'verify' as const };
     }
     if (tab && ['editor', 'batch', 'dashboard', 'cloud', 'verify', 'ai', 'settings'].includes(tab)) {
-      return { isStandalone: false, code: finalCode, tab: tab as any };
+      return { isStandalone: false, isPrivacyPage: false, code: finalCode, tab: tab as any };
     }
   } catch (e) {
     console.error('Error parsing initial URL state:', e);
   }
-  return { isStandalone: false, code: '', tab: 'editor' as const };
+  return { isStandalone: false, isPrivacyPage: false, code: '', tab: 'editor' as const };
 };
 
 export default function App() {
@@ -208,7 +226,40 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'editor' | 'batch' | 'dashboard' | 'cloud' | 'verify' | 'ai' | 'settings'>(initialUrlState.tab);
   const [urlVerifyCode, setUrlVerifyCode] = useState<string>(initialUrlState.code);
   const [isStandalonePortal, setIsStandalonePortal] = useState<boolean>(initialUrlState.isStandalone);
+  const [isPrivacyPage, setIsPrivacyPage] = useState<boolean>(Boolean(initialUrlState.isPrivacyPage));
   const [systemConfig, setSystemConfig] = useState<SystemSettingsConfig>(() => getSavedSystemConfig());
+
+  // Privacy Policy navigation handlers with history state push/pop
+  const handleOpenPrivacyPage = () => {
+    setIsPrivacyPage(true);
+    window.history.pushState({}, '', '/privacy');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleClosePrivacyPage = () => {
+    setIsPrivacyPage(false);
+    window.history.pushState({}, '', '/');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    const handlePopState = () => {
+      const pathname = window.location.pathname.toLowerCase();
+      const hash = window.location.hash.toLowerCase();
+      const params = new URLSearchParams(window.location.search);
+      const isPrivacy =
+        pathname === '/privacy' ||
+        pathname.startsWith('/privacy') ||
+        pathname === '/privacy-policy' ||
+        hash === '#/privacy' ||
+        hash === '#privacy' ||
+        params.get('page') === 'privacy' ||
+        params.get('tab') === 'privacy';
+      setIsPrivacyPage(isPrivacy);
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
   
   // History State for Undo / Redo - initialized with LocalStorage autosaved draft if present
   const [history, setHistory] = useState<CertificateData[]>(() => [getAutosavedInitialData()]);
@@ -704,6 +755,16 @@ export default function App() {
     }
   };
 
+  // If Privacy Policy Page is requested directly via URL or navigation
+  if (isPrivacyPage) {
+    return (
+      <PrivacyPolicyPage
+        onBackToApp={handleClosePrivacyPage}
+        onShowToast={showToast}
+      />
+    );
+  }
+
   if (isStandalonePortal) {
     return (
       <div className="min-h-screen bg-slate-950 text-slate-100 font-['Cairo',sans-serif] flex flex-col">
@@ -777,7 +838,27 @@ export default function App() {
         </main>
 
         {/* Dedicated Standalone Footer */}
-        <footer className="bg-slate-900 border-t border-slate-800 py-6 text-center text-xs text-slate-400">
+        <footer className="bg-slate-900 border-t border-slate-800 py-6 text-center text-xs text-slate-400 space-y-2">
+          <div className="flex flex-wrap items-center justify-center gap-4 text-xs">
+            <button
+              onClick={() => {
+                setIsStandalonePortal(false);
+                setActiveTab('editor');
+                window.history.replaceState({}, '', window.location.pathname);
+              }}
+              className="hover:text-amber-400 transition cursor-pointer"
+            >
+              دخول النظام الرئيسي
+            </button>
+            <span className="text-slate-700">•</span>
+            <button
+              onClick={handleOpenPrivacyPage}
+              className="text-amber-400 hover:text-amber-300 hover:underline transition font-bold cursor-pointer inline-flex items-center gap-1"
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span>سياسة الخصوصية وحماية البيانات (/privacy)</span>
+            </button>
+          </div>
           <p>© {new Date().getFullYear()} منصة تَقْدِير - نظام التوثيق والمصادقة الأكاديمي الرقمي المعتمد. جميع الحقوق محفوظة.</p>
         </footer>
       </div>
@@ -807,6 +888,7 @@ export default function App() {
         onOpenDraftsModal={() => setIsDraftsModalOpen(true)}
         onOpenHistoryModal={() => setIsHistoryManagerOpen(true)}
         onOpenUserAuthModal={() => setIsUserAuthModalOpen(true)}
+        onOpenPrivacyPolicy={handleOpenPrivacyPage}
         currentUser={currentUser}
         canUndo={canUndo}
         canRedo={canRedo}
@@ -1070,6 +1152,7 @@ export default function App() {
             currentCertificate={certificateData}
             onUpdateCurrentCertificate={updateCertificateData}
             onShowToast={showToast}
+            onOpenPrivacyPolicy={handleOpenPrivacyPage}
           />
         )}
 
@@ -1136,6 +1219,7 @@ export default function App() {
         onOpenCloudLibrary={() => {
           setActiveTab('cloud');
         }}
+        onOpenPrivacyPolicy={handleOpenPrivacyPage}
       />
 
       {/* Print Preview & Page Settings Modal */}
@@ -1205,6 +1289,57 @@ export default function App() {
           handleOpenAiModal('improve', 'appreciation');
         }}
       />
+
+      {/* Global Application Footer */}
+      <footer className="mt-14 bg-white/90 backdrop-blur-sm border-t border-slate-200/80 py-6 text-slate-500 shadow-2xs">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center text-slate-950 font-black text-xs shadow-xs">
+              ت
+            </div>
+            <div className="text-right">
+              <span className="font-bold text-slate-800 block">منظومة تَقْدِير الرقمية</span>
+              <span className="text-[10px] text-slate-400 block">صانع وتوثيق الشهادات الأكاديمية والمهنية</span>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-center gap-3.5 sm:gap-5 text-xs">
+            <button
+              onClick={() => { setActiveTab('editor'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+              className="hover:text-amber-600 font-bold transition cursor-pointer"
+            >
+              محرر الشهادات
+            </button>
+            <span className="text-slate-300">•</span>
+            <button
+              onClick={() => { setActiveTab('verify'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+              className="hover:text-amber-600 font-bold transition cursor-pointer"
+            >
+              بوابة التحقق
+            </button>
+            <span className="text-slate-300">•</span>
+            <button
+              onClick={() => { setActiveTab('settings'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+              className="hover:text-amber-600 font-bold transition cursor-pointer"
+            >
+              الإعدادات والدعم
+            </button>
+            <span className="text-slate-300">•</span>
+            <button
+              id="footer-privacy-policy-link"
+              onClick={handleOpenPrivacyPage}
+              className="text-amber-600 hover:text-amber-700 font-black hover:underline transition flex items-center gap-1 cursor-pointer bg-amber-50/80 hover:bg-amber-100 px-2.5 py-1 rounded-lg border border-amber-200/60"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-amber-600" />
+              <span>سياسة الخصوصية وحماية البيانات (/privacy)</span>
+            </button>
+          </div>
+
+          <div className="text-[11px] text-slate-400 font-medium">
+            © {new Date().getFullYear()} تَقْدِير • جميع الحقوق محفوظة
+          </div>
+        </div>
+      </footer>
 
     </div>
   );

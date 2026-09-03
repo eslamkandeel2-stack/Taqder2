@@ -112,6 +112,7 @@ interface Props {
   currentCertificate?: CertificateData;
   onUpdateCurrentCertificate?: (cert: CertificateData) => void;
   onShowToast?: (msg: string) => void;
+  onOpenPrivacyPolicy?: () => void;
 }
 
 type DefaultSubTab = 
@@ -183,7 +184,8 @@ const BADGE_ICONS: { id: BadgeIconType; label: string }[] = [
 export const AppSettingsModal: React.FC<Props> = ({
   currentCertificate,
   onUpdateCurrentCertificate,
-  onShowToast
+  onShowToast,
+  onOpenPrivacyPolicy
 }) => {
   const [activeTab, setActiveTab] = useState<'default-cert' | 'ai-settings' | 'app-system'>('default-cert');
   const [activeSubTab, setActiveSubTab] = useState<DefaultSubTab>('basic-info');
@@ -3641,6 +3643,39 @@ export const AppSettingsModal: React.FC<Props> = ({
                     className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs rounded-xl transition shrink-0"
                   >
                     تواصل مع الدعم
+                  </button>
+                </div>
+
+                {/* Official Privacy Policy & Security Card */}
+                <div className="p-4 bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-700/80 text-white rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-md">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+                      <ShieldCheck className="w-5 h-5" />
+                    </div>
+                    <div className="space-y-0.5">
+                      <span className="text-xs font-bold block text-white flex items-center gap-1.5">
+                        <span>وثيقة سياسة الخصوصية وحماية البيانات الرسمية</span>
+                        <span className="text-[9px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-1.5 py-0.2 rounded-full font-bold">
+                          معتمدة
+                        </span>
+                      </span>
+                      <span className="text-[11px] text-slate-400 block">
+                        توضح بشفافية تامة: ما نجمعه، كيف نستخدمه، وتعهدات حماية وعدم بيع البيانات
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      if (onOpenPrivacyPolicy) {
+                        onOpenPrivacyPolicy();
+                      } else {
+                        window.location.href = '/privacy';
+                      }
+                    }}
+                    className="w-full sm:w-auto px-4 py-2 bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-xs rounded-xl border border-amber-500/30 transition flex items-center justify-center gap-1.5 shrink-0 cursor-pointer shadow-xs"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5 text-amber-400" />
+                    <span>عرض سياسة الخصوصية (/privacy)</span>
                   </button>
                 </div>
 

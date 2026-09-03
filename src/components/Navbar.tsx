@@ -36,6 +36,7 @@ interface Props {
   onOpenDraftsModal?: () => void;
   onOpenHistoryModal?: () => void;
   onOpenUserAuthModal?: () => void;
+  onOpenPrivacyPolicy?: () => void;
   currentUser?: any;
   canUndo?: boolean;
   canRedo?: boolean;
@@ -58,6 +59,7 @@ export const Navbar: React.FC<Props> = ({
   onOpenDraftsModal,
   onOpenHistoryModal,
   onOpenUserAuthModal,
+  onOpenPrivacyPolicy,
   currentUser,
   canUndo,
   canRedo,
@@ -415,6 +417,17 @@ export const Navbar: React.FC<Props> = ({
               >
                 <Settings className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
               </button>
+
+              {onOpenPrivacyPolicy && (
+                <button
+                  type="button"
+                  onClick={onOpenPrivacyPolicy}
+                  className="p-1.5 text-slate-400 hover:text-amber-400 hover:bg-slate-800 rounded-lg transition shrink-0 cursor-pointer"
+                  title="سياسة الخصوصية وحماية البيانات الرسمية (/privacy)"
+                >
+                  <ShieldCheck className="w-4 h-4 sm:w-4.5 sm:h-4.5 text-emerald-400/90 hover:text-emerald-300" />
+                </button>
+              )}
             </div>
           </div>
 
@@ -493,6 +506,16 @@ export const Navbar: React.FC<Props> = ({
             >
               <BotMessageSquare className="w-3.5 h-3.5 text-amber-300 shrink-0" />
               <span>مساعد AI</span>
+            </button>
+          )}
+          {onOpenPrivacyPolicy && (
+            <button
+              type="button"
+              onClick={onOpenPrivacyPolicy}
+              className="flex items-center gap-1.5 whitespace-nowrap px-3 py-1.5 text-xs font-bold rounded-xl transition-all shrink-0 cursor-pointer bg-slate-800/80 text-amber-300 hover:text-white border border-amber-500/20"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <span>الخصوصية</span>
             </button>
           )}
         </div>

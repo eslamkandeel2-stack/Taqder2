@@ -74,6 +74,7 @@ interface UserAuthProfileModalProps {
   onUserChange: (user: User | null) => void;
   onShowToast: (msg: string) => void;
   onOpenCloudLibrary?: () => void;
+  onOpenPrivacyPolicy?: () => void;
 }
 
 type AuthTab = 'login' | 'quick_email' | 'register' | 'profile' | 'link_google';
@@ -84,7 +85,8 @@ export const UserAuthProfileModal: React.FC<UserAuthProfileModalProps> = ({
   currentUser,
   onUserChange,
   onShowToast,
-  onOpenCloudLibrary
+  onOpenCloudLibrary,
+  onOpenPrivacyPolicy
 }) => {
   const [activeTab, setActiveTab] = useState<AuthTab>('login');
   const [isLoading, setIsLoading] = useState(false);
@@ -1618,18 +1620,52 @@ export const UserAuthProfileModal: React.FC<UserAuthProfileModalProps> = ({
               <span>تسجيل الخروج وتأمين الحساب</span>
             </button>
           ) : (
-            <span className="text-[11px] text-slate-500 flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                if (onOpenPrivacyPolicy) {
+                  onOpenPrivacyPolicy();
+                } else {
+                  window.history.pushState({}, '', '/privacy');
+                  window.dispatchEvent(new PopStateEvent('popstate'));
+                }
+              }}
+              className="text-[11px] text-slate-400 hover:text-amber-300 flex items-center gap-1 cursor-pointer transition"
+            >
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-              <span>نظام المعرف الموحد والحماية السحابية</span>
-            </span>
+              <span className="hover:underline">سياسة الخصوصية والأمان وحماية البيانات</span>
+            </button>
           )}
 
-          <button
-            onClick={onClose}
-            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-xl transition cursor-pointer"
-          >
-            إغلاق
-          </button>
+          <div className="flex items-center gap-2">
+            {(currentUser || unifiedAccount) && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  if (onOpenPrivacyPolicy) {
+                    onOpenPrivacyPolicy();
+                  } else {
+                    window.history.pushState({}, '', '/privacy');
+                    window.dispatchEvent(new PopStateEvent('popstate'));
+                  }
+                }}
+                className="text-[11px] text-slate-400 hover:text-amber-300 flex items-center gap-1 cursor-pointer transition mr-2"
+                title="عرض سياسة الخصوصية"
+              >
+                <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
+                <span className="hidden sm:inline hover:underline">الخصوصية</span>
+              </button>
+            )}
+
+            <button
+              onClick={onClose}
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-xl transition cursor-pointer"
+            >
+              إغلاق
+            </button>
+          </div>
         </div>
 
       </div>
