@@ -99,6 +99,8 @@ import {
 } from '../utils/systemConfig';
 import { EXPORT_ENGINES } from '../utils/exportUtils';
 import { useDragScroll } from '../utils/useDragScroll';
+import { getAccessToken, googleSignIn, getCurrentUser } from '../services/googleDriveService';
+import { syncFullAccountToCloud, restoreAccountFromCloud } from '../services/cloudDatabaseService';
 
 interface Props {
   currentCertificate?: CertificateData;
@@ -3242,6 +3244,90 @@ export const AppSettingsModal: React.FC<Props> = ({
                       </button>
                     );
                   })}
+                </div>
+              </div>
+
+              {/* Google Cloud Account Unified Sync Card */}
+              <div className="bg-gradient-to-br from-slate-900 to-slate-950 text-white p-5 rounded-2xl border border-amber-500/30 shadow-lg space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <div className="flex items-center gap-2">
+                    <Cloud className="w-5 h-5 text-amber-400" />
+                    <h3 className="font-extrabold text-sm text-white">
+                      مزامنة الحساب السحابي الموحد (Google & Firestore)
+                    </h3>
+                  </div>
+                  <span className="text-[11px] text-amber-300 font-bold bg-amber-500/20 px-2.5 py-0.5 rounded-full border border-amber-500/30">
+                    مزامنة شاملة ☁️
+                  </span>
+                </div>
+
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  حفظ وتخزين جميع إعدادات النظام، التوقيعات، الأختام، مكتبة الشهادات، والمسودات على السحابة وربطها بحساب Google الرسمي لفتحها بنفس الإعدادات من أي جهاز كمبيوتر أو جوال آخر:
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <button
+                    onClick={async () => {
+                      try {
+                        let token = await getAccessToken();
+                        let user = getCurrentUser();
+                        if (!token || !user) {
+                          if (onShowToast) onShowToast('جاري تسجيل الدخول بحساب Google...');
+                          const res = await googleSignIn();
+                          user = res.user;
+                        }
+                        if (user) {
+                          if (onShowToast) onShowToast('جاري مزامنة وحفظ جميع بيانات النظام على السحابة...');
+                          const syncRes = await syncFullAccountToCloud(user);
+                          if (onShowToast) onShowToast(`تمت المزامنة بنجاح! تم حفظ ${syncRes.certsCount} شهادة و ${syncRes.draftsCount} مسودة وجميع إعداداتك ☁️✅`);
+                        }
+                      } catch (err: any) {
+                        if (err?.code === 'auth/popup-closed-by-user' || err?.isUserCancel || err?.message?.includes('إلغاء')) {
+                          if (onShowToast) onShowToast('تم إلغاء عملية تسجيل الدخول.');
+                          return;
+                        }
+                        console.error('Sync error:', err);
+                        if (onShowToast) onShowToast(err.message || 'فشلت المزامنة السحابية');
+                      }
+                    }}
+                    className="p-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:brightness-110 text-slate-950 font-black rounded-xl text-xs flex items-center justify-center gap-2 transition shadow-md cursor-pointer"
+                  >
+                    <Cloud className="w-4 h-4 text-slate-950" />
+                    <span>مزامنة وحفظ الإعدادات بالسحابة</span>
+                  </button>
+
+                  <button
+                    onClick={async () => {
+                      try {
+                        let token = await getAccessToken();
+                        let user = getCurrentUser();
+                        if (!token || !user) {
+                          if (onShowToast) onShowToast('جاري تسجيل الدخول بحساب Google...');
+                          const res = await googleSignIn();
+                          user = res.user;
+                        }
+                        if (user) {
+                          if (onShowToast) onShowToast('جاري جلب إعداداتك وبياناتك السحابية...');
+                          const restoreRes = await restoreAccountFromCloud(user.uid, user.email || '');
+                          setDefaultSettings(getSavedDefaultSettings());
+                          setSystemConfig(getSavedSystemConfig());
+                          setAiSettings(getSavedAISettings());
+                          if (onShowToast) onShowToast(`تمت استعادة الإعدادات بنجاح (${restoreRes.certsCount} شهادة، ${restoreRes.draftsCount} مسودة) 📥`);
+                        }
+                      } catch (err: any) {
+                        if (err?.code === 'auth/popup-closed-by-user' || err?.isUserCancel || err?.message?.includes('إلغاء')) {
+                          if (onShowToast) onShowToast('تم إلغاء عملية تسجيل الدخول.');
+                          return;
+                        }
+                        console.error('Restore error:', err);
+                        if (onShowToast) onShowToast(err.message || 'فشلت استعادة البيانات السحابية');
+                      }
+                    }}
+                    className="p-3 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition shadow-xs cursor-pointer"
+                  >
+                    <RefreshCw className="w-4 h-4 text-sky-400" />
+                    <span>جلب واستعادة البيانات من السحابة</span>
+                  </button>
                 </div>
               </div>
 

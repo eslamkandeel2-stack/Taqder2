@@ -573,47 +573,23 @@ export function applySingleProofreadFix(
   cert: CertificateData,
   issue: ProofreadIssue
 ): CertificateData {
-  const fieldKey = issue.fieldName as keyof CertificateData;
-  const currentVal = String((cert as any)[fieldKey] || '');
+  const currentVal = String((cert as any)[issue.fieldName] || '');
   if (!currentVal) return cert;
 
-  let updatedVal = currentVal;
+  // Use Arabic word boundary regex replacement for the specific word to avoid mangling substrings
+  const wordRegex = createArabicWordRegex(issue.originalWord);
+  let updatedVal: string;
 
-  // Strategy 1: Position-based exact replacement if indices match
-  if (
-    typeof issue.startIndex === 'number' &&
-    typeof issue.endIndex === 'number' &&
-    issue.startIndex >= 0 &&
-    issue.endIndex <= currentVal.length &&
-    issue.startIndex < issue.endIndex
-  ) {
-    const sub = currentVal.substring(issue.startIndex, issue.endIndex);
-    if (sub === issue.originalWord || sub.trim() === issue.originalWord.trim()) {
-      updatedVal =
-        currentVal.substring(0, issue.startIndex) +
-        issue.suggestedWord +
-        currentVal.substring(issue.endIndex);
-    }
-  }
-
-  // Strategy 2: Whole-word boundary regex replacement with fresh lastIndex
-  if (updatedVal === currentVal) {
-    const wordRegexNonGlobal = createArabicWordRegex(issue.originalWord, '');
-    if (wordRegexNonGlobal.test(currentVal)) {
-      const wordRegexGlobal = createArabicWordRegex(issue.originalWord, 'g');
-      wordRegexGlobal.lastIndex = 0;
-      updatedVal = currentVal.replace(wordRegexGlobal, issue.suggestedWord);
-    }
-  }
-
-  // Strategy 3: Global substring fallback
-  if (updatedVal === currentVal && currentVal.includes(issue.originalWord)) {
-    updatedVal = currentVal.split(issue.originalWord).join(issue.suggestedWord);
+  if (wordRegex.test(currentVal)) {
+    updatedVal = currentVal.replace(wordRegex, issue.suggestedWord);
+  } else {
+    // Exact substring fallback if word boundary was non-standard
+    updatedVal = currentVal.replace(issue.originalWord, issue.suggestedWord);
   }
 
   return {
     ...cert,
-    [fieldKey]: updatedVal,
+    [issue.fieldName]: updatedVal,
     updatedAt: new Date().toISOString(),
   };
 }
@@ -625,20 +601,9 @@ export function applyAllProofreadFixes(
   cert: CertificateData,
   proofreadResult: CertificateProofreadResult
 ): CertificateData {
-  const updated: CertificateData = {
+  return {
     ...cert,
+    ...proofreadResult.correctedCertificate,
     updatedAt: new Date().toISOString(),
   };
-
-  if (proofreadResult?.fields) {
-    Object.entries(proofreadResult.fields).forEach(([fieldName, fieldRes]) => {
-      if (fieldRes && typeof fieldRes.correctedText === 'string' && fieldRes.correctedText.trim()) {
-        (updated as any)[fieldName] = fieldRes.correctedText;
-      }
-    });
-  } else if (proofreadResult?.correctedCertificate) {
-    Object.assign(updated, proofreadResult.correctedCertificate);
-  }
-
-  return updated;
 }

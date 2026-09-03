@@ -6,10 +6,7 @@ import {
   initDriveAuth,
   uploadCertificateToDrive,
   getAccessToken,
-  clearAccessToken,
-  getSavedGoogleAccounts,
-  switchGoogleAccount,
-  GoogleAccountProfile
+  clearAccessToken
 } from '../services/googleDriveService';
 import { generateVerificationCode } from '../utils/qrUtils';
 import { User } from 'firebase/auth';
@@ -26,12 +23,9 @@ import {
   Database,
   ArrowRight,
   ShieldCheck,
-  Sparkles,
-  Users,
-  RefreshCw
+  Sparkles
 } from 'lucide-react';
 import { captureCertificateCanvas, findCertificateCanvasElement } from '../utils/exportUtils';
-import { GoogleAccountPickerModal } from './GoogleAccountPickerModal';
 
 interface Props {
   isOpen: boolean;
@@ -63,12 +57,6 @@ export const GoogleDriveSaveModal: React.FC<Props> = ({
   const [driveUrl, setDriveUrl] = useState<string>(certificateData.driveFileWebViewLink || '');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [isAccountPickerOpen, setIsAccountPickerOpen] = useState(false);
-  const [savedAccounts, setSavedAccounts] = useState<GoogleAccountProfile[]>([]);
-
-  const refreshSavedAccounts = () => {
-    setSavedAccounts(getSavedGoogleAccounts());
-  };
 
   useEffect(() => {
     if (isOpen) {
@@ -76,7 +64,6 @@ export const GoogleDriveSaveModal: React.FC<Props> = ({
       setCloudOnlySuccess(false);
       setUploadSuccess(!!certificateData.driveFileWebViewLink);
       setDriveUrl(certificateData.driveFileWebViewLink || '');
-      refreshSavedAccounts();
 
       // Default mode: if already uploaded to Drive, open drive tab, else start on cloud-only tab
       if (certificateData.driveFileWebViewLink) {
@@ -89,12 +76,10 @@ export const GoogleDriveSaveModal: React.FC<Props> = ({
         (u, tok) => {
           setUser(u);
           setToken(tok);
-          refreshSavedAccounts();
         },
         () => {
           setUser(null);
           setToken(null);
-          refreshSavedAccounts();
         }
       );
       return () => unsubscribe();
@@ -158,17 +143,22 @@ export const GoogleDriveSaveModal: React.FC<Props> = ({
     }
   };
 
-  const handleDirectLogin = async () => {
+  const handleLogin = async () => {
     setIsLoggingIn(true);
     setErrorMsg(null);
     try {
       const res = await googleSignIn();
       setUser(res.user);
       setToken(res.accessToken);
-      refreshSavedAccounts();
     } catch (err: any) {
-      console.error('Login error:', err);
-      setErrorMsg(err.message || 'حدث خطأ أثناء تسجيل الدخول بـ Google');
+      if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request' || err.message?.includes('تم إلغاء')) {
+        setErrorMsg('تم إلغاء نافذة تسجيل الدخول.');
+      } else if (err.code === 'auth/popup-blocked') {
+        setErrorMsg('تعذر فتح نافذة تسجيل الدخول. يرجى السماح بالنوافذ المنبثقة (Popups) من إعدادات المتصفح.');
+      } else {
+        console.error('Login error:', err);
+        setErrorMsg(err.message || 'حدث خطأ أثناء تسجيل الدخول بـ Google');
+      }
     } finally {
       setIsLoggingIn(false);
     }
@@ -178,18 +168,6 @@ export const GoogleDriveSaveModal: React.FC<Props> = ({
     await googleSignOut();
     setUser(null);
     setToken(null);
-    refreshSavedAccounts();
-  };
-
-  const handleQuickSwitchAccount = (acc: GoogleAccountProfile) => {
-    try {
-      const res = switchGoogleAccount(acc);
-      setUser(res.user);
-      setToken(res.accessToken);
-      refreshSavedAccounts();
-    } catch (e: any) {
-      setErrorMsg(e.message || 'فشل التبديل للحساب');
-    }
   };
 
   const handleUploadToDrive = async () => {
@@ -347,362 +325,327 @@ export const GoogleDriveSaveModal: React.FC<Props> = ({
   };
 
   return (
-    <>
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 overflow-y-auto font-['Cairo']">
-        <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden text-right animate-in fade-in zoom-in-95 duration-200">
-          
-          {/* Header */}
-          <div className="bg-gradient-to-r from-slate-900 via-amber-950 to-slate-900 text-white p-6 relative border-b border-slate-800">
-            <button
-              onClick={onClose}
-              className="absolute top-5 left-5 p-2 text-slate-400 hover:text-white hover:bg-slate-800/80 rounded-full transition cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/80 backdrop-blur-sm p-0 sm:p-4 font-['Cairo']">
+      <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl border border-slate-200 w-full max-w-lg max-h-[92dvh] sm:max-h-[90vh] flex flex-col overflow-hidden text-right animate-in fade-in zoom-in-95 duration-200">
+        
+        {/* Mobile Swipe / Drag Indicator Bar */}
+        <div className="pt-2.5 pb-1 bg-gradient-to-r from-slate-900 via-amber-950 to-slate-900 sm:hidden shrink-0">
+          <div className="w-12 h-1 bg-amber-200/50 rounded-full mx-auto" />
+        </div>
 
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center text-slate-950 shadow-md shrink-0">
-                <Cloud className="w-7 h-7" />
+        {/* Header */}
+        <div className="bg-gradient-to-r from-slate-900 via-amber-950 to-slate-900 text-white p-4 sm:p-6 relative border-b border-slate-800 shrink-0">
+          <button
+            onClick={onClose}
+            className="absolute top-3.5 left-3.5 sm:top-5 sm:left-5 p-2 text-slate-400 hover:text-white hover:bg-slate-800/80 rounded-full transition cursor-pointer"
+            aria-label="إغلاق"
+          >
+            <X className="w-5 h-5" />
+          </button>
+
+          <div className="flex items-center gap-3 pr-1">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center text-slate-950 shadow-md shrink-0">
+              <Cloud className="w-6 h-6 sm:w-7 sm:h-7" />
+            </div>
+            <div className="min-w-0 pr-1">
+              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                <h3 className="text-base sm:text-lg font-black truncate">خيارات الحفظ السحابي</h3>
+                <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded-full font-bold whitespace-nowrap">
+                  مكتبة + Google Drive
+                </span>
               </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-lg font-black">خيارات الحفظ السحابي</h3>
-                  <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded-full font-bold">
-                    مكتبة + Google Drive
-                  </span>
-                </div>
-                <p className="text-xs text-slate-300 mt-0.5">
-                  اختر الحفظ بالسحابة في المكتبة أو الرفع المباشر لـ Google Drive
-                </p>
-              </div>
+              <p className="text-[11px] sm:text-xs text-slate-300 mt-0.5 leading-tight">
+                اختر الحفظ بالسحابة في المكتبة أو الرفع المباشر لـ Google Drive
+              </p>
             </div>
           </div>
+        </div>
 
-          {/* Mode Selector Tabs */}
-          <div className="px-6 pt-5">
-            <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200 gap-1">
-              <button
-                type="button"
-                onClick={() => { setSaveMode('cloud-only'); setErrorMsg(null); }}
-                className={`flex-1 py-2.5 px-3 rounded-xl font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer ${
-                  saveMode === 'cloud-only'
-                    ? 'bg-sky-600 text-white shadow-sm font-extrabold'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-                }`}
-              >
-                <Cloud className="w-4 h-4 shrink-0" />
-                <span>حفظ بالمكتبة (بدون Drive)</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => { setSaveMode('google-drive'); setErrorMsg(null); }}
-                className={`flex-1 py-2.5 px-3 rounded-xl font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer ${
-                  saveMode === 'google-drive'
-                    ? 'bg-amber-500 text-slate-950 shadow-sm font-extrabold'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-                }`}
-              >
-                <HardDrive className="w-4 h-4 shrink-0" />
-                <span>رفع على Google Drive</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Content Body */}
-          <div className="p-6 space-y-4">
-
-            {/* Certificate Info Card */}
-            <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 text-xs space-y-1.5">
-              <div className="flex justify-between text-slate-600">
-                <span>اسم الشهادة:</span>
-                <strong className="text-slate-900">{certificateData.title}</strong>
-              </div>
-              <div className="flex justify-between text-slate-600">
-                <span>اسم المكرّم:</span>
-                <strong className="text-amber-700">{certificateData.studentName}</strong>
-              </div>
-              <div className="flex justify-between text-slate-600">
-                <span>كود التوثيق والباركود:</span>
-                <strong className="font-mono text-indigo-700">{certificateData.verificationCode || 'سيتولّد تلقائياً'}</strong>
-              </div>
-            </div>
-
-            {/* Error Banner */}
-            {errorMsg && (
-              <div className="p-3.5 bg-red-50 border border-red-200 rounded-xl text-red-800 text-xs flex flex-col gap-2.5">
-                <div className="flex items-center gap-2">
-                  <AlertCircle className="w-5 h-5 text-red-600 shrink-0" />
-                  <span className="font-medium">{errorMsg}</span>
-                </div>
-                {saveMode === 'google-drive' && (
-                  <button
-                    onClick={() => setIsAccountPickerOpen(true)}
-                    className="w-full py-2.5 px-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-xs"
-                  >
-                    <Users className="w-4 h-4" />
-                    <span>اختيار أو تبديل حساب Google لتجديد الجلسة</span>
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* MODE 1: CLOUD ONLY (Without Drive) */}
-            {saveMode === 'cloud-only' && (
-              <div className="space-y-4">
-                <div className="bg-sky-50 border border-sky-200 p-4 rounded-2xl space-y-2 text-right">
-                  <div className="flex items-center gap-2 text-sky-950 font-bold text-xs">
-                    <Database className="w-4 h-4 text-sky-600 shrink-0" />
-                    <span>الحفظ في المكتبة السحابية (التخزين السريع)</span>
-                  </div>
-                  <p className="text-[11px] text-sky-800 leading-relaxed">
-                    سيتم حفظ كافة بيانات الشهادة والتعديلات في مكتبتك السحابية بالتطبيق للوصول إليها وتعديلها وطباعتها في أي وقت دون الحاجة لربط حساب Google Drive.
-                  </p>
-                </div>
-
-                {cloudOnlySuccess ? (
-                  <div className="bg-emerald-50 border border-emerald-300 p-4 rounded-2xl space-y-3 text-right">
-                    <div className="flex items-center gap-2 text-emerald-950 font-black text-xs">
-                      <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-                      <span>تم حفظ الشهادة بالسحابة في مكتبتك بنجاح! ☁️✨</span>
-                    </div>
-                    <p className="text-[11px] text-emerald-800">
-                      يمكنك الآن العودة للتصميم أو فتح قسم "المكتبة السحابية" لاستعراض الشهادة. كما يمكنك أيضاً رفعها على Google Drive في أي وقت.
-                    </p>
-                    <div className="flex items-center gap-2 pt-1">
-                      <button
-                        type="button"
-                        onClick={() => setSaveMode('google-drive')}
-                        className="flex-1 py-2 px-3 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black rounded-xl text-center flex items-center justify-center gap-1.5 transition cursor-pointer"
-                      >
-                        <HardDrive className="w-4 h-4" />
-                        <span>الترقية للرفع على Google Drive</span>
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleSaveCloudOnly}
-                    disabled={isSavingCloudOnly}
-                    className="w-full py-3.5 px-4 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs rounded-xl shadow-md transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                  >
-                    {isSavingCloudOnly ? (
-                      <>
-                        <Loader2 className="w-5 h-5 animate-spin" />
-                        <span>جاري حفظ الشهادة بالسحابة...</span>
-                      </>
-                    ) : certificateData.isSavedCloud ? (
-                      <>
-                        <CheckCircle2 className="w-5 h-5" />
-                        <span>تحديث نسخة الشهادة بالمكتبة السحابية</span>
-                      </>
-                    ) : (
-                      <>
-                        <Cloud className="w-5 h-5" />
-                        <span>حفظ الشهادة بالمكتبة السحابية الآن (بدون Drive)</span>
-                      </>
-                    )}
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* MODE 2: GOOGLE DRIVE (With Drive Upload) */}
-            {saveMode === 'google-drive' && (
-              <div className="space-y-4">
-                {/* User Account Bar with Account Chooser Button */}
-                {user ? (
-                  <div className="bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 p-3.5 rounded-2xl space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3 min-w-0">
-                        {user.photoURL ? (
-                          <img src={user.photoURL} alt={user.displayName || 'Google Account'} className="w-9 h-9 rounded-full border-2 border-emerald-500 shrink-0 object-cover shadow-xs" />
-                        ) : (
-                          <div className="w-9 h-9 rounded-full bg-emerald-600 text-white font-black flex items-center justify-center text-sm shrink-0 shadow-xs">
-                            {user.email?.[0].toUpperCase() || 'G'}
-                          </div>
-                        )}
-                        <div className="min-w-0">
-                          <span className="block text-xs font-black text-slate-900 truncate">
-                            {user.displayName || user.email}
-                          </span>
-                          <span className="block text-[10px] text-emerald-800 font-medium truncate dir-ltr text-right">
-                            {user.email}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => setIsAccountPickerOpen(true)}
-                          className="px-2.5 py-1.5 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-black text-slate-800 flex items-center gap-1 transition cursor-pointer shadow-2xs"
-                        >
-                          <RefreshCw className="w-3.5 h-3.5 text-amber-600" />
-                          <span>تبديل الحساب</span>
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Quick switch between other remembered accounts if available */}
-                    {savedAccounts.filter(a => a.email.toLowerCase() !== user.email?.toLowerCase()).length > 0 && (
-                      <div className="pt-1 border-t border-emerald-100 flex items-center gap-1.5 overflow-x-auto text-[10px]">
-                        <span className="text-slate-500 shrink-0">تبديل سريع:</span>
-                        {savedAccounts
-                          .filter(a => a.email.toLowerCase() !== user.email?.toLowerCase())
-                          .slice(0, 3)
-                          .map((acc) => (
-                            <button
-                              key={acc.email}
-                              type="button"
-                              onClick={() => handleQuickSwitchAccount(acc)}
-                              className="px-2 py-0.5 bg-white/90 hover:bg-white border border-emerald-200 rounded-full font-bold text-slate-700 truncate max-w-[140px] transition cursor-pointer"
-                              title={acc.email}
-                            >
-                              {acc.displayName || acc.email.split('@')[0]}
-                            </button>
-                          ))}
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="bg-amber-50/80 border border-amber-200 p-4 rounded-2xl text-center space-y-3">
-                    <p className="text-xs text-amber-900 font-medium leading-relaxed">
-                      اختر حساب Google لتسجيل الدخول وحفظ الشهادة وتوثيق رابط الباركود والسحابة:
-                    </p>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setIsAccountPickerOpen(true)}
-                        className="py-3 px-3 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl font-black text-xs shadow-sm transition flex items-center justify-center gap-2 cursor-pointer"
-                      >
-                        <Users className="w-4 h-4" />
-                        <span>اختيار أو تبديل الحساب</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={handleDirectLogin}
-                        disabled={isLoggingIn}
-                        className="py-3 px-3 bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 hover:border-amber-400 rounded-xl font-black text-xs shadow-sm transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                      >
-                        {isLoggingIn ? (
-                          <>
-                            <Loader2 className="w-4 h-4 text-amber-600 animate-spin" />
-                            <span>جاري التفعيل...</span>
-                          </>
-                        ) : (
-                          <>
-                            <svg className="w-4 h-4 shrink-0" viewBox="0 0 48 48">
-                              <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
-                              <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
-                              <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
-                              <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
-                            </svg>
-                            <span>دخول سريع فوري</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Action Button */}
-                {user && (
-                  <button
-                    type="button"
-                    onClick={handleUploadToDrive}
-                    disabled={isUploading}
-                    className="w-full py-3.5 px-4 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs rounded-xl shadow-md transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                  >
-                    {isUploading ? (
-                      <>
-                        <Loader2 className="w-5 h-5 animate-spin" />
-                        <span>جاري توليد الصورة ورفعها لـ Google Drive...</span>
-                      </>
-                    ) : uploadSuccess ? (
-                      <>
-                        <HardDrive className="w-5 h-5" />
-                        <span>إعادة رفع / تحديث الشهادة على Google Drive</span>
-                      </>
-                    ) : (
-                      <>
-                        <HardDrive className="w-5 h-5" />
-                        <span>حفظ ورفع الشهادة وتفعيل رابط Google Drive</span>
-                      </>
-                    )}
-                  </button>
-                )}
-
-                {/* Upload Success View */}
-                {uploadSuccess && driveUrl && (
-                  <div className="bg-emerald-50 border border-emerald-300 p-4 rounded-2xl space-y-3 text-right">
-                    <div className="flex items-center gap-2 text-emerald-950 font-black text-xs">
-                      <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-                      <span>تم حفظ الشهادة بنجاح على Google Drive! ☁️🎉</span>
-                    </div>
-                    <p className="text-[11px] text-emerald-800">
-                      أصبح باركود QR الخاص بهذه الشهادة يوجه الآن مباشرة إلى رابط التحقق والتحميل الأصلي على Google Drive.
-                    </p>
-
-                    <div className="bg-white p-2.5 rounded-xl border border-emerald-200 flex items-center justify-between gap-2">
-                      <span className="text-[11px] font-mono text-slate-700 truncate dir-ltr">{driveUrl}</span>
-                      <button
-                        type="button"
-                        onClick={handleCopyLink}
-                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg transition flex items-center gap-1 shrink-0 cursor-pointer"
-                      >
-                        {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                        <span>{copied ? 'تم النسخ!' : 'نسخ الرابط'}</span>
-                      </button>
-                    </div>
-
-                    <div className="flex items-center gap-2 pt-1">
-                      <a
-                        href={driveUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex-1 py-2 px-3 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl text-center flex items-center justify-center gap-1.5 transition"
-                      >
-                        <ExternalLink className="w-4 h-4 text-amber-400" />
-                        <span>فتح الشهادة في Google Drive</span>
-                      </a>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-          </div>
-
-          {/* Footer */}
-          <div className="bg-slate-50 p-4 border-t border-slate-200 flex justify-between items-center text-xs">
-            <span className="text-slate-500 font-medium">نظام التوثيق والمكتبة السحابية</span>
+        {/* Mode Selector Tabs */}
+        <div className="px-4 sm:px-6 pt-3 sm:pt-4 shrink-0 bg-white">
+          <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200 gap-1">
             <button
               type="button"
-              onClick={onClose}
-              className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl transition cursor-pointer"
+              onClick={() => { setSaveMode('cloud-only'); setErrorMsg(null); }}
+              className={`flex-1 py-2 sm:py-2.5 px-2 sm:px-3 rounded-xl font-bold text-[11px] sm:text-xs transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                saveMode === 'cloud-only'
+                  ? 'bg-sky-600 text-white shadow-sm font-extrabold'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+              }`}
             >
-              إغلاق
+              <Cloud className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+              <span className="truncate">حفظ بالمكتبة (بدون Drive)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => { setSaveMode('google-drive'); setErrorMsg(null); }}
+              className={`flex-1 py-2 sm:py-2.5 px-2 sm:px-3 rounded-xl font-bold text-[11px] sm:text-xs transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                saveMode === 'google-drive'
+                  ? 'bg-amber-500 text-slate-950 shadow-sm font-extrabold'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+              }`}
+            >
+              <HardDrive className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+              <span className="truncate">رفع على Google Drive</span>
             </button>
           </div>
+        </div>
+
+        {/* Content Body: Smooth Touch Scrollable Up & Down */}
+        <div className="p-4 sm:p-6 space-y-4 flex-1 overflow-y-auto overscroll-contain touch-pan-y">
+
+          {/* Certificate Info Card */}
+          <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 text-xs space-y-1.5">
+            <div className="flex justify-between items-center text-slate-600">
+              <span className="shrink-0 ml-2">اسم الشهادة:</span>
+              <strong className="text-slate-900 truncate text-left">{certificateData.title}</strong>
+            </div>
+            <div className="flex justify-between items-center text-slate-600">
+              <span className="shrink-0 ml-2">اسم المكرّم:</span>
+              <strong className="text-amber-700 truncate text-left">{certificateData.studentName}</strong>
+            </div>
+            <div className="flex justify-between items-center text-slate-600">
+              <span className="shrink-0 ml-2">كود التوثيق:</span>
+              <strong className="font-mono text-indigo-700 dir-ltr">{certificateData.verificationCode || 'سيتولّد تلقائياً'}</strong>
+            </div>
+          </div>
+
+          {/* Error Banner */}
+          {errorMsg && (
+            <div className="p-3.5 bg-red-50 border border-red-200 rounded-xl text-red-800 text-xs flex flex-col gap-2.5">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-5 h-5 text-red-600 shrink-0" />
+                <span className="font-medium leading-snug">{errorMsg}</span>
+              </div>
+              {saveMode === 'google-drive' && (errorMsg.includes('انتهت صلاحية') || errorMsg.includes('401') || !token) && (
+                <button
+                  onClick={handleLogin}
+                  disabled={isLoggingIn}
+                  className="w-full py-2.5 px-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg text-xs transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 shadow-xs"
+                >
+                  {isLoggingIn ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>جاري تجديد الجلسة...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Cloud className="w-4 h-4" />
+                      <span>إعادة تسجيل الدخول بـ Google لتجديد الجلسة</span>
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* MODE 1: CLOUD ONLY (Without Drive) */}
+          {saveMode === 'cloud-only' && (
+            <div className="space-y-4">
+              <div className="bg-sky-50 border border-sky-200 p-3.5 sm:p-4 rounded-2xl space-y-2 text-right">
+                <div className="flex items-center gap-2 text-sky-950 font-bold text-xs">
+                  <Database className="w-4 h-4 text-sky-600 shrink-0" />
+                  <span>الحفظ في المكتبة السحابية (التخزين السريع)</span>
+                </div>
+                <p className="text-[11px] text-sky-800 leading-relaxed">
+                  سيتم حفظ كافة بيانات الشهادة والتعديلات في مكتبتك السحابية بالتطبيق للوصول إليها وتعديلها وطباعتها في أي وقت دون الحاجة لربط حساب Google Drive.
+                </p>
+              </div>
+
+              {cloudOnlySuccess ? (
+                <div className="bg-emerald-50 border border-emerald-300 p-3.5 sm:p-4 rounded-2xl space-y-3 text-right">
+                  <div className="flex items-center gap-2 text-emerald-950 font-black text-xs">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                    <span>تم حفظ الشهادة بالسحابة في مكتبتك بنجاح! ☁️✨</span>
+                  </div>
+                  <p className="text-[11px] text-emerald-800 leading-relaxed">
+                    يمكنك الآن العودة للتصميم أو فتح قسم "المكتبة السحابية" لاستعراض الشهادة. كما يمكنك أيضاً رفعها على Google Drive في أي وقت.
+                  </p>
+                  <div className="flex items-center gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setSaveMode('google-drive')}
+                      className="flex-1 py-2.5 px-3 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black rounded-xl text-center flex items-center justify-center gap-1.5 transition cursor-pointer"
+                    >
+                      <HardDrive className="w-4 h-4" />
+                      <span>الترقية للرفع على Google Drive</span>
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleSaveCloudOnly}
+                  disabled={isSavingCloudOnly}
+                  className="w-full py-3.5 px-4 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs sm:text-sm rounded-xl shadow-md transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {isSavingCloudOnly ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      <span>جاري حفظ الشهادة بالسحابة...</span>
+                    </>
+                  ) : certificateData.isSavedCloud ? (
+                    <>
+                      <CheckCircle2 className="w-5 h-5" />
+                      <span>تحديث نسخة الشهادة بالمكتبة السحابية</span>
+                    </>
+                  ) : (
+                    <>
+                      <Cloud className="w-5 h-5" />
+                      <span>حفظ الشهادة بالمكتبة السحابية الآن (بدون Drive)</span>
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* MODE 2: GOOGLE DRIVE (With Drive Upload) */}
+          {saveMode === 'google-drive' && (
+            <div className="space-y-4">
+              {/* User Account Bar */}
+              {user ? (
+                <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-2xl flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    {user.photoURL ? (
+                      <img src={user.photoURL} alt={user.displayName || 'Google Account'} className="w-8 h-8 rounded-full border-2 border-emerald-500 shrink-0" />
+                    ) : (
+                      <div className="w-8 h-8 rounded-full bg-emerald-600 text-white font-bold flex items-center justify-center text-xs shrink-0">
+                        {user.email?.[0].toUpperCase() || 'G'}
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <span className="block text-xs font-bold text-slate-900 truncate">
+                        {user.displayName || user.email}
+                      </span>
+                      <span className="block text-[10px] text-emerald-700 font-medium truncate">
+                        متصل بحساب Google ✅
+                      </span>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleSignOut}
+                    className="text-[11px] text-slate-500 hover:text-red-600 font-bold underline px-2 py-1 transition cursor-pointer shrink-0"
+                  >
+                    تبديل
+                  </button>
+                </div>
+              ) : (
+                <div className="bg-amber-50/80 border border-amber-200 p-3.5 rounded-2xl text-center space-y-2.5">
+                  <p className="text-xs text-amber-900 font-medium leading-relaxed">
+                    قم بتسجيل الدخول باستخدام حساب Google لرفع صورة الشهادة عالية الدقة إلى Google Drive وتفعيل رابط التوثيق المباشر للباركود.
+                  </p>
+
+                  <button
+                    type="button"
+                    onClick={handleLogin}
+                    disabled={isLoggingIn}
+                    className="w-full py-2.5 px-4 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-xl font-bold text-xs shadow-xs transition flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-50"
+                  >
+                    {isLoggingIn ? (
+                      <>
+                        <Loader2 className="w-4 h-4 text-amber-600 animate-spin" />
+                        <span>جاري الاتصال بـ Google...</span>
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4 shrink-0" viewBox="0 0 48 48">
+                          <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+                          <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+                          <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+                          <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+                        </svg>
+                        <span>تسجيل الدخول باستخدام Google</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+
+              {/* Action Button */}
+              {user && (
+                <button
+                  type="button"
+                  onClick={handleUploadToDrive}
+                  disabled={isUploading}
+                  className="w-full py-3.5 px-4 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs sm:text-sm rounded-xl shadow-md transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {isUploading ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      <span>جاري توليد الصورة ورفعها لـ Google Drive...</span>
+                    </>
+                  ) : uploadSuccess ? (
+                    <>
+                      <HardDrive className="w-5 h-5 shrink-0" />
+                      <span>إعادة رفع / تحديث الشهادة على Google Drive</span>
+                    </>
+                  ) : (
+                    <>
+                      <HardDrive className="w-5 h-5 shrink-0" />
+                      <span>حفظ ورفع الشهادة وتفعيل رابط Google Drive</span>
+                    </>
+                  )}
+                </button>
+              )}
+
+              {/* Upload Success View */}
+              {uploadSuccess && driveUrl && (
+                <div className="bg-emerald-50 border border-emerald-300 p-3.5 sm:p-4 rounded-2xl space-y-3 text-right">
+                  <div className="flex items-center gap-2 text-emerald-950 font-black text-xs sm:text-sm">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                    <span>تم حفظ الشهادة بنجاح على Google Drive! ☁️🎉</span>
+                  </div>
+                  <p className="text-[11px] text-emerald-800 leading-relaxed">
+                    أصبح باركود QR الخاص بهذه الشهادة يوجه الآن مباشرة إلى رابط التحقق والتحميل الأصلي على Google Drive.
+                  </p>
+
+                  <div className="bg-white p-2.5 rounded-xl border border-emerald-200 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
+                    <span className="text-[11px] font-mono text-slate-700 truncate dir-ltr text-center sm:text-left">{driveUrl}</span>
+                    <button
+                      type="button"
+                      onClick={handleCopyLink}
+                      className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg transition flex items-center justify-center gap-1 shrink-0 cursor-pointer"
+                    >
+                      {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copied ? 'تم النسخ!' : 'نسخ الرابط'}</span>
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-1">
+                    <a
+                      href={driveUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full py-2.5 px-3 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl text-center flex items-center justify-center gap-1.5 transition"
+                    >
+                      <ExternalLink className="w-4 h-4 text-amber-400" />
+                      <span>فتح الشهادة في Google Drive</span>
+                    </a>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
         </div>
-      </div>
 
-      {/* Google Account Picker & Switcher Modal */}
-      <GoogleAccountPickerModal
-        isOpen={isAccountPickerOpen}
-        onClose={() => setIsAccountPickerOpen(false)}
-        onAccountSelected={(selectedUser, selectedToken) => {
-          setUser(selectedUser);
-          setToken(selectedToken);
-          refreshSavedAccounts();
-        }}
-        currentEmail={user?.email}
-      />
-    </>
+        {/* Footer */}
+        <div className="bg-slate-50 p-3.5 sm:p-4 border-t border-slate-200 flex justify-between items-center text-xs shrink-0">
+          <span className="text-slate-500 font-medium text-[11px] sm:text-xs">نظام التوثيق والمكتبة السحابية</span>
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-5 py-2 sm:py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl transition cursor-pointer"
+          >
+            إغلاق
+          </button>
+        </div>
+
+      </div>
+    </div>
   );
 };

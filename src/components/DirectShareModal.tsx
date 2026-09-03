@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   Send,
@@ -14,7 +14,8 @@ import {
   PhoneCall,
   ExternalLink,
   RefreshCw,
-  Info
+  Info,
+  CheckCircle2
 } from 'lucide-react';
 import { CertificateData } from '../types';
 import {
@@ -23,6 +24,8 @@ import {
   canWebShareFiles
 } from '../utils/shareUtils';
 import { findCertificateCanvasElement } from '../utils/exportUtils';
+import { getAccessToken, googleSignIn } from '../services/googleDriveService';
+import { sendEmailViaGmailApi } from '../services/emailService';
 
 interface DirectShareModalProps {
   isOpen: boolean;
@@ -32,6 +35,7 @@ interface DirectShareModalProps {
   canvasRef: React.RefObject<HTMLDivElement | null>;
   onShowToast: (message: string) => void;
   onSetExporting?: (exporting: boolean) => void;
+  currentUserEmail?: string | null;
 }
 
 const COUNTRY_CODES = [
@@ -55,7 +59,8 @@ export const DirectShareModal: React.FC<DirectShareModalProps> = ({
   certificateData,
   canvasRef,
   onShowToast,
-  onSetExporting
+  onSetExporting,
+  currentUserEmail
 }) => {
   const [activeTab, setActiveTab] = useState<'whatsapp' | 'email'>(initialMode);
   const [format, setFormat] = useState<'png' | 'pdf'>(activeTab === 'whatsapp' ? 'png' : 'pdf');
@@ -77,9 +82,56 @@ export const DirectShareModal: React.FC<DirectShareModalProps> = ({
   );
 
   const [isLoading, setIsLoading] = useState(false);
+  const [isSendingGmail, setIsSendingGmail] = useState(false);
   const [copied, setCopied] = useState(false);
 
   if (!isOpen) return null;
+
+  // Send Direct Email via Official Gmail API
+  const handleSendViaGmail = async () => {
+    if (!recipientEmail || !recipientEmail.includes('@')) {
+      onShowToast('يرجى كتابة عنوان بريد إلكتروني صحيح للمستلم');
+      return;
+    }
+
+    try {
+      setIsSendingGmail(true);
+      let token = await getAccessToken();
+
+      if (!token) {
+        onShowToast('جاري توثيق الدخول بحساب Google للإرسال عبر Gmail...');
+        const authRes = await googleSignIn();
+        token = authRes.accessToken;
+      }
+
+      if (!token) {
+        throw new Error('لم يتم العثور على صلاحية حساب Google');
+      }
+
+      const sender = currentUserEmail || 'me';
+      const result = await sendEmailViaGmailApi({
+        toEmail: recipientEmail.trim(),
+        recipientName: certificateData.studentName || 'المكرم',
+        subject: emailSubject,
+        bodyText: emailBody,
+        driveLink: certificateData.driveFileWebViewLink,
+        verificationCode: certificateData.verificationCode,
+        senderName: certificateData.schoolName || 'منصة تقدير للشهادات'
+      }, token, sender);
+
+      if (result.success) {
+        onShowToast(`تم إرسال الشهادة بنجاح إلى (${recipientEmail}) عبر Gmail! ✉️✨`);
+      } else {
+        throw new Error(result.error || 'فشل إرسال البريد عبر Gmail');
+      }
+    } catch (err: any) {
+      console.error('Gmail send error:', err);
+      onShowToast(err.message || 'تعذر الإرسال عبر Gmail، جاري فتح تطبيق البريد...');
+      handleMailtoLaunch();
+    } finally {
+      setIsSendingGmail(false);
+    }
+  };
 
   // Helper to retrieve element
   const getCertElement = (): HTMLElement | null => {
@@ -409,10 +461,29 @@ export const DirectShareModal: React.FC<DirectShareModalProps> = ({
           {activeTab === 'email' && (
             <div className="space-y-4 animate-in fade-in duration-150">
               
+              {/* Connected Google Account Header */}
+              {currentUserEmail ? (
+                <div className="bg-indigo-50/80 border border-indigo-200 p-2.5 rounded-xl flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span className="text-slate-700">الإرسال بالحساب المعتمد:</span>
+                    <strong className="text-indigo-900 font-mono">{currentUserEmail}</strong>
+                  </div>
+                  <span className="bg-indigo-200/60 text-indigo-900 font-bold px-2 py-0.5 rounded-full text-[10px]">
+                    Gmail API ⚡
+                  </span>
+                </div>
+              ) : (
+                <div className="bg-amber-50 border border-amber-200 p-2.5 rounded-xl flex items-center justify-between text-xs">
+                  <span className="text-amber-900">يمكنك الإرسال مباشرة عبر حساب Gmail بنقرة واحدة</span>
+                  <span className="text-[10px] text-amber-700 font-bold">تسجيل الدخول يتيح الإرسال الفوري</span>
+                </div>
+              )}
+
               {/* Recipient Email */}
               <div>
                 <label className="block text-xs font-black text-slate-800 mb-1.5">
-                  البريد الإلكتروني لللمستلم (الطالب أو ولي الأمر):
+                  البريد الإلكتروني للمستلم (الطالب أو ولي الأمر):
                 </label>
                 <input
                   type="email"
@@ -457,7 +528,11 @@ export const DirectShareModal: React.FC<DirectShareModalProps> = ({
           <div className="bg-amber-50 p-3 rounded-xl border border-amber-200/80 flex items-start gap-2.5 text-amber-900 text-xs">
             <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
             <p className="leading-relaxed">
-              <strong>تلميح:</strong> خيار <strong>"مشاركة المرفق مباشرة"</strong> يفتح لك النافذة المباشرة للجوال أو الكمبيوتر لتحديد التطبيق وإرسال ملف الشهادة ({format.toUpperCase()}) كمرفق حقيقي مباشرة.
+              {activeTab === 'email' ? (
+                <span><strong>إرسال مباشر عبر Gmail:</strong> يتم إرسال بريد رسمي منسق يتضمن بيانات الطالب ورابط التوثيق والباركود مباشرة إلى صندوق الوارد الخاص به.</span>
+              ) : (
+                <span><strong>تلميح:</strong> خيار <strong>"مشاركة المرفق مباشرة"</strong> يفتح لك النافذة المباشرة للجوال أو الكمبيوتر لتحديد التطبيق وإرسال ملف الشهادة ({format.toUpperCase()}) كمرفق حقيقي مباشرة.</span>
+              )}
             </p>
           </div>
 
@@ -474,6 +549,29 @@ export const DirectShareModal: React.FC<DirectShareModalProps> = ({
           </button>
 
           <div className="w-full sm:w-auto flex flex-wrap sm:flex-nowrap items-center gap-2">
+            
+            {/* Direct Gmail Send Action */}
+            {activeTab === 'email' && (
+              <button
+                type="button"
+                onClick={handleSendViaGmail}
+                disabled={isSendingGmail || isLoading}
+                className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-700 hover:brightness-110 text-white font-extrabold text-xs shadow-md transition flex items-center justify-center gap-2 cursor-pointer active:scale-95 disabled:opacity-60"
+                title="إرسال فوري عبر حساب Google المرتبط (Gmail API)"
+              >
+                {isSendingGmail ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>جاري الإرسال عبر Gmail...</span>
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-4 h-4" />
+                    <span>إرسال فوري عبر Gmail ✉️</span>
+                  </>
+                )}
+              </button>
+            )}
             
             {/* Action 1: Native Web Share (Direct Attachment File Share) */}
             <button

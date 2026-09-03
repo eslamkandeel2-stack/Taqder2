@@ -1,6 +1,7 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, User, signOut } from 'firebase/auth';
 import firebaseConfig from '../../firebase-applet-config.json';
+import { syncUserSettingsToCloud, loadUserSettingsFromCloud } from './cloudDatabaseService';
 
 declare global {
   interface Window {
@@ -8,176 +9,21 @@ declare global {
   }
 }
 
-export interface GoogleAccountProfile {
-  uid: string;
-  email: string;
-  displayName: string;
-  photoURL?: string;
-  accessToken?: string;
-  lastUsedAt?: string;
-  isCurrent?: boolean;
-}
-
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
 const provider = new GoogleAuthProvider();
 provider.addScope('https://www.googleapis.com/auth/drive.file');
-provider.addScope('https://www.googleapis.com/auth/userinfo.email');
-provider.addScope('https://www.googleapis.com/auth/userinfo.profile');
+provider.addScope('https://www.googleapis.com/auth/gmail.send');
 provider.setCustomParameters({
   prompt: 'select_account'
 });
 
 const TOKEN_STORAGE_KEY = 'taqdeer_drive_access_token';
 const GIS_USER_STORAGE_KEY = 'taqdeer_gis_user';
-const SAVED_ACCOUNTS_KEY = 'taqdeer_google_accounts_list';
 
+let isSigningIn = false;
 let cachedAccessToken: string | null = localStorage.getItem(TOKEN_STORAGE_KEY);
-
-// Default seed account
-const DEFAULT_ACCOUNT: GoogleAccountProfile = {
-  uid: 'google-default-1',
-  email: 'eslam.kandeel2@gmail.com',
-  displayName: 'حساب Google (eslam.kandeel2)',
-  photoURL: 'https://lh3.googleusercontent.com/a/default-user',
-  lastUsedAt: new Date().toISOString()
-};
-
-/**
- * Get all saved/remembered Google accounts
- */
-export function getSavedGoogleAccounts(): GoogleAccountProfile[] {
-  try {
-    const raw = localStorage.getItem(SAVED_ACCOUNTS_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
-      }
-    }
-  } catch (e) {
-    console.warn('Failed to parse saved Google accounts:', e);
-  }
-  return [DEFAULT_ACCOUNT];
-}
-
-/**
- * Save or update a Google account in the remembered accounts list
- */
-export function saveGoogleAccount(account: Partial<GoogleAccountProfile> & { email: string }): GoogleAccountProfile[] {
-  const currentAccounts = getSavedGoogleAccounts();
-  const normalizedEmail = account.email.trim().toLowerCase();
-  
-  const existingIdx = currentAccounts.findIndex(a => a.email.toLowerCase() === normalizedEmail);
-  const now = new Date().toISOString();
-
-  const newProfile: GoogleAccountProfile = {
-    uid: account.uid || (existingIdx >= 0 ? currentAccounts[existingIdx].uid : `google-${Date.now()}`),
-    email: normalizedEmail,
-    displayName: account.displayName || (existingIdx >= 0 ? currentAccounts[existingIdx].displayName : normalizedEmail.split('@')[0]),
-    photoURL: account.photoURL || (existingIdx >= 0 ? currentAccounts[existingIdx].photoURL : 'https://lh3.googleusercontent.com/a/default-user'),
-    accessToken: account.accessToken || (existingIdx >= 0 ? currentAccounts[existingIdx].accessToken : undefined),
-    lastUsedAt: now,
-    isCurrent: true,
-  };
-
-  let updatedList: GoogleAccountProfile[];
-  if (existingIdx >= 0) {
-    updatedList = currentAccounts.map((a, i) => i === existingIdx ? { ...a, ...newProfile } : { ...a, isCurrent: false });
-  } else {
-    updatedList = [{ ...newProfile }, ...currentAccounts.map(a => ({ ...a, isCurrent: false }))];
-  }
-
-  try {
-    localStorage.setItem(SAVED_ACCOUNTS_KEY, JSON.stringify(updatedList));
-  } catch (e) {
-    console.warn('Failed to save accounts list:', e);
-  }
-
-  return updatedList;
-}
-
-/**
- * Remove a Google account from the remembered accounts list
- */
-export function removeSavedGoogleAccount(email: string): GoogleAccountProfile[] {
-  const currentAccounts = getSavedGoogleAccounts();
-  const normalizedEmail = email.trim().toLowerCase();
-  const filtered = currentAccounts.filter(a => a.email.toLowerCase() !== normalizedEmail);
-  
-  const finalList = filtered.length > 0 ? filtered : [DEFAULT_ACCOUNT];
-  try {
-    localStorage.setItem(SAVED_ACCOUNTS_KEY, JSON.stringify(finalList));
-  } catch (e) {
-    console.warn('Failed to save accounts list:', e);
-  }
-
-  // If the removed account was currently logged in, switch or clear
-  const currentGisUser = getActiveGoogleUser();
-  if (currentGisUser?.email?.toLowerCase() === normalizedEmail) {
-    if (filtered.length > 0) {
-      switchGoogleAccount(filtered[0]);
-    } else {
-      googleSignOut();
-    }
-  }
-
-  return finalList;
-}
-
-/**
- * Switch active session to a specific saved Google account
- */
-export function switchGoogleAccount(account: GoogleAccountProfile): { user: User; accessToken: string } {
-  const normalizedEmail = account.email.trim().toLowerCase();
-  const token = account.accessToken || `direct_google_token_${Date.now()}`;
-  cachedAccessToken = token;
-
-  const mockUser = {
-    uid: account.uid || `google-${Date.now()}`,
-    email: normalizedEmail,
-    displayName: account.displayName || normalizedEmail,
-    photoURL: account.photoURL || 'https://lh3.googleusercontent.com/a/default-user',
-    emailVerified: true,
-  } as User;
-
-  try {
-    localStorage.setItem(TOKEN_STORAGE_KEY, token);
-    localStorage.setItem(GIS_USER_STORAGE_KEY, JSON.stringify(mockUser));
-    
-    // Update isCurrent flag in saved accounts list
-    const accounts = getSavedGoogleAccounts();
-    const updated = accounts.map(a => ({
-      ...a,
-      isCurrent: a.email.toLowerCase() === normalizedEmail,
-      lastUsedAt: a.email.toLowerCase() === normalizedEmail ? new Date().toISOString() : a.lastUsedAt,
-    }));
-    localStorage.setItem(SAVED_ACCOUNTS_KEY, JSON.stringify(updated));
-  } catch (e) {
-    console.warn('Storage warning:', e);
-  }
-
-  // Notify listeners
-  window.dispatchEvent(new CustomEvent('taqdeer_google_account_changed', { detail: { user: mockUser, token } }));
-
-  return { user: mockUser, accessToken: token };
-}
-
-/**
- * Get active user from localStorage or Firebase
- */
-export function getActiveGoogleUser(): User | null {
-  try {
-    const raw = localStorage.getItem(GIS_USER_STORAGE_KEY);
-    if (raw) {
-      return JSON.parse(raw) as User;
-    }
-  } catch (e) {
-    console.warn('Failed to get active user:', e);
-  }
-  return auth.currentUser;
-}
 
 function loadGsiScript(): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -202,10 +48,7 @@ function loadGsiScript(): Promise<void> {
   });
 }
 
-/**
- * Request Google Identity Services token with native Google account picker (`prompt: select_account`)
- */
-export const requestGisToken = async (promptType: 'select_account' | 'consent' = 'select_account'): Promise<{ user: User; accessToken: string }> => {
+export const requestGisToken = async (): Promise<{ user: User; accessToken: string }> => {
   await loadGsiScript();
   const clientId = firebaseConfig.oAuthClientId || '460203543434-4f7rq24i5u1tj3la4mbvrrfeg46fs83v.apps.googleusercontent.com';
 
@@ -217,7 +60,7 @@ export const requestGisToken = async (promptType: 'select_account' | 'consent' =
 
       const client = window.google.accounts.oauth2.initTokenClient({
         client_id: clientId,
-        scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile',
+        scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile',
         callback: async (response: any) => {
           if (response.error) {
             console.error('GIS callback error:', response);
@@ -246,21 +89,11 @@ export const requestGisToken = async (promptType: 'select_account' | 'consent' =
             }
 
             const mockUser = {
-              uid: 'gis-' + Date.now(),
-              email: userProfile.email || 'google.user@gmail.com',
+              uid: 'gis-' + (userProfile.email ? userProfile.email.replace(/[^a-zA-Z0-9]/g, '_') : Date.now()),
+              email: userProfile.email,
               displayName: userProfile.name,
-              photoURL: userProfile.picture || 'https://lh3.googleusercontent.com/a/default-user',
-              emailVerified: true,
+              photoURL: userProfile.picture,
             } as User;
-
-            // Save to remembered accounts list
-            saveGoogleAccount({
-              uid: mockUser.uid,
-              email: mockUser.email || '',
-              displayName: mockUser.displayName || '',
-              photoURL: mockUser.photoURL || '',
-              accessToken: response.access_token,
-            });
 
             try {
               localStorage.setItem(GIS_USER_STORAGE_KEY, JSON.stringify(mockUser));
@@ -268,35 +101,43 @@ export const requestGisToken = async (promptType: 'select_account' | 'consent' =
               console.warn('Failed to store GIS user in localStorage:', e);
             }
 
-            window.dispatchEvent(new CustomEvent('taqdeer_google_account_changed', { detail: { user: mockUser, token: response.access_token } }));
+            // Sync or pull cloud settings on successful sign in
+            try {
+              await loadUserSettingsFromCloud(mockUser.uid);
+            } catch (syncErr) {
+              console.warn('Auto sync cloud settings error:', syncErr);
+            }
+
             resolve({ user: mockUser, accessToken: response.access_token });
           } else {
             reject(new Error('لم يتم استلام مفتاح الوصول من Google.'));
           }
         },
         error_callback: (err: any) => {
-          const errStr = typeof err === 'string' ? err : JSON.stringify(err || '');
-          const isClosed = 
-            err?.type === 'popup_closed' || 
-            err?.type === 'popup_failed_to_open' ||
-            errStr.toLowerCase().includes('closed') ||
-            errStr.toLowerCase().includes('cancel');
+          console.warn('GIS Error callback:', err);
+          const errorType = err?.type || '';
+          const errorMsg = typeof err === 'string' ? err : (err?.message || '');
           
-          if (isClosed) {
-            console.info('Google GIS login window closed by user.');
-            const cancelErr = new Error('تم إغلاق نافذة تسجيل الدخول.');
+          if (errorType === 'popup_closed' || errorMsg.toLowerCase().includes('closed') || errorMsg.toLowerCase().includes('cancel') || errorMsg.includes('إلغاء')) {
+            const cancelErr = new Error('تم إلغاء عملية تسجيل الدخول أو إغلاق النافذة');
             (cancelErr as any).code = 'auth/popup-closed-by-user';
+            (cancelErr as any).isUserCancel = true;
             reject(cancelErr);
+          } else if (errorType === 'popup_failed_to_open' || errorType === 'popup_blocked' || errorMsg.toLowerCase().includes('blocked')) {
+            const blockedErr = new Error('تم حظر النافذة المنبثقة من قِبل المتصفح. يرجى السماح بالنوافذ المنبثقة أو فتح التطبيق في علامة تبويب جديدة.');
+            (blockedErr as any).code = 'auth/popup-blocked';
+            reject(blockedErr);
           } else {
-            console.warn('Google Identity Services callback notice:', err);
-            reject(new Error(err?.message || err?.error_description || 'تعذر استكمال المصادقة مع Google'));
+            const generalErr = new Error(errorMsg || 'تعذر فتح نافذة تسجيل الدخول من Google');
+            (generalErr as any).code = 'auth/gis-failed';
+            reject(generalErr);
           }
         },
       });
 
-      client.requestAccessToken({ prompt: promptType });
+      client.requestAccessToken({ prompt: 'select_account' });
     } catch (err) {
-      console.error('GIS token init error:', err);
+      console.warn('GIS token init exception:', err);
       reject(err);
     }
   });
@@ -306,15 +147,6 @@ export const initDriveAuth = (
   onAuthSuccess?: (user: User, token: string) => void,
   onAuthFailure?: () => void
 ) => {
-  // Listen for account change events across components
-  const handleAccountChanged = (e: Event) => {
-    const customEvent = e as CustomEvent;
-    if (customEvent.detail?.user && customEvent.detail?.token && onAuthSuccess) {
-      onAuthSuccess(customEvent.detail.user, customEvent.detail.token);
-    }
-  };
-  window.addEventListener('taqdeer_google_account_changed', handleAccountChanged);
-
   // Check localStorage for saved GIS user & cached token
   const savedGisUser = localStorage.getItem(GIS_USER_STORAGE_KEY);
   if (!cachedAccessToken) {
@@ -332,7 +164,7 @@ export const initDriveAuth = (
     }
   }
 
-  const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+  return onAuthStateChanged(auth, async (user) => {
     if (user) {
       if (!cachedAccessToken) {
         cachedAccessToken = localStorage.getItem(TOKEN_STORAGE_KEY);
@@ -348,112 +180,67 @@ export const initDriveAuth = (
       }
     }
   });
-
-  return () => {
-    window.removeEventListener('taqdeer_google_account_changed', handleAccountChanged);
-    unsubscribeAuth();
-  };
 };
 
-export interface GoogleSignInOptions {
-  direct?: boolean;
-  email?: string;
-  name?: string;
-  photoURL?: string;
-  accessToken?: string;
-  promptOAuth?: boolean;
-}
-
-export const googleSignIn = async (
-  options: GoogleSignInOptions = {}
-): Promise<{ user: User; accessToken: string }> => {
-  // If native Google OAuth is explicitly requested
-  if (options.promptOAuth) {
-    try {
-      return await requestGisToken('select_account');
-    } catch (gisError) {
-      console.warn('GIS Token request failed, falling back to popup:', gisError);
-      try {
-        const result = await signInWithPopup(auth, provider);
-        const credential = GoogleAuthProvider.credentialFromResult(result);
-        const token = credential?.accessToken || `google_token_${Date.now()}`;
-        cachedAccessToken = token;
-        localStorage.setItem(TOKEN_STORAGE_KEY, token);
-        
-        saveGoogleAccount({
-          uid: result.user.uid,
-          email: result.user.email || '',
-          displayName: result.user.displayName || '',
-          photoURL: result.user.photoURL || '',
-          accessToken: token,
-        });
-
-        localStorage.setItem(GIS_USER_STORAGE_KEY, JSON.stringify(result.user));
-        window.dispatchEvent(new CustomEvent('taqdeer_google_account_changed', { detail: { user: result.user, token } }));
-        return { user: result.user, accessToken: token };
-      } catch (popupErr: any) {
-        console.warn('Popup login failed:', popupErr);
-        // If popup was closed, let caller handle or fallback
-        if (popupErr.code === 'auth/popup-closed-by-user') {
-          throw popupErr;
-        }
-      }
-    }
-  }
-
-  // Account switching / Direct selection mode
-  const targetEmail = options.email || (getActiveGoogleUser()?.email) || 'eslam.kandeel2@gmail.com';
-  const targetName = options.name || (targetEmail.includes('@') ? targetEmail.split('@')[0] : targetEmail);
-  const targetPhoto = options.photoURL || 'https://lh3.googleusercontent.com/a/default-user';
-
-  const directUser: User = {
-    uid: 'google-acc-' + Date.now(),
-    email: targetEmail,
-    displayName: targetName,
-    photoURL: targetPhoto,
-    emailVerified: true,
-  } as User;
-
-  const token = options.accessToken || cachedAccessToken || `direct_google_token_${Date.now()}`;
-  cachedAccessToken = token;
-
+export const googleSignIn = async (): Promise<{ user: User; accessToken: string }> => {
   try {
-    localStorage.setItem(TOKEN_STORAGE_KEY, token);
-    localStorage.setItem(GIS_USER_STORAGE_KEY, JSON.stringify(directUser));
-    saveGoogleAccount({
-      uid: directUser.uid,
-      email: targetEmail,
-      displayName: targetName,
-      photoURL: targetPhoto,
-      accessToken: token,
-    });
-  } catch (e) {
-    console.warn('Storage warning:', e);
-  }
+    isSigningIn = true;
+    const result = await signInWithPopup(auth, provider);
+    const credential = GoogleAuthProvider.credentialFromResult(result);
+    if (!credential?.accessToken) {
+      throw new Error('لم نتمكن من الحصول على مفتاح الوصول لحساب Google.');
+    }
 
-  window.dispatchEvent(new CustomEvent('taqdeer_google_account_changed', { detail: { user: directUser, token } }));
-  return { user: directUser, accessToken: token };
-};
+    cachedAccessToken = credential.accessToken;
+    localStorage.setItem(TOKEN_STORAGE_KEY, cachedAccessToken);
+    return { user: result.user, accessToken: cachedAccessToken };
+  } catch (error: any) {
+    console.warn('Firebase signInWithPopup returned notice, attempting Google Identity Services (GIS) token fallback:', error?.code || error?.message);
 
-export const setManualAccessToken = (token: string, email?: string) => {
-  cachedAccessToken = token.trim();
-  localStorage.setItem(TOKEN_STORAGE_KEY, cachedAccessToken);
-  if (email) {
-    const user: User = {
-      uid: 'google-custom-' + Date.now(),
-      email: email.trim(),
-      displayName: email.trim(),
-      photoURL: 'https://lh3.googleusercontent.com/a/default-user',
-      emailVerified: true,
-    } as User;
-    localStorage.setItem(GIS_USER_STORAGE_KEY, JSON.stringify(user));
-    saveGoogleAccount({
-      uid: user.uid,
-      email: user.email || '',
-      displayName: user.displayName || '',
-      photoURL: user.photoURL || '',
-      accessToken: cachedAccessToken,
-    });
+    // If user explicitly closed popup or canceled during Firebase popup
+    if (error?.code === 'auth/popup-closed-by-user' || error?.code === 'auth/cancelled-popup-request') {
+      const cancelErr = new Error('تم إلغاء عملية تسجيل الدخول أو إغلاق النافذة');
+      (cancelErr as any).code = 'auth/popup-closed-by-user';
+      (cancelErr as any).isUserCancel = true;
+      throw cancelErr;
+    }
+
+    try {
+      const gisResult = await requestGisToken();
+      return gisResult;
+    } catch (gisErr: any) {
+      console.warn('Google Identity Services status:', gisErr?.code || gisErr?.message);
+
+      if (
+        gisErr?.code === 'auth/popup-closed-by-user' ||
+        gisErr?.isUserCancel ||
+        gisErr?.message?.includes('إغلاق') ||
+        gisErr?.message?.toLowerCase()?.includes('closed') ||
+        gisErr?.message?.toLowerCase()?.includes('cancel') ||
+        gisErr?.message?.includes('إلغاء') ||
+        error?.code === 'auth/popup-closed-by-user'
+      ) {
+        const err = new Error('تم إلغاء عملية تسجيل الدخول.');
+        (err as any).code = 'auth/popup-closed-by-user';
+        (err as any).isUserCancel = true;
+        throw err;
+      }
+
+      if (
+        error?.code === 'auth/popup-blocked' ||
+        gisErr?.code === 'auth/popup-blocked' ||
+        gisErr?.message?.toLowerCase()?.includes('blocked') ||
+        gisErr?.message?.includes('حظر')
+      ) {
+        const err = new Error('تم حظر النافذة المنبثقة من قِبل المتصفح. يمكنك فتح التطبيق في علامة تبويب جديدة أو السماح بالنوافذ المنبثقة (Popups).');
+        (err as any).code = 'auth/popup-blocked';
+        throw err;
+      }
+
+      throw new Error(gisErr?.message || 'تعذر الاتصال بـ Google لربط الحساب. يمكنك تجربة "حفظ بالمكتبة السحابية" مباشرة دون الحاجة لـ Google Drive.');
+    }
+  } finally {
+    isSigningIn = false;
   }
 };
 
@@ -462,6 +249,46 @@ export const getAccessToken = async (): Promise<string | null> => {
     cachedAccessToken = localStorage.getItem(TOKEN_STORAGE_KEY);
   }
   return cachedAccessToken;
+};
+
+export const getCurrentUser = (): User | null => {
+  if (auth.currentUser) {
+    return auth.currentUser;
+  }
+  const savedGisUser = localStorage.getItem(GIS_USER_STORAGE_KEY);
+  if (savedGisUser) {
+    try {
+      return JSON.parse(savedGisUser) as User;
+    } catch (e) {
+      console.warn('Failed to parse GIS user:', e);
+    }
+  }
+  return null;
+};
+
+export const initAuthListener = (onUserChanged: (user: User | null) => void) => {
+  // Check initial cached user
+  const initialUser = getCurrentUser();
+  if (initialUser) {
+    onUserChanged(initialUser);
+  }
+
+  return onAuthStateChanged(auth, (firebaseUser) => {
+    if (firebaseUser) {
+      onUserChanged(firebaseUser);
+    } else {
+      const gisUser = localStorage.getItem(GIS_USER_STORAGE_KEY);
+      if (gisUser) {
+        try {
+          onUserChanged(JSON.parse(gisUser) as User);
+          return;
+        } catch (e) {
+          // ignore
+        }
+      }
+      onUserChanged(null);
+    }
+  });
 };
 
 export const clearAccessToken = () => {
@@ -479,18 +306,8 @@ export const googleSignOut = async () => {
   cachedAccessToken = null;
   localStorage.removeItem(TOKEN_STORAGE_KEY);
   localStorage.removeItem(GIS_USER_STORAGE_KEY);
-
-  // Update current account in saved list
-  try {
-    const accounts = getSavedGoogleAccounts();
-    const updated = accounts.map(a => ({ ...a, isCurrent: false }));
-    localStorage.setItem(SAVED_ACCOUNTS_KEY, JSON.stringify(updated));
-  } catch (e) {
-    console.warn('Storage error on signOut:', e);
-  }
-
-  window.dispatchEvent(new CustomEvent('taqdeer_google_account_changed', { detail: { user: null, token: null } }));
 };
+
 
 /**
  * Uploads a file Blob (PNG or PDF) to Google Drive and sets public link permission
@@ -501,18 +318,6 @@ export async function uploadCertificateToDrive(
   accessToken: string,
   existingFileId?: string
 ): Promise<{ fileId: string; webViewLink: string; webContentLink?: string }> {
-  // If direct authentication session is used without external OAuth token
-  if (accessToken.startsWith('direct_google_token_') || accessToken.startsWith('direct-')) {
-    const directFileId = existingFileId || `drive-cloud-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-    const webViewLink = `${window.location.origin}/verify?file=${directFileId}&doc=${encodeURIComponent(fileName)}`;
-    const webContentLink = webViewLink;
-    return {
-      fileId: directFileId,
-      webViewLink,
-      webContentLink,
-    };
-  }
-
   const metadata = {
     name: fileName,
     mimeType: blob.type || 'image/png',
@@ -574,6 +379,7 @@ export async function uploadCertificateToDrive(
       method: 'POST',
       headers: {
         Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         role: 'reader',

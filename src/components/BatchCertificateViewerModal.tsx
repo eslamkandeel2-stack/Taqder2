@@ -15,12 +15,8 @@ import {
   googleSignIn,
   initDriveAuth,
   uploadCertificateToDrive,
-  getAccessToken,
-  getSavedGoogleAccounts,
-  switchGoogleAccount,
-  GoogleAccountProfile
+  getAccessToken
 } from '../services/googleDriveService';
-import { GoogleAccountPickerModal } from './GoogleAccountPickerModal';
 import { generateVerificationCode } from '../utils/qrUtils';
 import { saveBatchRecord, deleteBatchRecord } from '../utils/batchManager';
 import { getSavedDefaultSettings } from '../utils/defaultSettings';
@@ -115,8 +111,6 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
   const [verificationReport, setVerificationReport] = useState<BatchVerificationReportItem[]>([]);
   const [driveUser, setDriveUser] = useState<User | null>(null);
   const [driveToken, setDriveToken] = useState<string | null>(null);
-  const [isAccountPickerOpen, setIsAccountPickerOpen] = useState(false);
-  const [savedGoogleAccounts, setSavedGoogleAccounts] = useState<GoogleAccountProfile[]>([]);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [copiedAllLinks, setCopiedAllLinks] = useState(false);
 
@@ -124,13 +118,8 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
   const hiddenRenderRef = useRef<HTMLDivElement>(null);
   const [renderCertTarget, setRenderCertTarget] = useState<CertificateData | null>(null);
 
-  const refreshAccounts = () => {
-    setSavedGoogleAccounts(getSavedGoogleAccounts());
-  };
-
   useEffect(() => {
     if (isOpen) {
-      refreshAccounts();
       const settings = getSavedDefaultSettings();
       if (settings.batchDefaultEngine) setBatchEngine(settings.batchDefaultEngine);
       else if (settings.defaultExportEngine) setBatchEngine(settings.defaultExportEngine);
@@ -147,12 +136,10 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
         (u, t) => {
           setDriveUser(u);
           setDriveToken(t);
-          refreshAccounts();
         },
         () => {
           setDriveUser(null);
           setDriveToken(null);
-          refreshAccounts();
         }
       );
       return () => unsub();
@@ -902,7 +889,7 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
 
                 return (
                   <div
-                    key={cert.id}
+                    key={`batch-grid-${cert.id || index}-${index}`}
                     className={`bg-slate-800/90 border ${
                       isSelected ? 'border-amber-400 ring-2 ring-amber-400/30 shadow-md shadow-amber-500/10' : 'border-slate-700/80 hover:border-slate-600'
                     } rounded-xl p-3 flex flex-col justify-between gap-2.5 transition relative group`}
@@ -1114,7 +1101,7 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
                   </thead>
                   <tbody className="divide-y divide-slate-700/60">
                     {filteredCertificates.map((cert, idx) => (
-                      <tr key={cert.id} className="hover:bg-slate-700/30 transition">
+                      <tr key={`batch-table-row-${cert.id || idx}-${idx}`} className="hover:bg-slate-700/30 transition">
                         <td className="p-2.5 text-center font-mono font-bold text-amber-400">{idx + 1}</td>
                         <td className="p-2.5 font-extrabold text-white">
                           <div className="flex items-center gap-1.5">
@@ -1224,7 +1211,7 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
                     const isFemale = cert.recipientGender === 'female';
                     return (
                       <button
-                        key={cert.id}
+                        key={`batch-preview-btn-${cert.id || idx}-${idx}`}
                         type="button"
                         onClick={() => setSelectedCertId(cert.id)}
                         className={`w-full text-right p-2 rounded-lg text-xs transition flex items-center justify-between cursor-pointer ${
@@ -1480,45 +1467,6 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
             </div>
 
             <div className="space-y-3 text-xs">
-              {/* Google Account Selector & Switcher Box */}
-              <div className="bg-slate-950/80 border border-slate-800 p-3 rounded-xl space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold text-slate-400">حساب Google المستخدم للرفع:</span>
-                  <button
-                    type="button"
-                    onClick={() => setIsAccountPickerOpen(true)}
-                    className="px-2 py-0.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer"
-                  >
-                    <span>اختيار / تبديل الحساب</span>
-                  </button>
-                </div>
-
-                {driveUser ? (
-                  <div className="flex items-center gap-2.5">
-                    {driveUser.photoURL ? (
-                      <img src={driveUser.photoURL} alt={driveUser.displayName || 'Google Account'} className="w-7 h-7 rounded-full border border-emerald-500 shrink-0" />
-                    ) : (
-                      <div className="w-7 h-7 rounded-full bg-emerald-600 text-white font-bold flex items-center justify-center text-[10px] shrink-0">
-                        {driveUser.email?.[0].toUpperCase() || 'G'}
-                      </div>
-                    )}
-                    <div className="min-w-0">
-                      <span className="block text-xs font-bold text-white truncate">
-                        {driveUser.displayName || driveUser.email}
-                      </span>
-                      <span className="block text-[10px] text-emerald-400 font-mono truncate dir-ltr text-right">
-                        {driveUser.email}
-                      </span>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-[11px] text-amber-300/90 flex items-center gap-1.5">
-                    <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                    <span>سيتم طلب تسجيل الدخول أو اختيار الحساب عند بدء الرفع.</span>
-                  </div>
-                )}
-              </div>
-
               <div>
                 <label className="block text-slate-300 font-bold mb-1">محرك التوثيق والالتقاط:</label>
                 <select
@@ -1642,7 +1590,7 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
                 </thead>
                 <tbody className="divide-y divide-slate-800">
                   {certificates.map((cert, idx) => (
-                    <tr key={cert.id} className="hover:bg-slate-800/40">
+                    <tr key={`batch-drive-row-${cert.id || idx}-${idx}`} className="hover:bg-slate-800/40">
                       <td className="p-2.5 text-center font-mono text-amber-400 font-bold">{idx + 1}</td>
                       <td className="p-2.5 font-bold text-white">{cert.studentName}</td>
                       <td className="p-2.5 font-mono text-amber-200">{cert.verificationCode}</td>
@@ -1895,19 +1843,6 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
           </div>
         );
       })()}
-
-      {/* Google Account Picker & Switcher Modal */}
-      <GoogleAccountPickerModal
-        isOpen={isAccountPickerOpen}
-        onClose={() => setIsAccountPickerOpen(false)}
-        onAccountSelected={(selectedUser, selectedToken) => {
-          setDriveUser(selectedUser);
-          setDriveToken(selectedToken);
-          refreshAccounts();
-          onShowToast(`تم تسجيل الدخول بالحساب: ${selectedUser.email || selectedUser.displayName}`);
-        }}
-        currentEmail={driveUser?.email}
-      />
 
     </div>
   );

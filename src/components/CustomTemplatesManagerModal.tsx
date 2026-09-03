@@ -8,7 +8,6 @@ import {
   duplicateAndCustomizeTemplate,
   subscribeToCustomTemplates
 } from '../utils/templateCustomizer';
-import { TemplateCertificatePreview } from './TemplateCertificatePreview';
 import {
   Sparkles,
   Save,
@@ -275,12 +274,40 @@ export const CustomTemplatesManagerModal: React.FC<CustomTemplatesManagerModalPr
 
                         {/* Mini Certificate Representation */}
                         <div className="p-3 bg-slate-100 flex items-center justify-center">
-                          <TemplateCertificatePreview
-                            data={d}
-                            mode="compact"
-                            showHoverZoom={true}
-                            className="border border-slate-300"
-                          />
+                          <div
+                            className="w-full aspect-[1.45] rounded-lg shadow-sm p-3 flex flex-col justify-between border-2 transition-transform group-hover:scale-[1.01]"
+                            style={{
+                              backgroundColor: d.backgroundColor || '#ffffff',
+                              color: d.textColor || '#0f172a',
+                              borderColor: d.primaryColor || '#854d0e',
+                              borderStyle: 'double'
+                            }}
+                          >
+                            <div className="text-center">
+                              <span className="text-[8px] font-bold block opacity-75" style={{ color: d.secondaryColor }}>
+                                {d.schoolName || 'اسم المدرسة'}
+                              </span>
+                              <h5 className="text-[11px] font-black line-clamp-1" style={{ color: d.primaryColor }}>
+                                {d.title || 'شهادة تقدير'}
+                              </h5>
+                            </div>
+
+                            <div className="my-1 text-center py-1 px-1 bg-white/70 rounded border border-black/5">
+                              <span className="text-[9px] font-bold block line-clamp-1" style={{ color: d.primaryColor }}>
+                                {d.studentName || 'اسم الطالب المكرم'}
+                              </span>
+                              <span className="text-[7px] block line-clamp-1 opacity-80" style={{ color: d.textColor }}>
+                                {d.appreciationText || 'نص التقدير والثناء'}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center justify-between text-[7px] pt-1 border-t border-black/10">
+                              <span className="font-bold" style={{ color: d.primaryColor }}>
+                                {d.badgeTitle || 'وسام التميز'}
+                              </span>
+                              <span>{d.layoutPreset || 'تنسيق متوازن'}</span>
+                            </div>
+                          </div>
                         </div>
 
                         {/* Card Info & Actions */}
