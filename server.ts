@@ -1836,35 +1836,15 @@ app.post("/api/cloud-sync/save", (req, res) => {
       return res.status(400).json({ success: false, error: "Missing valid user ID or Email for sync" });
     }
 
+    const filePath = path.join(SYNC_DATA_DIR, `${targetKey}.json`);
     const record = {
       userId: userId || "",
       userEmail: userEmail || "",
       updatedAt: new Date().toISOString(),
       data: packageData || {},
     };
-    const jsonContent = JSON.stringify(record);
 
-    // Save under primary target key
-    const primaryPath = path.join(SYNC_DATA_DIR, `${targetKey}.json`);
-    fs.writeFileSync(primaryPath, jsonContent, "utf-8");
-
-    // Also mirror to userEmail if provided and different
-    if (userEmail && typeof userEmail === "string") {
-      const emailKey = sanitizeUserKey(userEmail);
-      if (emailKey && emailKey !== targetKey) {
-        const emailPath = path.join(SYNC_DATA_DIR, `${emailKey}.json`);
-        fs.writeFileSync(emailPath, jsonContent, "utf-8");
-      }
-    }
-
-    // Also mirror to userId if provided and different
-    if (userId && typeof userId === "string") {
-      const uidKey = sanitizeUserKey(userId);
-      if (uidKey && uidKey !== targetKey) {
-        const uidPath = path.join(SYNC_DATA_DIR, `${uidKey}.json`);
-        fs.writeFileSync(uidPath, jsonContent, "utf-8");
-      }
-    }
+    fs.writeFileSync(filePath, JSON.stringify(record), "utf-8");
 
     return res.json({
       success: true,

@@ -35,11 +35,6 @@ export interface FullAccountSyncPackage {
   certificates: CertificateData[];
   batches: BatchRecord[];
   drafts: DraftCertificateItem[];
-  studentGroups?: any[];
-  customTemplates?: any[];
-  signaturePresets?: any[];
-  archiveMetadata?: any[];
-  autosaveCert?: CertificateData;
 }
 
 /**
@@ -300,47 +295,7 @@ export async function syncFullAccountToCloud(user: { uid: string; email?: string
     console.warn(e);
   }
 
-  let drafts = getSavedDrafts();
-
-  let studentGroups: any[] = [];
-  try {
-    const raw = localStorage.getItem('taqdeer_student_groups_v1');
-    if (raw) studentGroups = JSON.parse(raw);
-  } catch (e) {
-    console.warn(e);
-  }
-
-  let customTemplates: any[] = [];
-  try {
-    const raw = localStorage.getItem('taqdeer_custom_user_templates_v1');
-    if (raw) customTemplates = JSON.parse(raw);
-  } catch (e) {
-    console.warn(e);
-  }
-
-  let signaturePresets: any[] = [];
-  try {
-    const raw = localStorage.getItem('taqdeer_saved_signature_presets');
-    if (raw) signaturePresets = JSON.parse(raw);
-  } catch (e) {
-    console.warn(e);
-  }
-
-  let archiveMetadata: any[] = [];
-  try {
-    const raw = localStorage.getItem('taqdeer_archive_metadata_v1');
-    if (raw) archiveMetadata = JSON.parse(raw);
-  } catch (e) {
-    console.warn(e);
-  }
-
-  let autosaveCert: CertificateData | undefined = undefined;
-  try {
-    const raw = localStorage.getItem('taqdeer_autosave_certificate');
-    if (raw) autosaveCert = JSON.parse(raw);
-  } catch (e) {
-    console.warn(e);
-  }
+  const drafts = getSavedDrafts();
 
   const syncPackage: FullAccountSyncPackage = {
     updatedAt: new Date().toISOString(),
@@ -351,12 +306,7 @@ export async function syncFullAccountToCloud(user: { uid: string; email?: string
     aiSettings: currentAiSettings,
     certificates: certs,
     batches: batches,
-    drafts: drafts,
-    studentGroups: studentGroups,
-    customTemplates: customTemplates,
-    signaturePresets: signaturePresets,
-    archiveMetadata: archiveMetadata,
-    autosaveCert: autosaveCert
+    drafts: drafts
   };
 
   // 2. High-speed Server Cloud Sync
@@ -467,45 +417,6 @@ export async function restoreAccountFromCloud(userId: string, userEmail = ''): P
         const mergedBatches = Array.from(map.values());
         localStorage.setItem('taqdeer_batch_history_v1', JSON.stringify(mergedBatches));
         restoredBatchesCount = mergedBatches.length;
-      } catch (e) {
-        console.warn(e);
-      }
-    }
-
-    // Merge Student Groups
-    if (serverPackage.studentGroups && Array.isArray(serverPackage.studentGroups)) {
-      try {
-        localStorage.setItem('taqdeer_student_groups_v1', JSON.stringify(serverPackage.studentGroups));
-        window.dispatchEvent(new CustomEvent('taqdeer_student_groups_changed', { detail: serverPackage.studentGroups }));
-      } catch (e) {
-        console.warn(e);
-      }
-    }
-
-    // Merge Custom Templates
-    if (serverPackage.customTemplates && Array.isArray(serverPackage.customTemplates)) {
-      try {
-        localStorage.setItem('taqdeer_custom_user_templates_v1', JSON.stringify(serverPackage.customTemplates));
-        window.dispatchEvent(new CustomEvent('taqdeer_custom_templates_changed', { detail: serverPackage.customTemplates }));
-      } catch (e) {
-        console.warn(e);
-      }
-    }
-
-    // Merge Signature Presets
-    if (serverPackage.signaturePresets && Array.isArray(serverPackage.signaturePresets)) {
-      try {
-        localStorage.setItem('taqdeer_saved_signature_presets', JSON.stringify(serverPackage.signaturePresets));
-      } catch (e) {
-        console.warn(e);
-      }
-    }
-
-    // Merge Archive Metadata
-    if (serverPackage.archiveMetadata && Array.isArray(serverPackage.archiveMetadata)) {
-      try {
-        localStorage.setItem('taqdeer_archive_metadata_v1', JSON.stringify(serverPackage.archiveMetadata));
-        window.dispatchEvent(new CustomEvent('taqdeer_archive_changed'));
       } catch (e) {
         console.warn(e);
       }

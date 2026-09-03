@@ -26,7 +26,6 @@ import { AppreciationSuggestionsModal } from './components/AppreciationSuggestio
 import { ExportFormat } from './types';
 import { User } from 'firebase/auth';
 import { initAuthListener, getCurrentUser } from './services/googleDriveService';
-import { saveActiveWorkspaceVault } from './services/accountIsolationManager';
 import {
   sanitizeOklchInDoc,
   waitForImagesToLoad,
@@ -353,27 +352,12 @@ export default function App() {
   const [isExporting, setIsExporting] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(() => getCurrentUser());
 
-  // Listen for Google/Firebase Auth changes & Account Workspace Isolation switches
+  // Listen for Google/Firebase Auth changes
   useEffect(() => {
     const unsub = initAuthListener((user) => {
       setCurrentUser(user);
     });
-
-    const handleAccountSwitched = (e: any) => {
-      const freshData = getAutosavedInitialData();
-      setHistory([freshData]);
-      setHistoryIndex(0);
-      if (e?.detail?.user !== undefined) {
-        setCurrentUser(e.detail.user);
-      }
-    };
-
-    window.addEventListener('taqdeer_account_switched', handleAccountSwitched);
-
-    return () => {
-      unsub();
-      window.removeEventListener('taqdeer_account_switched', handleAccountSwitched);
-    };
+    return () => unsub();
   }, []);
 
   const canvasRef = useRef<HTMLDivElement>(null);
