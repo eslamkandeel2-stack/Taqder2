@@ -78,7 +78,6 @@ interface UnifiedCertificate extends CertificateData {
   _sourceType: 'single' | 'batch';
   _batchId?: string;
   _batchTitle?: string;
-  _uniqueKey?: string;
 }
 
 interface Props {
@@ -151,7 +150,6 @@ export const CloudLibrary: React.FC<Props> = ({
   // Load all certificates from single storage and batch history
   const reloadAllCertificates = () => {
     const list: UnifiedCertificate[] = [];
-    const seenIds = new Set<string>();
 
     // A. Single saved certs
     try {
@@ -159,14 +157,11 @@ export const CloudLibrary: React.FC<Props> = ({
       if (localSingle) {
         const parsed = JSON.parse(localSingle);
         if (Array.isArray(parsed)) {
-          parsed.forEach((c: CertificateData, idx: number) => {
-            const uidKey = `single-${c.id || idx}-${idx}`;
-            seenIds.add(c.id);
+          parsed.forEach((c: CertificateData) => {
             list.push({
               ...c,
               _sourceType: 'single',
-              _batchTitle: 'شهادة فردية',
-              _uniqueKey: uidKey
+              _batchTitle: 'شهادة فردية'
             });
           });
         }
@@ -178,16 +173,14 @@ export const CloudLibrary: React.FC<Props> = ({
     // B. Batch certificates
     try {
       const batches = getSavedBatches();
-      batches.forEach((b: BatchRecord, bIdx: number) => {
+      batches.forEach((b: BatchRecord) => {
         if (b.certificates && Array.isArray(b.certificates)) {
-          b.certificates.forEach((c: CertificateData, cIdx: number) => {
-            const uidKey = `batch-${b.id || bIdx}-${c.id || cIdx}-${cIdx}`;
+          b.certificates.forEach((c: CertificateData) => {
             list.push({
               ...c,
               _sourceType: 'batch',
               _batchId: b.id,
-              _batchTitle: b.title || `دفعة ${b.grade || 'فصل'}`,
-              _uniqueKey: uidKey
+              _batchTitle: b.title || `دفعة ${b.grade || 'فصل'}`
             });
           });
         }
@@ -201,8 +194,7 @@ export const CloudLibrary: React.FC<Props> = ({
       list.push({
         ...currentCertificate,
         _sourceType: 'single',
-        _batchTitle: 'شهادة فردية',
-        _uniqueKey: `curr-${currentCertificate.id || '0'}-0`
+        _batchTitle: 'شهادة فردية'
       });
     }
 
@@ -221,9 +213,6 @@ export const CloudLibrary: React.FC<Props> = ({
       reloadAllCertificates();
     };
     window.addEventListener('taqdeer_archive_updated', handleWindowArchiveUpdate);
-    window.addEventListener('taqdeer_certs_changed', handleWindowArchiveUpdate);
-    window.addEventListener('taqdeer_batches_changed', handleWindowArchiveUpdate);
-    window.addEventListener('taqdeer_account_switched', handleWindowArchiveUpdate);
 
     // Listen to Google Drive auth changes
     const unsubDrive = initDriveAuth(
@@ -240,9 +229,6 @@ export const CloudLibrary: React.FC<Props> = ({
     return () => {
       unsubArchive();
       window.removeEventListener('taqdeer_archive_updated', handleWindowArchiveUpdate);
-      window.removeEventListener('taqdeer_certs_changed', handleWindowArchiveUpdate);
-      window.removeEventListener('taqdeer_batches_changed', handleWindowArchiveUpdate);
-      window.removeEventListener('taqdeer_account_switched', handleWindowArchiveUpdate);
       unsubDrive();
     };
   }, [currentCertificate]);
@@ -1290,14 +1276,14 @@ export const CloudLibrary: React.FC<Props> = ({
           {/* VIEW 3: GRID CARDS VIEW */}
           {viewMode === 'grid' && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-              {currentPagedCertificates.map((cert, idx) => {
+              {currentPagedCertificates.map((cert) => {
                 const isSelected = selectedIds.has(cert.id);
                 const driveLink = cert.driveFileWebViewLink || cert.driveFileUrl;
                 const verifyCode = cert.verificationCode || `TQ-${cert.id.slice(-6).toUpperCase()}`;
 
                 return (
                   <div
-                    key={cert._uniqueKey || `cloud-card-${cert.id}-${idx}`}
+                    key={cert.id}
                     className={`bg-slate-900 p-5 rounded-3xl border transition-all duration-200 flex flex-col justify-between space-y-4 relative ${
                       isSelected
                         ? 'border-amber-500 ring-2 ring-amber-500/20 bg-slate-900/90 shadow-xl'
@@ -1506,7 +1492,7 @@ export const CloudLibrary: React.FC<Props> = ({
 
                       return (
                         <tr
-                          key={cert._uniqueKey || `cloud-table-${cert.id}-${idx}`}
+                          key={cert.id}
                           className={`transition ${
                             isSelected ? 'bg-amber-500/10' : 'hover:bg-slate-800/40'
                           }`}
@@ -2087,25 +2073,21 @@ export const CloudLibrary: React.FC<Props> = ({
 
       {/* 10. GOOGLE DRIVE BATCH REPORT MODAL */}
       {isDriveReportModalOpen && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[110] flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <div className="bg-slate-900 border border-slate-700 max-w-2xl w-full rounded-t-3xl sm:rounded-3xl p-4 sm:p-6 shadow-2xl space-y-4 max-h-[92dvh] sm:max-h-[85vh] flex flex-col text-right">
-            
-            {/* Mobile swipe handle */}
-            <div className="w-12 h-1 bg-slate-700 rounded-full mx-auto sm:hidden shrink-0 mb-1" />
-
-            <div className="flex flex-wrap items-center justify-between border-b border-slate-800 pb-3 gap-2 shrink-0">
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 max-w-2xl w-full rounded-3xl p-6 shadow-2xl space-y-4 max-h-[85vh] flex flex-col text-right">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2.5">
-                <div className="p-2 bg-emerald-500/20 rounded-xl shrink-0">
+                <div className="p-2 bg-emerald-500/20 rounded-xl">
                   <Cloud className="w-5 h-5 text-emerald-400" />
                 </div>
                 <div>
-                  <h4 className="font-extrabold text-xs sm:text-sm text-white">تقرير توثيق الشهادات على Google Drive</h4>
-                  <p className="text-[10px] sm:text-[11px] text-slate-400">توثيق منفصل برابط وباركود خاص لكل شهادة</p>
+                  <h4 className="font-extrabold text-sm text-white">تقرير توثيق الشهادات على Google Drive</h4>
+                  <p className="text-[11px] text-slate-400">توثيق منفصل برابط وباركود خاص لكل شهادة</p>
                 </div>
               </div>
 
               {isUploadingToDrive && (
-                <div className="flex items-center gap-2 text-[11px] sm:text-xs text-amber-400">
+                <div className="flex items-center gap-2 text-xs text-amber-400">
                   <Loader2 className="w-4 h-4 animate-spin" />
                   <span>جاري الرفع ({driveProgress?.current} من {driveProgress?.total})...</span>
                 </div>
@@ -2113,9 +2095,9 @@ export const CloudLibrary: React.FC<Props> = ({
             </div>
 
             {/* Table of results */}
-            <div className="flex-1 overflow-y-auto overscroll-contain touch-pan-y border border-slate-800 rounded-2xl">
+            <div className="flex-1 overflow-y-auto border border-slate-800 rounded-2xl">
               <table className="w-full text-right text-xs text-slate-300">
-                <thead className="bg-slate-950 text-slate-400 text-[11px] border-b border-slate-800 sticky top-0">
+                <thead className="bg-slate-950 text-slate-400 text-[11px] border-b border-slate-800">
                   <tr>
                     <th className="p-2.5">#</th>
                     <th className="p-2.5">اسم الطالب</th>
@@ -2129,20 +2111,20 @@ export const CloudLibrary: React.FC<Props> = ({
                     <tr key={idx} className="hover:bg-slate-800/40">
                       <td className="p-2.5 font-mono text-[11px] text-slate-500">{item.index}</td>
                       <td className="p-2.5 font-bold text-white">{item.studentName}</td>
-                      <td className="p-2.5 font-mono text-amber-400 text-[11px] dir-ltr">{item.verificationCode}</td>
+                      <td className="p-2.5 font-mono text-amber-400 text-[11px]">{item.verificationCode}</td>
                       <td className="p-2.5">
                         {item.status === 'verified' && (
-                          <span className="text-emerald-400 flex items-center gap-1 font-bold text-[11px]">
+                          <span className="text-emerald-400 flex items-center gap-1 font-bold">
                             <CheckCircle2 className="w-3.5 h-3.5" /> تم التوثيق
                           </span>
                         )}
                         {item.status === 'uploading' && (
-                          <span className="text-amber-400 flex items-center gap-1 text-[11px]">
+                          <span className="text-amber-400 flex items-center gap-1">
                             <Loader2 className="w-3.5 h-3.5 animate-spin" /> جاري الرفع...
                           </span>
                         )}
                         {item.status === 'failed' && (
-                          <span className="text-rose-400 font-bold text-[11px]">فشل</span>
+                          <span className="text-rose-400 font-bold">فشل</span>
                         )}
                       </td>
                       <td className="p-2.5 text-center">
@@ -2173,7 +2155,7 @@ export const CloudLibrary: React.FC<Props> = ({
               </table>
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800 shrink-0">
+            <div className="flex items-center justify-between pt-2 border-t border-slate-800">
               <button
                 onClick={handleCopySelectedDriveLinks}
                 className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-pointer"

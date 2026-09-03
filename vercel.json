@@ -1,26 +1,7 @@
 {
-  "headers": [
-    {
-      "source": "/(.*)",
-      "headers": [
-        {
-          "key": "Cross-Origin-Opener-Policy",
-          "value": "unsafe-none"
-        },
-        {
-          "key": "Cross-Origin-Embedder-Policy",
-          "value": "unsafe-none"
-        }
-      ]
-    }
-  ],
   "rewrites": [
     {
-      "source": "/api/auth/:match*",
-      "destination": "/api/auth/:match*"
-    },
-    {
-      "source": "/api/((?!auth/).*)",
+      "source": "/api/(.*)",
       "destination": "/api/index"
     },
     {

@@ -889,7 +889,7 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
 
                 return (
                   <div
-                    key={`batch-grid-${cert.id || index}-${index}`}
+                    key={cert.id}
                     className={`bg-slate-800/90 border ${
                       isSelected ? 'border-amber-400 ring-2 ring-amber-400/30 shadow-md shadow-amber-500/10' : 'border-slate-700/80 hover:border-slate-600'
                     } rounded-xl p-3 flex flex-col justify-between gap-2.5 transition relative group`}
@@ -1101,7 +1101,7 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
                   </thead>
                   <tbody className="divide-y divide-slate-700/60">
                     {filteredCertificates.map((cert, idx) => (
-                      <tr key={`batch-table-row-${cert.id || idx}-${idx}`} className="hover:bg-slate-700/30 transition">
+                      <tr key={cert.id} className="hover:bg-slate-700/30 transition">
                         <td className="p-2.5 text-center font-mono font-bold text-amber-400">{idx + 1}</td>
                         <td className="p-2.5 font-extrabold text-white">
                           <div className="flex items-center gap-1.5">
@@ -1211,7 +1211,7 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
                     const isFemale = cert.recipientGender === 'female';
                     return (
                       <button
-                        key={`batch-preview-btn-${cert.id || idx}-${idx}`}
+                        key={cert.id}
                         type="button"
                         onClick={() => setSelectedCertId(cert.id)}
                         className={`w-full text-right p-2 rounded-lg text-xs transition flex items-center justify-between cursor-pointer ${
@@ -1590,7 +1590,7 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
                 </thead>
                 <tbody className="divide-y divide-slate-800">
                   {certificates.map((cert, idx) => (
-                    <tr key={`batch-drive-row-${cert.id || idx}-${idx}`} className="hover:bg-slate-800/40">
+                    <tr key={cert.id} className="hover:bg-slate-800/40">
                       <td className="p-2.5 text-center font-mono text-amber-400 font-bold">{idx + 1}</td>
                       <td className="p-2.5 font-bold text-white">{cert.studentName}</td>
                       <td className="p-2.5 font-mono text-amber-200">{cert.verificationCode}</td>

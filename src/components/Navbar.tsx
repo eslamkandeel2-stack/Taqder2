@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import {
   Award,
   Sparkles,
@@ -18,12 +18,10 @@ import {
   ChevronRight,
   Undo2,
   Redo2,
-  History,
-  User as UserIcon
+  History
 } from 'lucide-react';
 import { getSavedDrafts, subscribeToDrafts } from '../utils/draftsManager';
 import { useDragScroll } from '../utils/useDragScroll';
-import { getSavedSystemConfig, isFeatureEnabled, SystemSettingsConfig } from '../utils/systemConfig';
 
 interface Props {
   activeTab: 'editor' | 'batch' | 'dashboard' | 'cloud' | 'verify' | 'ai' | 'settings';
@@ -35,8 +33,6 @@ interface Props {
   onOpenGoogleDriveModal?: () => void;
   onOpenDraftsModal?: () => void;
   onOpenHistoryModal?: () => void;
-  onOpenUserAuthModal?: () => void;
-  currentUser?: any;
   canUndo?: boolean;
   canRedo?: boolean;
   onUndo?: () => void;
@@ -57,8 +53,6 @@ export const Navbar: React.FC<Props> = ({
   onOpenGoogleDriveModal,
   onOpenDraftsModal,
   onOpenHistoryModal,
-  onOpenUserAuthModal,
-  currentUser,
   canUndo,
   canRedo,
   onUndo,
@@ -68,12 +62,11 @@ export const Navbar: React.FC<Props> = ({
   onSaveNewToCloud,
   lastAutosavedTime
 }) => {
-  const [draftsCount, setDraftsCount] = useState(0);
-  const [systemConfig, setSystemConfig] = useState<SystemSettingsConfig>(() => getSavedSystemConfig());
+  const [draftsCount, setDraftsCount] = React.useState(0);
   const actionDrag = useDragScroll();
   const mobileNavDrag = useDragScroll();
 
-  useEffect(() => {
+  React.useEffect(() => {
     const updateCount = () => {
       setDraftsCount(getSavedDrafts().length);
     };
@@ -81,22 +74,6 @@ export const Navbar: React.FC<Props> = ({
     const unsub = subscribeToDrafts(updateCount);
     return () => unsub();
   }, []);
-
-  useEffect(() => {
-    const handleConfigChange = (e: any) => {
-      if (e.detail) {
-        setSystemConfig(e.detail);
-      } else {
-        setSystemConfig(getSavedSystemConfig());
-      }
-    };
-    window.addEventListener('taqdeer_system_config_changed', handleConfigChange);
-    return () => window.removeEventListener('taqdeer_system_config_changed', handleConfigChange);
-  }, []);
-
-  const isAiEnabled = isFeatureEnabled(systemConfig, 'aiFeatures');
-  const isVerifyEnabled = isFeatureEnabled(systemConfig, 'qrVerification');
-  const isCloudArchiveEnabled = isFeatureEnabled(systemConfig, 'autoArchive');
   return (
     <header className="bg-slate-900 text-white sticky top-0 z-50 shadow-lg border-b border-slate-800 select-none">
       <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
@@ -158,47 +135,41 @@ export const Navbar: React.FC<Props> = ({
               <span>الإنجاز والمهام</span>
             </button>
 
-            {isCloudArchiveEnabled && (
-              <button
-                onClick={() => setActiveTab('cloud')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  activeTab === 'cloud'
-                    ? 'bg-amber-500 text-slate-950 shadow-sm font-black'
-                    : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
-                }`}
-              >
-                <CloudCheck className="w-3.5 h-3.5" />
-                <span>السحابة المحفوظة</span>
-              </button>
-            )}
+            <button
+              onClick={() => setActiveTab('cloud')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                activeTab === 'cloud'
+                  ? 'bg-amber-500 text-slate-950 shadow-sm font-black'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
+              }`}
+            >
+              <CloudCheck className="w-3.5 h-3.5" />
+              <span>السحابة المحفوظة</span>
+            </button>
 
-            {isVerifyEnabled && (
-              <button
-                onClick={() => setActiveTab('verify')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  activeTab === 'verify'
-                    ? 'bg-emerald-500 text-slate-950 shadow-sm font-black'
-                    : 'text-emerald-300 hover:text-white hover:bg-emerald-950/60'
-                }`}
-              >
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                <span>بوابة التوثيق</span>
-              </button>
-            )}
+            <button
+              onClick={() => setActiveTab('verify')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                activeTab === 'verify'
+                  ? 'bg-emerald-500 text-slate-950 shadow-sm font-black'
+                  : 'text-emerald-300 hover:text-white hover:bg-emerald-950/60'
+              }`}
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+              <span>بوابة التوثيق</span>
+            </button>
 
-            {isAiEnabled && (
-              <button
-                onClick={() => setActiveTab('ai')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  activeTab === 'ai'
-                    ? 'bg-amber-500 text-slate-950 shadow-sm font-black'
-                    : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
-                }`}
-              >
-                <BotMessageSquare className="w-3.5 h-3.5 text-amber-300" />
-                <span>المساعد الذكي</span>
-              </button>
-            )}
+            <button
+              onClick={() => setActiveTab('ai')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                activeTab === 'ai'
+                  ? 'bg-amber-500 text-slate-950 shadow-sm font-black'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
+              }`}
+            >
+              <BotMessageSquare className="w-3.5 h-3.5 text-amber-300" />
+              <span>المساعد الذكي</span>
+            </button>
           </nav>
 
           {/* Action Buttons Container with Horizontal Drag-to-Scroll */}
@@ -329,7 +300,7 @@ export const Navbar: React.FC<Props> = ({
                 </button>
               )}
 
-              {isVerifyEnabled && onOpenVerificationModal && (
+              {onOpenVerificationModal && (
                 <button
                   type="button"
                   onClick={onOpenVerificationModal}
@@ -341,17 +312,15 @@ export const Navbar: React.FC<Props> = ({
                 </button>
               )}
 
-              {isAiEnabled && (
-                <button
-                  type="button"
-                  onClick={onQuickGenerateAI}
-                  className="flex items-center gap-1 px-2.5 py-1.5 bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 text-xs font-extrabold rounded-lg hover:brightness-110 transition shadow-xs shrink-0 cursor-pointer"
-                  title="توليد بالذكاء الاصطناعي"
-                >
-                  <Sparkles className="w-3.5 h-3.5 animate-pulse shrink-0" />
-                  <span className="hidden lg:inline">صياغة AI</span>
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={onQuickGenerateAI}
+                className="flex items-center gap-1 px-2.5 py-1.5 bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 text-xs font-extrabold rounded-lg hover:brightness-110 transition shadow-xs shrink-0 cursor-pointer"
+                title="توليد بالذكاء الاصطناعي"
+              >
+                <Sparkles className="w-3.5 h-3.5 animate-pulse shrink-0" />
+                <span className="hidden lg:inline">صياغة AI</span>
+              </button>
 
               {onPrint && (
                 <button
@@ -375,37 +344,6 @@ export const Navbar: React.FC<Props> = ({
                 <span className="hidden sm:inline">تصدير PDF</span>
                 <span className="sm:hidden font-black">PDF</span>
               </button>
-
-              {/* Google / Unified User Auth Button */}
-              {onOpenUserAuthModal && (
-                <button
-                  type="button"
-                  onClick={onOpenUserAuthModal}
-                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition shrink-0 cursor-pointer border ${
-                    currentUser
-                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
-                      : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700 hover:text-white'
-                  }`}
-                  title={currentUser ? `الحساب المتصل: ${currentUser.displayName || currentUser.email} (${(currentUser as any).userId || currentUser.uid})` : 'تسجيل الدخول وإدارة المعرف (User ID) ومزامنة السحابة'}
-                >
-                  {currentUser?.photoURL ? (
-                    <img
-                      src={currentUser.photoURL}
-                      alt={currentUser.displayName || 'User'}
-                      referrerPolicy="no-referrer"
-                      className="w-4 h-4 rounded-full object-cover border border-amber-400/50 shrink-0"
-                    />
-                  ) : (
-                    <UserIcon className={`w-3.5 h-3.5 shrink-0 ${currentUser ? 'text-amber-400' : 'text-slate-400'}`} />
-                  )}
-                  <span className="hidden xl:inline max-w-[110px] truncate text-[11px]">
-                    {currentUser ? (currentUser.displayName?.split(' ')[0] || (currentUser as any).userId || 'حسابي') : 'دخول / حسابي'}
-                  </span>
-                  {currentUser && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping shrink-0" />
-                  )}
-                </button>
-              )}
 
               <button
                 type="button"
@@ -459,42 +397,36 @@ export const Navbar: React.FC<Props> = ({
             <LayoutDashboard className="w-3.5 h-3.5 shrink-0" />
             <span>الإنجاز والمهام</span>
           </button>
-          {isCloudArchiveEnabled && (
-            <button
-              type="button"
-              onClick={() => setActiveTab('cloud')}
-              className={`flex items-center gap-1.5 whitespace-nowrap px-3 py-1.5 text-xs font-bold rounded-xl transition-all shrink-0 cursor-pointer ${
-                activeTab === 'cloud' ? 'bg-amber-500 text-slate-950 shadow-xs' : 'bg-slate-800/80 text-slate-300 hover:text-white'
-              }`}
-            >
-              <CloudCheck className="w-3.5 h-3.5 shrink-0" />
-              <span>السحابة</span>
-            </button>
-          )}
-          {isVerifyEnabled && (
-            <button
-              type="button"
-              onClick={() => setActiveTab('verify')}
-              className={`flex items-center gap-1.5 whitespace-nowrap px-3 py-1.5 text-xs font-bold rounded-xl transition-all shrink-0 cursor-pointer ${
-                activeTab === 'verify' ? 'bg-emerald-500 text-slate-950 shadow-xs' : 'bg-slate-800/80 text-emerald-300 hover:text-white'
-              }`}
-            >
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-              <span>بوابة التوثيق</span>
-            </button>
-          )}
-          {isAiEnabled && (
-            <button
-              type="button"
-              onClick={() => setActiveTab('ai')}
-              className={`flex items-center gap-1.5 whitespace-nowrap px-3 py-1.5 text-xs font-bold rounded-xl transition-all shrink-0 cursor-pointer ${
-                activeTab === 'ai' ? 'bg-amber-500 text-slate-950 shadow-xs' : 'bg-slate-800/80 text-slate-300 hover:text-white'
-              }`}
-            >
-              <BotMessageSquare className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-              <span>مساعد AI</span>
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => setActiveTab('cloud')}
+            className={`flex items-center gap-1.5 whitespace-nowrap px-3 py-1.5 text-xs font-bold rounded-xl transition-all shrink-0 cursor-pointer ${
+              activeTab === 'cloud' ? 'bg-amber-500 text-slate-950 shadow-xs' : 'bg-slate-800/80 text-slate-300 hover:text-white'
+            }`}
+          >
+            <CloudCheck className="w-3.5 h-3.5 shrink-0" />
+            <span>السحابة</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('verify')}
+            className={`flex items-center gap-1.5 whitespace-nowrap px-3 py-1.5 text-xs font-bold rounded-xl transition-all shrink-0 cursor-pointer ${
+              activeTab === 'verify' ? 'bg-emerald-500 text-slate-950 shadow-xs' : 'bg-slate-800/80 text-emerald-300 hover:text-white'
+            }`}
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            <span>بوابة التوثيق</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('ai')}
+            className={`flex items-center gap-1.5 whitespace-nowrap px-3 py-1.5 text-xs font-bold rounded-xl transition-all shrink-0 cursor-pointer ${
+              activeTab === 'ai' ? 'bg-amber-500 text-slate-950 shadow-xs' : 'bg-slate-800/80 text-slate-300 hover:text-white'
+            }`}
+          >
+            <BotMessageSquare className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+            <span>مساعد AI</span>
+          </button>
         </div>
 
       </div>

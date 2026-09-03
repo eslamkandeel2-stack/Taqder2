@@ -37,13 +37,6 @@ function notifyCustomTemplatesChanged() {
       console.error('Error in custom templates listener:', e);
     }
   });
-  if (typeof window !== 'undefined') {
-    try {
-      window.dispatchEvent(new CustomEvent('taqdeer_custom_templates_changed', { detail: getSavedCustomTemplates() }));
-    } catch (e) {
-      console.warn(e);
-    }
-  }
 }
 
 /**

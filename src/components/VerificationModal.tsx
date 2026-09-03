@@ -245,37 +245,31 @@ export const VerificationModal: React.FC<Props> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/80 backdrop-blur-xs p-0 sm:p-4 font-['Cairo',sans-serif]">
-      <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl border border-slate-200 w-full max-w-3xl max-h-[92dvh] sm:max-h-[90vh] flex flex-col overflow-hidden text-right animate-in fade-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-xs p-2 sm:p-4 font-['Cairo',sans-serif]">
+      <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-3xl max-h-[92vh] flex flex-col overflow-hidden text-right animate-in fade-in zoom-in-95 duration-200">
         
-        {/* Mobile Swipe / Drag Indicator Bar */}
-        <div className="pt-2.5 pb-1 bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 sm:hidden shrink-0">
-          <div className="w-12 h-1 bg-emerald-300/50 rounded-full mx-auto" />
-        </div>
-
         {/* Modal Header */}
-        <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 text-white p-4 sm:p-6 relative border-b border-slate-800 shrink-0">
+        <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 text-white p-5 sm:p-6 relative border-b border-slate-800 shrink-0">
           <button
             onClick={onClose}
-            className="absolute top-3.5 left-3.5 sm:top-4 sm:left-4 p-2 text-slate-400 hover:text-white hover:bg-slate-800/80 rounded-full transition cursor-pointer"
-            aria-label="إغلاق"
+            className="absolute top-4 left-4 p-2 text-slate-400 hover:text-white hover:bg-slate-800/80 rounded-full transition cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
 
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pr-1 sm:pr-2">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pr-2">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center text-slate-950 shadow-md shrink-0">
-                <ShieldCheck className="w-6 h-6 sm:w-7 sm:h-7" />
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center text-slate-950 shadow-md shrink-0">
+                <ShieldCheck className="w-7 h-7" />
               </div>
               <div>
-                <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-                  <h3 className="text-base sm:text-xl font-black">منصة التحقق والتوثيق الرقمي</h3>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-lg sm:text-xl font-black">منصة التحقق والتوثيق الرقمي</h3>
                   <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2 py-0.5 rounded-full font-bold">
                     سجل التوثيق الرسمي
                   </span>
                 </div>
-                <p className="text-[11px] sm:text-xs text-slate-300 mt-0.5 leading-tight">
+                <p className="text-xs text-slate-300 mt-0.5">
                   تأكد من صحة الشهادة والاعتماد الرسمي ومطابقة الرمز التسلسلي والبصمة الرقمية
                 </p>
               </div>
@@ -289,17 +283,17 @@ export const VerificationModal: React.FC<Props> = ({
                 window.open(url, '_blank', 'noopener,noreferrer');
                 showToast('تم فتح بوابة التحقق والتوثيق في نافذة مستقلة برابط منفصل! 🌐✨');
               }}
-              className="px-3 py-1.5 bg-indigo-600/80 hover:bg-indigo-600 text-white text-[11px] sm:text-xs font-bold rounded-xl border border-indigo-400/40 transition flex items-center gap-1.5 self-start sm:self-auto cursor-pointer"
+              className="px-3 py-1.5 bg-indigo-600/80 hover:bg-indigo-600 text-white text-xs font-bold rounded-xl border border-indigo-400/40 transition flex items-center gap-1.5 self-start sm:self-auto cursor-pointer"
               title="فتح بوابة التحقق في نافذة مستقلة برابط منفصل"
             >
-              <ExternalLink className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+              <ExternalLink className="w-3.5 h-3.5 text-amber-300" />
               <span>فتح بنافذة مستقلة</span>
             </button>
           </div>
         </div>
 
         {/* Search Bar & Nav Tabs */}
-        <div className="p-3.5 sm:p-5 bg-slate-50 border-b border-slate-200 space-y-3 shrink-0">
+        <div className="p-4 sm:p-5 bg-slate-50 border-b border-slate-200 space-y-3 shrink-0">
           <form onSubmit={handleSearch} className="flex gap-2">
             <div className="relative flex-1">
               <input
@@ -307,7 +301,7 @@ export const VerificationModal: React.FC<Props> = ({
                 value={searchCode}
                 onChange={(e) => setSearchCode(e.target.value)}
                 placeholder="أدخل كود التوثيق أو اسم الطالب..."
-                className="w-full pl-4 pr-10 py-2 sm:py-2.5 text-xs sm:text-sm font-mono font-bold bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-600 uppercase tracking-wider"
+                className="w-full pl-4 pr-10 py-2.5 text-xs sm:text-sm font-mono font-bold bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-600 uppercase tracking-wider"
                 dir="ltr"
               />
               <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
@@ -315,7 +309,7 @@ export const VerificationModal: React.FC<Props> = ({
             <button
               type="submit"
               disabled={isSearching}
-              className="px-3.5 sm:px-4 py-2 sm:py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
             >
               {isSearching ? 'جاري الفحص...' : 'فحص'}
             </button>
@@ -323,10 +317,10 @@ export const VerificationModal: React.FC<Props> = ({
 
           {/* Sub Navigation Tabs */}
           {result && result.found && (
-            <div className="flex items-center gap-1.5 pt-1 overflow-x-auto no-scrollbar">
+            <div className="flex items-center gap-1 pt-1">
               <button
                 onClick={() => setActiveTab('details')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
                   activeTab === 'details'
                     ? 'bg-indigo-600 text-white shadow-xs'
                     : 'bg-white text-slate-600 hover:bg-slate-200 border border-slate-200'
@@ -338,7 +332,7 @@ export const VerificationModal: React.FC<Props> = ({
 
               <button
                 onClick={() => setActiveTab('preview')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
                   activeTab === 'preview'
                     ? 'bg-indigo-600 text-white shadow-xs'
                     : 'bg-white text-slate-600 hover:bg-slate-200 border border-slate-200'
@@ -350,7 +344,7 @@ export const VerificationModal: React.FC<Props> = ({
 
               <button
                 onClick={() => setActiveTab('statement')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
                   activeTab === 'statement'
                     ? 'bg-indigo-600 text-white shadow-xs'
                     : 'bg-white text-slate-600 hover:bg-slate-200 border border-slate-200'
@@ -364,7 +358,7 @@ export const VerificationModal: React.FC<Props> = ({
         </div>
 
         {/* Scrollable Content Body */}
-        <div className="p-4 sm:p-6 overflow-y-auto overscroll-contain touch-pan-y flex-1 space-y-4 sm:space-y-5">
+        <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-5">
           {result && result.found && result.cert ? (
             <>
               {/* TAB 1: DETAILS */}
@@ -662,40 +656,40 @@ export const VerificationModal: React.FC<Props> = ({
         </div>
 
         {/* Modal Footer Actions */}
-        <div className="bg-slate-50 p-3 sm:p-4 border-t border-slate-200 flex flex-wrap justify-between items-center gap-2 text-xs shrink-0">
+        <div className="bg-slate-50 p-4 border-t border-slate-200 flex flex-wrap justify-between items-center gap-2 text-xs">
           <div className="flex flex-wrap items-center gap-1.5">
             {result && result.found && result.cert && (
               <>
                 <button
                   onClick={() => handleOpenBrowserPrintWindow(result.cert!)}
-                  className="px-2.5 sm:px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl flex items-center gap-1 cursor-pointer shadow-xs text-[11px] sm:text-xs"
+                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl flex items-center gap-1 cursor-pointer shadow-xs"
                   title="معاينة للطباعة المباشرة وحفظ بصيغة PDF من نافذة المتصفح"
                 >
-                  <Printer className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-                  <span className="truncate">معاينة للطباعة المباشرة</span>
+                  <Printer className="w-3.5 h-3.5 text-amber-300" />
+                  <span>معاينة للطباعة المباشرة (نافذة المتصفح)</span>
                 </button>
 
                 <button
                   onClick={() => handleDownloadPdf(result.cert!)}
-                  className="px-2.5 sm:px-3 py-1.5 bg-emerald-700 hover:bg-emerald-600 text-white font-bold rounded-xl flex items-center gap-1 cursor-pointer shadow-xs text-[11px] sm:text-xs"
+                  className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-600 text-white font-bold rounded-xl flex items-center gap-1 cursor-pointer shadow-xs"
                 >
-                  <FileText className="w-3.5 h-3.5 shrink-0" />
-                  <span>PDF</span>
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>تنزيل PDF</span>
                 </button>
 
                 <button
                   onClick={() => handleCopyVerificationReport(result.cert!, result)}
-                  className="px-2.5 sm:px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl flex items-center gap-1 cursor-pointer text-[11px] sm:text-xs"
+                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl flex items-center gap-1 cursor-pointer"
                 >
-                  <Copy className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                  <span>نسخ</span>
+                  <Copy className="w-3.5 h-3.5 text-amber-400" />
+                  <span>نسخ التقرير</span>
                 </button>
 
                 <button
                   onClick={() => handleShareWhatsApp(result.cert!, result.verificationCode)}
-                  className="px-2.5 sm:px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl flex items-center gap-1 cursor-pointer text-[11px] sm:text-xs"
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl flex items-center gap-1 cursor-pointer"
                 >
-                  <Share2 className="w-3.5 h-3.5 shrink-0" />
+                  <Share2 className="w-3.5 h-3.5" />
                   <span>واتساب</span>
                 </button>
 
@@ -705,9 +699,9 @@ export const VerificationModal: React.FC<Props> = ({
                       onOpenInEditor(result.cert!);
                       onClose();
                     }}
-                    className="px-2.5 sm:px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl flex items-center gap-1 cursor-pointer text-[11px] sm:text-xs"
+                    className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl flex items-center gap-1 cursor-pointer"
                   >
-                    <Edit3 className="w-3.5 h-3.5 shrink-0" />
+                    <Edit3 className="w-3.5 h-3.5" />
                     <span>المحرر</span>
                   </button>
                 )}
@@ -717,7 +711,7 @@ export const VerificationModal: React.FC<Props> = ({
 
           <button
             onClick={onClose}
-            className="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold rounded-xl transition cursor-pointer text-xs"
+            className="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold rounded-xl transition cursor-pointer"
           >
             إغلاق
           </button>

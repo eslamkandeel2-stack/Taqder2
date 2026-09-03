@@ -169,10 +169,10 @@ export const TEMPLATE_PRESETS: TemplatePreset[] = [
       watermarkText: 'مدرسة الفرقان',
       stamp: {
         id: '1',
-        title: 'الختم الأندلسي',
-        subtext: 'معتمد رسمياً',
+        title: 'متقن معتمد',
+        subtext: 'حلقة التجويد',
         color: '#064e3b',
-        shape: 'andalusian',
+        shape: 'wax',
         show: true
       },
       signatures: [
