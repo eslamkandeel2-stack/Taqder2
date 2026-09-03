@@ -1847,7 +1847,6 @@ interface UserAccountRecord {
   verifiedAt?: string;
   verificationMethod?: string;
   emailSentAt?: string;
-  linkedGoogle?: boolean;
   verificationCode?: string;
   verificationCodeExpiresAt?: string;
   linkingCode?: string;
@@ -1856,12 +1855,6 @@ interface UserAccountRecord {
   updatedAt: string;
   lastLoginAt?: string;
   customData?: any;
-  role?: 'super_admin' | 'admin' | 'supervisor' | 'user';
-  status?: 'active' | 'pending' | 'blocked';
-  isBlocked?: boolean;
-  notes?: string;
-  permissions?: string[];
-  certificatesCount?: number;
 }
 
 function deduplicateAndMergeUsers(users: UserAccountRecord[]): UserAccountRecord[] {
@@ -2513,63 +2506,41 @@ app.post("/api/auth/verify-code", (req, res) => {
     const { userId, email, code } = req.body;
     const cleanCode = (code || "").toString().trim();
     const cleanEmail = (email || "").trim().toLowerCase();
-    const cleanUserId = (userId || "").trim().toLowerCase();
 
     if (!cleanCode) {
       return res.status(400).json({ success: false, error: "يرجى إدخال كود التحقق المكون من 6 أرقام" });
     }
 
     const db = loadAccountsDb();
-    let user = db.users.find(
+    const user = db.users.find(
       (u) =>
-        (cleanUserId && (u.userId.toLowerCase() === cleanUserId || (u.email && u.email.toLowerCase() === cleanUserId) || (u.googleEmail && u.googleEmail.toLowerCase() === cleanUserId) || (u.username && u.username.toLowerCase() === cleanUserId))) ||
-        (cleanEmail && ((u.email && u.email.toLowerCase() === cleanEmail) || (u.googleEmail && u.googleEmail.toLowerCase() === cleanEmail) || (u.username && u.username.toLowerCase() === cleanEmail) || u.userId.toLowerCase() === cleanEmail)) ||
-        (cleanCode && u.verificationCode === cleanCode)
+        (userId && u.userId === userId) ||
+        (cleanEmail && u.email && u.email.toLowerCase() === cleanEmail) ||
+        (cleanEmail && u.googleEmail && u.googleEmail.toLowerCase() === cleanEmail) ||
+        (cleanEmail && u.username && u.username.toLowerCase() === cleanEmail)
     );
 
-    const nowIso = new Date().toISOString();
-
     if (!user) {
-      // Auto-create and activate user if an email or identifier is present
-      const effectiveEmail = cleanEmail || (cleanUserId.includes("@") ? cleanUserId : "");
-      const effectiveName = effectiveEmail ? effectiveEmail.split("@")[0] : (cleanUserId || "مستخدم معتمد");
-      const newUid = cleanUserId && !cleanUserId.includes("@") ? cleanUserId : generateUserId("USR");
-
-      user = {
-        userId: newUid,
-        username: effectiveName,
-        displayName: effectiveName,
-        email: effectiveEmail,
-        googleEmail: effectiveEmail.includes("@gmail") ? effectiveEmail : undefined,
-        isVerified: true,
-        verifiedAt: nowIso,
-        verificationMethod: "email_otp",
-        createdAt: nowIso,
-        updatedAt: nowIso,
-        lastLoginAt: nowIso,
-        linkedGoogle: effectiveEmail.includes("@gmail"),
-      };
-      db.users.push(user);
-    } else {
-      // Check code match
-      if (user.verificationCode && user.verificationCode !== cleanCode && cleanCode !== "123456") {
-        return res.status(400).json({ success: false, error: "كود التحقق غير صحيح. يرجى التأكد من الرمز المرسل إلى بريدك والمحاولة مجدداً." });
-      }
-
-      user.isVerified = true;
-      user.verifiedAt = nowIso;
-      user.verificationMethod = "email_otp";
-      user.verificationCode = undefined;
-      user.verificationCodeExpiresAt = undefined;
-      user.lastLoginAt = nowIso;
-      user.updatedAt = nowIso;
-      if (cleanEmail && !user.email) user.email = cleanEmail;
-      if (cleanEmail && (cleanEmail.includes("@gmail.com") || cleanEmail.includes("@googlemail.com"))) {
-        user.googleEmail = cleanEmail;
-        user.linkedGoogle = true;
-      }
+      return res.status(404).json({ success: false, error: "لم يتم العثور على الحساب المطلوب" });
     }
 
+    // Check code match (or master admin bypass if needed)
+    if (user.verificationCode !== cleanCode && cleanCode !== "123456") {
+      return res.status(400).json({ success: false, error: "كود التحقق غير صحيح. يرجى التأكد من الرمز المرسل إلى بريدك والمحاولة مجدداً." });
+    }
+
+    const nowIso = new Date().toISOString();
+    user.isVerified = true;
+    user.verifiedAt = nowIso;
+    user.verificationMethod = "email_otp";
+    user.verificationCode = undefined;
+    user.verificationCodeExpiresAt = undefined;
+    user.lastLoginAt = nowIso;
+    user.updatedAt = nowIso;
+    if (cleanEmail && !user.email) user.email = cleanEmail;
+    if (cleanEmail && (cleanEmail.includes("@gmail.com") || cleanEmail.includes("@googlemail.com"))) {
+      user.googleEmail = cleanEmail;
+    }
     saveAccountsDb(db);
 
     return res.json({
@@ -2587,7 +2558,6 @@ app.post("/api/auth/verify-code", (req, res) => {
         photoURL: user.photoURL,
         googleEmail: user.googleEmail || user.email,
         isVerified: true,
-        linkedGoogle: !!user.linkedGoogle,
       },
     });
   } catch (err: any) {
@@ -3185,336 +3155,10 @@ app.get("/api/cloud-sync/load", (req, res) => {
   }
 });
 
-// ==========================================
-// SYSTEM ADMIN CONTROL PANEL ENDPOINTS
-// ==========================================
-
-const MASTER_ADMIN_EMAILS = [
-  "eslam.kandeel@gmail.com",
-  "eslam.kandeel2@gmail.com"
-];
-
-function isMasterAdmin(email?: string): boolean {
-  if (!email) return false;
-  const clean = email.trim().toLowerCase();
-  return MASTER_ADMIN_EMAILS.some(m => m.toLowerCase() === clean);
-}
-
-// 1. Get all users for admin
-app.get("/api/admin/users", (req, res) => {
-  try {
-    const db = loadAccountsDb();
-    const query = req.query || {};
-    const search = ((query.search as string) || "").trim().toLowerCase();
-    const roleFilter = (query.role as string) || "all";
-    const statusFilter = (query.status as string) || "all";
-
-    // Auto seed master admin
-    for (const masterEmail of MASTER_ADMIN_EMAILS) {
-      const clean = masterEmail.toLowerCase();
-      if (!db.users.some(u => (u.email || u.googleEmail || "").toLowerCase() === clean)) {
-        db.users.unshift({
-          userId: "ADM-ESLAM-MASTER",
-          username: clean.split("@")[0],
-          email: clean,
-          googleEmail: clean,
-          displayName: "المهندس إسلام قنديل (المدير العام)",
-          isVerified: true,
-          role: "super_admin",
-          status: "active",
-          isBlocked: false,
-          createdAt: "2026-01-01T00:00:00.000Z",
-          updatedAt: new Date().toISOString(),
-          lastLoginAt: new Date().toISOString(),
-        });
-        saveAccountsDb(db);
-      }
-    }
-
-    let users = db.users.map(u => {
-      const email = (u.email || u.googleEmail || "").toLowerCase();
-      const isSuper = isMasterAdmin(email);
-      return {
-        ...u,
-        role: isSuper ? "super_admin" : (u.role || "user"),
-        status: isSuper ? "active" : (u.isBlocked ? "blocked" : (u.isVerified ? "active" : "pending")),
-        isBlocked: isSuper ? false : !!u.isBlocked,
-        isVerified: isSuper ? true : !!u.isVerified
-      };
-    });
-
-    if (search) {
-      users = users.filter(u =>
-        (u.displayName && u.displayName.toLowerCase().includes(search)) ||
-        (u.email && u.email.toLowerCase().includes(search)) ||
-        (u.googleEmail && u.googleEmail.toLowerCase().includes(search)) ||
-        (u.username && u.username.toLowerCase().includes(search)) ||
-        (u.userId && u.userId.toLowerCase().includes(search))
-      );
-    }
-
-    if (roleFilter !== "all") {
-      users = users.filter(u => u.role === roleFilter);
-    }
-
-    if (statusFilter !== "all") {
-      if (statusFilter === "active" || statusFilter === "verified") {
-        users = users.filter(u => u.isVerified && !u.isBlocked);
-      } else if (statusFilter === "pending") {
-        users = users.filter(u => !u.isVerified && !u.isBlocked);
-      } else if (statusFilter === "blocked") {
-        users = users.filter(u => u.isBlocked);
-      }
-    }
-
-    const emailLogs = loadDispatchedEmails();
-    const totalUsers = db.users.length;
-    const verifiedUsers = db.users.filter(u => u.isVerified && !u.isBlocked).length;
-    const pendingUsers = db.users.filter(u => !u.isVerified && !u.isBlocked).length;
-    const blockedUsers = db.users.filter(u => u.isBlocked).length;
-    const adminCount = db.users.filter(u => u.role === "admin" || u.role === "super_admin" || isMasterAdmin(u.email || u.googleEmail)).length;
-    const supervisorCount = db.users.filter(u => u.role === "supervisor").length;
-
-    return res.json({
-      success: true,
-      users,
-      totalCount: users.length,
-      stats: {
-        totalUsers,
-        verifiedUsers,
-        pendingUsers,
-        blockedUsers,
-        adminCount,
-        supervisorCount,
-        totalCertificatesIssued: totalUsers * 12 + 48,
-        totalCloudSyncRecords: totalUsers,
-        totalEmailsSent: emailLogs.length,
-        serverUptime: "99.99%",
-        lastBackupAt: new Date().toISOString(),
-      }
-    });
-  } catch (err: any) {
-    console.error("Admin get users error:", err);
-    return res.status(500).json({ success: false, error: err.message || "Failed to get users" });
-  }
-});
-
-// 2. Admin update user role
-app.post("/api/admin/users/update-role", (req, res) => {
-  try {
-    const { userId, email, role } = req.body || {};
-    const cleanUserId = (userId || "").trim().toLowerCase();
-    const cleanEmail = (email || "").trim().toLowerCase();
-    const targetRole = role as "super_admin" | "admin" | "supervisor" | "user";
-
-    if (!["super_admin", "admin", "supervisor", "user"].includes(targetRole)) {
-      return res.status(400).json({ success: false, error: "الرتبة المحددة غير صالحة" });
-    }
-
-    const db = loadAccountsDb();
-    const user = db.users.find(u =>
-      (cleanUserId && u.userId.toLowerCase() === cleanUserId) ||
-      (cleanEmail && u.email && u.email.toLowerCase() === cleanEmail) ||
-      (cleanEmail && u.googleEmail && u.googleEmail.toLowerCase() === cleanEmail)
-    );
-
-    if (!user) {
-      return res.status(404).json({ success: false, error: "المستخدم غير موجود" });
-    }
-
-    const userEmail = (user.email || user.googleEmail || "").toLowerCase();
-    if (isMasterAdmin(userEmail) && targetRole !== "super_admin") {
-      return res.status(403).json({ success: false, error: "لا يمكن سحب رتبة المدير العام من الحساب الرئيسي" });
-    }
-
-    user.role = targetRole;
-    user.updatedAt = new Date().toISOString();
-    saveAccountsDb(db);
-
-    return res.json({
-      success: true,
-      message: `تم تحديث رتبة المستخدم (${user.displayName}) إلى (${targetRole === "admin" ? "مدير نظام" : targetRole === "supervisor" ? "مشرف معتمد" : targetRole === "super_admin" ? "مدير عام" : "مستخدم عادي"}) بنجاح 🛡️`,
-      user: {
-        userId: user.userId,
-        email: user.email,
-        displayName: user.displayName,
-        role: user.role
-      }
-    });
-  } catch (err: any) {
-    console.error("Admin update role error:", err);
-    return res.status(500).json({ success: false, error: err.message || "Failed to update role" });
-  }
-});
-
-// 3. Admin update status (block/unblock/verify)
-app.post("/api/admin/users/update-status", (req, res) => {
-  try {
-    const { userId, email, isBlocked, isVerified, notes } = req.body || {};
-    const cleanUserId = (userId || "").trim().toLowerCase();
-    const cleanEmail = (email || "").trim().toLowerCase();
-
-    const db = loadAccountsDb();
-    const user = db.users.find(u =>
-      (cleanUserId && u.userId.toLowerCase() === cleanUserId) ||
-      (cleanEmail && u.email && u.email.toLowerCase() === cleanEmail) ||
-      (cleanEmail && u.googleEmail && u.googleEmail.toLowerCase() === cleanEmail)
-    );
-
-    if (!user) {
-      return res.status(404).json({ success: false, error: "المستخدم غير موجود" });
-    }
-
-    const userEmail = (user.email || user.googleEmail || "").toLowerCase();
-    if (isMasterAdmin(userEmail) && isBlocked) {
-      return res.status(403).json({ success: false, error: "لا يمكن تجميد حساب المدير العام الرئيسي" });
-    }
-
-    if (isBlocked !== undefined) {
-      user.isBlocked = !!isBlocked;
-      user.status = isBlocked ? "blocked" : (user.isVerified ? "active" : "pending");
-    }
-    if (isVerified !== undefined) {
-      user.isVerified = !!isVerified;
-      if (isVerified) {
-        user.verifiedAt = user.verifiedAt || new Date().toISOString();
-        user.verificationCode = undefined;
-        user.status = user.isBlocked ? "blocked" : "active";
-      } else {
-        user.status = user.isBlocked ? "blocked" : "pending";
-      }
-    }
-    if (notes !== undefined) {
-      user.notes = notes;
-    }
-
-    user.updatedAt = new Date().toISOString();
-    saveAccountsDb(db);
-
-    return res.json({
-      success: true,
-      message: "تم تحديث حالة المستخدم بنجاح ✅",
-      user: {
-        userId: user.userId,
-        email: user.email,
-        displayName: user.displayName,
-        isVerified: user.isVerified,
-        isBlocked: user.isBlocked,
-        status: user.status
-      }
-    });
-  } catch (err: any) {
-    console.error("Admin update status error:", err);
-    return res.status(500).json({ success: false, error: err.message || "Failed to update status" });
-  }
-});
-
-// 4. Admin create user
-app.post("/api/admin/users/create", (req, res) => {
-  try {
-    const { username, email, displayName, password, role, isVerified, notes } = req.body || {};
-    const cleanUsername = (username || "").trim().toLowerCase();
-    const cleanEmail = (email || "").trim().toLowerCase();
-    const rawDisplayName = (displayName || username || email || "مستخدم جديد").trim();
-
-    if (!cleanEmail && !cleanUsername) {
-      return res.status(400).json({ success: false, error: "يرجى إدخال اسم المستخدم أو البريد الإلكتروني" });
-    }
-
-    const db = loadAccountsDb();
-    const existing = db.users.find(u =>
-      (cleanUsername && u.username && u.username.toLowerCase() === cleanUsername) ||
-      (cleanEmail && u.email && u.email.toLowerCase() === cleanEmail) ||
-      (cleanEmail && u.googleEmail && u.googleEmail.toLowerCase() === cleanEmail)
-    );
-
-    if (existing) {
-      return res.status(400).json({ success: false, error: "يوجد حساب مسجل بهذا البريد أو اسم المستخدم بالفعل" });
-    }
-
-    const nowIso = new Date().toISOString();
-    const userId = generateUserId(role === "admin" ? "ADM" : "USR");
-    const salt = crypto.randomBytes(16).toString("hex");
-    const passwordHash = password ? hashPassword(password, salt) : undefined;
-    const targetRole = role === "admin" || role === "supervisor" || role === "super_admin" ? role : "user";
-    const verified = isVerified !== undefined ? !!isVerified : true;
-
-    const newUser: UserAccountRecord = {
-      userId,
-      username: cleanUsername || cleanEmail.split("@")[0],
-      email: cleanEmail,
-      googleEmail: cleanEmail.includes("@gmail.com") ? cleanEmail : undefined,
-      displayName: rawDisplayName,
-      passwordHash,
-      passwordSalt: password ? salt : undefined,
-      isVerified: verified,
-      verifiedAt: verified ? nowIso : undefined,
-      verificationMethod: "admin_panel",
-      role: targetRole,
-      status: verified ? "active" : "pending",
-      isBlocked: false,
-      notes: notes || "تم إنشاء الحساب يدوياً عبر لوحة الإدارة",
-      createdAt: nowIso,
-      updatedAt: nowIso,
-    };
-
-    db.users.push(newUser);
-    saveAccountsDb(db);
-
-    return res.json({
-      success: true,
-      message: `تم إنشاء حساب (${rawDisplayName}) وتعيين رتبة (${targetRole === "admin" ? "مدير نظام" : targetRole === "supervisor" ? "مشرف" : "مستخدم"}) بنجاح 🎉`,
-      user: newUser
-    });
-  } catch (err: any) {
-    console.error("Admin create user error:", err);
-    return res.status(500).json({ success: false, error: err.message || "Failed to create user" });
-  }
-});
-
-// 5. Admin delete user
-app.post("/api/admin/users/delete", (req, res) => {
-  try {
-    const { userId, email } = req.body || {};
-    const cleanUserId = (userId || "").trim().toLowerCase();
-    const cleanEmail = (email || "").trim().toLowerCase();
-
-    const db = loadAccountsDb();
-    const index = db.users.findIndex(u =>
-      (cleanUserId && u.userId.toLowerCase() === cleanUserId) ||
-      (cleanEmail && u.email && u.email.toLowerCase() === cleanEmail) ||
-      (cleanEmail && u.googleEmail && u.googleEmail.toLowerCase() === cleanEmail)
-    );
-
-    if (index === -1) {
-      return res.status(404).json({ success: false, error: "المستخدم غير موجود" });
-    }
-
-    const targetUser = db.users[index];
-    const userEmail = (targetUser.email || targetUser.googleEmail || "").toLowerCase();
-
-    if (isMasterAdmin(userEmail)) {
-      return res.status(403).json({ success: false, error: "محمي: لا يمكن حذف حساب المدير العام الرئيسي للنظام" });
-    }
-
-    db.users.splice(index, 1);
-    saveAccountsDb(db);
-
-    return res.json({
-      success: true,
-      message: `تم حذف حساب المستخدم (${targetUser.displayName}) نهائياً من النظام.`
-    });
-  } catch (err: any) {
-    console.error("Admin delete user error:", err);
-    return res.status(500).json({ success: false, error: err.message || "Failed to delete user" });
-  }
-});
-
 // Health endpoint
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
-
 
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {

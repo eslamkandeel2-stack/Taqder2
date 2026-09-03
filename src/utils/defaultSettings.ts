@@ -455,14 +455,6 @@ export function saveDefaultSettingsToStorage(settings: DefaultCertificateSetting
   }
 }
 
-export const DEFAULT_SETTINGS = FALLBACK_DEFAULT_SETTINGS;
-export const saveDefaultSettings = saveDefaultSettingsToStorage;
-
-export function resetDefaultSettingsToFactory(): DefaultCertificateSettings {
-  saveDefaultSettingsToStorage(FALLBACK_DEFAULT_SETTINGS);
-  return FALLBACK_DEFAULT_SETTINGS;
-}
-
 /**
  * Extracts complete default settings structure from an existing certificate
  */

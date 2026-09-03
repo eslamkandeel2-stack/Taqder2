@@ -19,17 +19,15 @@ import {
   Undo2,
   Redo2,
   History,
-  User as UserIcon,
-  Crown
+  User as UserIcon
 } from 'lucide-react';
 import { getSavedDrafts, subscribeToDrafts } from '../utils/draftsManager';
 import { useDragScroll } from '../utils/useDragScroll';
 import { getSavedSystemConfig, isFeatureEnabled, SystemSettingsConfig } from '../utils/systemConfig';
-import { isUserSystemAdmin } from '../services/adminService';
 
 interface Props {
-  activeTab: 'editor' | 'batch' | 'dashboard' | 'cloud' | 'verify' | 'ai' | 'settings' | 'admin';
-  setActiveTab: (tab: 'editor' | 'batch' | 'dashboard' | 'cloud' | 'verify' | 'ai' | 'settings' | 'admin') => void;
+  activeTab: 'editor' | 'batch' | 'dashboard' | 'cloud' | 'verify' | 'ai' | 'settings';
+  setActiveTab: (tab: 'editor' | 'batch' | 'dashboard' | 'cloud' | 'verify' | 'ai' | 'settings') => void;
   onExportPDF: () => void;
   onQuickGenerateAI: () => void;
   onPrint?: () => void;
@@ -199,21 +197,6 @@ export const Navbar: React.FC<Props> = ({
               >
                 <BotMessageSquare className="w-3.5 h-3.5 text-amber-300" />
                 <span>المساعد الذكي</span>
-              </button>
-            )}
-
-            {isUserSystemAdmin(currentUser) && (
-              <button
-                onClick={() => setActiveTab('admin')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer border ${
-                  activeTab === 'admin'
-                    ? 'bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 border-amber-400 shadow-sm font-black'
-                    : 'bg-amber-500/15 text-amber-300 border-amber-500/40 hover:bg-amber-500/25 hover:text-white'
-                }`}
-                title="لوحة تحكم النظام (خاص بالمدير العام)"
-              >
-                <Crown className="w-3.5 h-3.5 text-amber-300" />
-                <span>لوحة التحكم 👑</span>
               </button>
             )}
           </nav>
@@ -510,20 +493,6 @@ export const Navbar: React.FC<Props> = ({
             >
               <BotMessageSquare className="w-3.5 h-3.5 text-amber-300 shrink-0" />
               <span>مساعد AI</span>
-            </button>
-          )}
-          {isUserSystemAdmin(currentUser) && (
-            <button
-              type="button"
-              onClick={() => setActiveTab('admin')}
-              className={`flex items-center gap-1.5 whitespace-nowrap px-3 py-1.5 text-xs font-black rounded-xl transition-all shrink-0 cursor-pointer border ${
-                activeTab === 'admin' 
-                  ? 'bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 border-amber-400 shadow-xs' 
-                  : 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:text-white'
-              }`}
-            >
-              <Crown className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-              <span>لوحة التحكم 👑</span>
             </button>
           )}
         </div>
