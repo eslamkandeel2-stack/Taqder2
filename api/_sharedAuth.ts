@@ -333,78 +333,36 @@ export async function handleRegisterGoogle(req: any, res: any) {
     );
 
     if (existing) {
-      if (existing.isVerified) {
-        existing.lastLoginAt = new Date().toISOString();
-        if (photoURL && !existing.photoURL) existing.photoURL = photoURL;
-        if (googleId && !existing.googleId) existing.googleId = googleId;
-        if (cleanEmail && !existing.googleEmail) existing.googleEmail = cleanEmail;
-        saveAccountsDb(db);
+      existing.isVerified = true;
+      existing.verificationMethod = 'google_oauth';
+      existing.lastLoginAt = new Date().toISOString();
+      if (photoURL && !existing.photoURL) existing.photoURL = photoURL;
+      if (googleId && !existing.googleId) existing.googleId = googleId;
+      if (cleanEmail && !existing.googleEmail) existing.googleEmail = cleanEmail;
+      saveAccountsDb(db);
 
-        return res.status(200).json({
-          success: true,
-          isAlreadyRegistered: true,
-          isVerified: true,
-          requiresVerification: false,
+      return res.status(200).json({
+        success: true,
+        isAlreadyRegistered: true,
+        isVerified: true,
+        requiresVerification: false,
+        userId: existing.userId,
+        message: 'هذا الحساب مسجل ومفعل بالفعل! تم تسجيل الدخول بنجاح.',
+        account: {
           userId: existing.userId,
-          message: 'هذا الحساب مسجل ومفعل بالفعل! تم تسجيل الدخول بنجاح.',
-          account: {
-            userId: existing.userId,
-            username: existing.username,
-            email: existing.email || cleanEmail,
-            displayName: existing.displayName,
-            photoURL: existing.photoURL,
-            googleEmail: existing.googleEmail || cleanEmail,
-            isVerified: true,
-            linkedGoogle: true,
-          },
-        });
-      } else {
-        const verificationCode = generateVerificationCode();
-        existing.verificationCode = verificationCode;
-        existing.verificationCodeExpiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
-        existing.emailSentAt = new Date().toISOString();
-        existing.updatedAt = new Date().toISOString();
-        if (photoURL && !existing.photoURL) existing.photoURL = photoURL;
-        if (googleId && !existing.googleId) existing.googleId = googleId;
-        if (cleanEmail && !existing.googleEmail) existing.googleEmail = cleanEmail;
-        saveAccountsDb(db);
-
-        const emailRes = await sendVerificationEmail({
-          to: cleanEmail,
-          code: verificationCode,
+          username: existing.username,
+          email: existing.email || cleanEmail,
           displayName: existing.displayName,
-          userId: existing.userId,
-          reason: 'تفعيل حساب Google وتأكيده في النظام'
-        });
-
-        return res.status(200).json({
-          success: true,
-          isAlreadyRegistered: true,
-          isVerified: false,
-          requiresVerification: true,
-          userId: existing.userId,
-          email: cleanEmail,
-          emailSent: true,
-          verificationCode,
-          message: `تم إرسال كود التحقق الأمني إلى بريدك (${cleanEmail}). يرجى إدخال الرمز لتأكيد تفعيل الحساب.`,
-          account: {
-            userId: existing.userId,
-            username: existing.username,
-            email: existing.email || cleanEmail,
-            displayName: existing.displayName,
-            photoURL: existing.photoURL,
-            googleEmail: existing.googleEmail || cleanEmail,
-            isVerified: false,
-            linkedGoogle: true,
-          },
-        });
-      }
+          photoURL: existing.photoURL,
+          googleEmail: existing.googleEmail || cleanEmail,
+          isVerified: true,
+          linkedGoogle: true,
+        },
+      });
     }
 
-    // Create new Google Account record
+    // Create new Google Account record (pre-verified via Google OAuth)
     const userId = generateUserId('GGL');
-    const verificationCode = generateVerificationCode();
-    const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
     const nowIso = new Date().toISOString();
 
     const newRecord: UserAccountRecord = {
@@ -415,38 +373,26 @@ export async function handleRegisterGoogle(req: any, res: any) {
       googleId: googleId || '',
       displayName: displayName || cleanEmail.split('@')[0] || 'حساب Google',
       photoURL: photoURL || '',
-      isVerified: false,
-      verificationMethod: 'email_otp',
-      emailSentAt: nowIso,
-      verificationCode,
-      verificationCodeExpiresAt: expiresAt,
+      isVerified: true,
+      verificationMethod: 'google_oauth',
       createdAt: nowIso,
       updatedAt: nowIso,
+      lastLoginAt: nowIso,
       linkedGoogle: true,
     };
 
     db.users.push(newRecord);
     saveAccountsDb(db);
 
-    const emailRes = await sendVerificationEmail({
-      to: cleanEmail,
-      code: verificationCode,
-      displayName: newRecord.displayName,
-      userId,
-      reason: 'تفعيل حساب Google وتوثيقه في السحابة'
-    });
-
     return res.status(200).json({
       success: true,
       isAlreadyRegistered: false,
       userId,
       email: cleanEmail,
-      emailSent: true,
-      emailMethod: emailRes.method,
-      requiresVerification: true,
+      requiresVerification: false,
       isNewRegistration: true,
-      verificationCode,
-      message: `تم تسجيل حساب Google بنجاح وإرسال كود التحقق إلى (${cleanEmail}). يرجى مراجعة بريدك الإلكتروني وكتابة الكود لتفعيل الحساب.`,
+      isVerified: true,
+      message: `تم تسجيل وتفعيل حساب Google بنجاح.`,
       account: {
         userId: newRecord.userId,
         username: newRecord.username,
@@ -454,7 +400,7 @@ export async function handleRegisterGoogle(req: any, res: any) {
         displayName: newRecord.displayName,
         photoURL: newRecord.photoURL,
         googleEmail: newRecord.googleEmail,
-        isVerified: false,
+        isVerified: true,
         linkedGoogle: true,
       },
     });
@@ -486,42 +432,9 @@ export async function handleLoginGoogle(req: any, res: any) {
       return handleRegisterGoogle(req, res);
     }
 
-    if (!user.isVerified) {
-      const newCode = generateVerificationCode();
-      user.verificationCode = newCode;
-      user.verificationCodeExpiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
-      user.emailSentAt = new Date().toISOString();
-      saveAccountsDb(db);
-
-      await sendVerificationEmail({
-        to: cleanEmail,
-        code: newCode,
-        displayName: user.displayName,
-        userId: user.userId,
-        reason: 'تأكيد وتفعيل الحساب للدخول'
-      });
-
-      return res.status(200).json({
-        success: true,
-        requiresVerification: true,
-        userId: user.userId,
-        email: cleanEmail,
-        emailSent: true,
-        verificationCode: newCode,
-        message: `تم إرسال كود التحقق الأمني إلى بريدك (${cleanEmail}). يرجى مراجعة البريد وكتابة الرمز لتأكيد التفعيل.`,
-        account: {
-          userId: user.userId,
-          username: user.username,
-          email: user.email,
-          displayName: user.displayName,
-          photoURL: user.photoURL,
-          googleEmail: user.googleEmail,
-          isVerified: false,
-          linkedGoogle: true,
-        },
-      });
-    }
-
+    // Google Sign-in is verified by Google OAuth
+    user.isVerified = true;
+    user.verificationMethod = 'google_oauth';
     user.lastLoginAt = new Date().toISOString();
     if (photoURL && !user.photoURL) user.photoURL = photoURL;
     if (googleId && !user.googleId) user.googleId = googleId;

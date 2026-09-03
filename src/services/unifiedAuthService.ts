@@ -236,30 +236,33 @@ export async function registerWithGoogle(params: {
   );
 
   if (user) {
-    if (user.isVerified) {
-      user.lastLoginAt = new Date().toISOString();
-      if (params.photoURL) user.photoURL = params.photoURL;
-      saveLocalAccountsDb(db);
-      return {
-        success: true,
-        userId: user.userId,
-        requiresVerification: false,
-        isAlreadyRegistered: true,
-        account: {
-          userId: user.userId,
-          username: user.username,
-          email: user.email,
-          displayName: user.displayName,
-          photoURL: user.photoURL,
-          googleEmail: user.googleEmail || targetEmail,
-          isVerified: true,
-          linkedGoogle: true,
-        },
-      };
-    }
+    user.isVerified = true;
+    user.linkedGoogle = true;
+    user.lastLoginAt = new Date().toISOString();
+    if (params.photoURL) user.photoURL = params.photoURL;
+    if (params.displayName && !user.displayName) user.displayName = params.displayName;
+    saveLocalAccountsDb(db);
+    const cleanAccount: UnifiedAccount = {
+      userId: user.userId,
+      username: user.username,
+      email: user.email,
+      displayName: user.displayName,
+      photoURL: user.photoURL,
+      googleEmail: user.googleEmail || targetEmail,
+      isVerified: true,
+      linkedGoogle: true,
+    };
+    saveStoredUnifiedAccount(cleanAccount);
+    return {
+      success: true,
+      userId: user.userId,
+      requiresVerification: false,
+      isAlreadyRegistered: true,
+      account: cleanAccount,
+      message: 'تم تسجيل الدخول بنجاح بحساب Google الموثق.',
+    };
   } else {
     const userId = generateUserId('GGL');
-    const code = generateVerificationCode();
     user = {
       userId,
       username: targetEmail.split('@')[0] || `user_${userId.slice(-4)}`,
@@ -267,9 +270,7 @@ export async function registerWithGoogle(params: {
       googleEmail: targetEmail,
       displayName: params.displayName || targetEmail.split('@')[0] || 'حساب Google',
       photoURL: params.photoURL || '',
-      isVerified: false,
-      verificationCode: code,
-      verificationCodeExpiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+      isVerified: true,
       linkedGoogle: true,
       lastLoginAt: new Date().toISOString(),
     };
@@ -278,33 +279,36 @@ export async function registerWithGoogle(params: {
 
   saveLocalAccountsDb(db);
 
+  const cleanAccount: UnifiedAccount = {
+    userId: user.userId,
+    username: user.username,
+    email: user.email,
+    displayName: user.displayName,
+    photoURL: user.photoURL,
+    googleEmail: user.googleEmail,
+    isVerified: true,
+    linkedGoogle: true,
+  };
+
+  saveStoredUnifiedAccount(cleanAccount);
+
   // Sync Google registration verification status to Firestore
   saveUserVerificationToFirestore(user.userId, {
     email: user.email,
     displayName: user.displayName,
-    isVerified: user.isVerified,
-    status: user.isVerified ? 'verified' : 'pending',
-    verificationMethod: 'google_email',
+    isVerified: true,
+    status: 'verified',
+    verificationMethod: 'google_oauth',
     emailSentAt: new Date().toISOString()
   }).catch(console.warn);
 
   return {
     success: true,
     userId: user.userId,
-    verificationCode: user.verificationCode,
-    requiresVerification: true,
+    requiresVerification: false,
     isNewRegistration: true,
-    message: 'تم تسجيل حساب Google. يرجى إدخال كود التحقق لإكمال التوثيق.',
-    account: {
-      userId: user.userId,
-      username: user.username,
-      email: user.email,
-      displayName: user.displayName,
-      photoURL: user.photoURL,
-      googleEmail: user.googleEmail,
-      isVerified: false,
-      linkedGoogle: true,
-    },
+    message: 'تم تسجيل الدخول بحساب Google بنجاح.',
+    account: cleanAccount,
   };
 }
 

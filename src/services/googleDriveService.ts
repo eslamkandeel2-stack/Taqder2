@@ -404,13 +404,32 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
 
     try {
       const result = await signInWithPopup(auth, provider, browserPopupRedirectResolver);
-      const credential = GoogleAuthProvider.credentialFromResult(result);
-      if (!credential?.accessToken) {
-        throw new Error('لم نتمكن من الحصول على مفتاح الوصول لحساب Google.');
+      let token = '';
+      try {
+        const credential = GoogleAuthProvider.credentialFromResult(result);
+        if (credential?.accessToken) {
+          token = credential.accessToken;
+        }
+      } catch (credErr) {
+        console.warn('credentialFromResult note:', credErr);
       }
 
-      cachedAccessToken = credential.accessToken;
+      if (!token && result.user) {
+        try {
+          token = await result.user.getIdToken();
+        } catch (idTokenErr) {
+          console.warn('getIdToken note:', idTokenErr);
+        }
+      }
+
+      cachedAccessToken = token || 'google_auth_token';
       localStorage.setItem(TOKEN_STORAGE_KEY, cachedAccessToken);
+      try {
+        localStorage.setItem(GIS_USER_STORAGE_KEY, JSON.stringify(result.user));
+      } catch (e) {
+        console.warn('Failed to store GIS user:', e);
+      }
+
       return { user: result.user, accessToken: cachedAccessToken };
     } catch (popupError: any) {
       console.warn('Firebase popup attempt status, trying Google Identity Services account chooser fallback:', popupError?.code || popupError?.message);
@@ -499,9 +518,32 @@ export const getCurrentUser = (): User | null => {
   const savedGisUser = localStorage.getItem(GIS_USER_STORAGE_KEY);
   if (savedGisUser) {
     try {
-      return JSON.parse(savedGisUser) as User;
+      const parsed = JSON.parse(savedGisUser);
+      if (parsed && (parsed.uid || parsed.userId || parsed.email)) {
+        return parsed as User;
+      }
     } catch (e) {
       console.warn('Failed to parse GIS user:', e);
+    }
+  }
+  const savedUnified = localStorage.getItem('taqdeer_unified_active_user_v1');
+  if (savedUnified) {
+    try {
+      const parsed = JSON.parse(savedUnified);
+      if (parsed && (parsed.userId || parsed.email)) {
+        return {
+          uid: parsed.userId,
+          userId: parsed.userId,
+          email: parsed.email || parsed.googleEmail || '',
+          displayName: parsed.displayName || parsed.username || '',
+          photoURL: parsed.photoURL || '',
+          googleEmail: parsed.googleEmail || '',
+          isVerified: parsed.isVerified,
+          username: parsed.username
+        } as unknown as User;
+      }
+    } catch (e) {
+      console.warn('Failed to parse unified user:', e);
     }
   }
   return null;
@@ -525,14 +567,10 @@ export const initAuthListener = (onUserChanged: (user: User | null) => void) => 
     if (firebaseUser) {
       onUserChanged(firebaseUser);
     } else {
-      const gisUser = localStorage.getItem(GIS_USER_STORAGE_KEY);
-      if (gisUser) {
-        try {
-          onUserChanged(JSON.parse(gisUser) as User);
-          return;
-        } catch (e) {
-          // ignore
-        }
+      const activeUser = getCurrentUser();
+      if (activeUser) {
+        onUserChanged(activeUser);
+        return;
       }
       onUserChanged(null);
     }

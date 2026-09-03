@@ -5,7 +5,7 @@
       "headers": [
         {
           "key": "Cross-Origin-Opener-Policy",
-          "value": "same-origin-allow-popups"
+          "value": "unsafe-none"
         },
         {
           "key": "Cross-Origin-Embedder-Policy",
@@ -16,7 +16,11 @@
   ],
   "rewrites": [
     {
-      "source": "/api/(.*)",
+      "source": "/api/auth/:match*",
+      "destination": "/api/auth/:match*"
+    },
+    {
+      "source": "/api/((?!auth/).*)",
       "destination": "/api/index"
     },
     {
