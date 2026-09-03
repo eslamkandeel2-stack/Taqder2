@@ -96,7 +96,11 @@ export const DraftsManagerModal: React.FC<DraftsManagerModalProps> = ({
 
   useEffect(() => {
     const unsubscribe = subscribeToDrafts(reloadDrafts);
-    return () => unsubscribe();
+    window.addEventListener('taqdeer_account_switched', reloadDrafts);
+    return () => {
+      unsubscribe();
+      window.removeEventListener('taqdeer_account_switched', reloadDrafts);
+    };
   }, []);
 
   if (!isOpen) return null;

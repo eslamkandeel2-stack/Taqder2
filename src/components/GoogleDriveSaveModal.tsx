@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { CertificateData } from '../types';
+import { CertificateData, ExportEngine, ExportFormat } from '../types';
 import {
   googleSignIn,
   googleSignOut,
@@ -9,6 +9,9 @@ import {
   clearAccessToken
 } from '../services/googleDriveService';
 import { generateVerificationCode } from '../utils/qrUtils';
+import { getSavedSystemConfig, getCertificateBarcodeUrl } from '../utils/systemConfig';
+import { getSavedDefaultSettings, saveDefaultSettingsToStorage } from '../utils/defaultSettings';
+import { captureCertificateBlobUnified, findCertificateCanvasElement, EXPORT_ENGINES } from '../utils/exportUtils';
 import { User } from 'firebase/auth';
 import {
   Cloud,
@@ -23,9 +26,20 @@ import {
   Database,
   ArrowRight,
   ShieldCheck,
-  Sparkles
+  Sparkles,
+  QrCode,
+  Globe,
+  FolderCheck,
+  Sliders,
+  SlidersHorizontal,
+  FileText,
+  Image as ImageIcon,
+  Cpu,
+  Layers,
+  Save,
+  CheckCheck
 } from 'lucide-react';
-import { captureCertificateCanvas, findCertificateCanvasElement } from '../utils/exportUtils';
+import { GoogleInFrameButton } from './GoogleInFrameButton';
 
 interface Props {
   isOpen: boolean;
@@ -55,8 +69,27 @@ export const GoogleDriveSaveModal: React.FC<Props> = ({
   const [uploadSuccess, setUploadSuccess] = useState(false);
   const [cloudOnlySuccess, setCloudOnlySuccess] = useState(false);
   const [driveUrl, setDriveUrl] = useState<string>(certificateData.driveFileWebViewLink || '');
+  const [barcodeTarget, setBarcodeTarget] = useState<'portal' | 'drive'>(() => {
+    return certificateData.barcodeLinkTarget || getSavedSystemConfig().barcodeLinkTarget || 'portal';
+  });
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+
+  // Drive Export Engine, Format & Quality Customization
+  const [driveEngine, setDriveEngine] = useState<ExportEngine>(() => {
+    return getSavedDefaultSettings().driveDefaultEngine || 'html2canvas';
+  });
+  const [driveFormat, setDriveFormat] = useState<'png' | 'pdf' | 'jpeg'>(() => {
+    return getSavedDefaultSettings().driveDefaultFormat || 'png';
+  });
+  const [driveDpi, setDriveDpi] = useState<number>(() => {
+    return getSavedDefaultSettings().driveDefaultDpi || 300;
+  });
+  const [driveQuality, setDriveQuality] = useState<number>(() => {
+    return getSavedDefaultSettings().exportImageQuality ?? 0.95;
+  });
+  const [saveAsDefault, setSaveAsDefault] = useState(false);
+  const [lastUploadedInfo, setLastUploadedInfo] = useState<{ format: string; engine: string; dpi: number } | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -64,6 +97,14 @@ export const GoogleDriveSaveModal: React.FC<Props> = ({
       setCloudOnlySuccess(false);
       setUploadSuccess(!!certificateData.driveFileWebViewLink);
       setDriveUrl(certificateData.driveFileWebViewLink || '');
+      setBarcodeTarget(certificateData.barcodeLinkTarget || getSavedSystemConfig().barcodeLinkTarget || 'portal');
+
+      // Refresh default settings
+      const defaults = getSavedDefaultSettings();
+      if (defaults.driveDefaultEngine) setDriveEngine(defaults.driveDefaultEngine);
+      if (defaults.driveDefaultFormat) setDriveFormat(defaults.driveDefaultFormat);
+      if (defaults.driveDefaultDpi) setDriveDpi(defaults.driveDefaultDpi);
+      if (defaults.exportImageQuality !== undefined) setDriveQuality(defaults.exportImageQuality);
 
       // Default mode: if already uploaded to Drive, open drive tab, else start on cloud-only tab
       if (certificateData.driveFileWebViewLink) {
@@ -143,15 +184,22 @@ export const GoogleDriveSaveModal: React.FC<Props> = ({
     }
   };
 
-  const handleLogin = async () => {
-    setIsLoggingIn(true);
-    setErrorMsg(null);
-    try {
-      const res = await googleSignIn();
+const handleLogin = () => {
+  setIsLoggingIn(true);
+  setErrorMsg(null);
+
+  // استدعاء الفتح فوراً عند الضغط دون await قبله
+  googleSignIn()
+    .then((res) => {
       setUser(res.user);
       setToken(res.accessToken);
-    } catch (err: any) {
-      if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request' || err.message?.includes('تم إلغاء')) {
+    })
+    .catch((err: any) => {
+      if (
+        err.code === 'auth/popup-closed-by-user' ||
+        err.code === 'auth/cancelled-popup-request' ||
+        err.message?.includes('تم إلغاء')
+      ) {
         setErrorMsg('تم إلغاء نافذة تسجيل الدخول.');
       } else if (err.code === 'auth/popup-blocked') {
         setErrorMsg('تعذر فتح نافذة تسجيل الدخول. يرجى السماح بالنوافذ المنبثقة (Popups) من إعدادات المتصفح.');
@@ -159,10 +207,11 @@ export const GoogleDriveSaveModal: React.FC<Props> = ({
         console.error('Login error:', err);
         setErrorMsg(err.message || 'حدث خطأ أثناء تسجيل الدخول بـ Google');
       }
-    } finally {
+    })
+    .finally(() => {
       setIsLoggingIn(false);
-    }
-  };
+    });
+};
 
   const handleSignOut = async () => {
     await googleSignOut();
@@ -216,22 +265,25 @@ export const GoogleDriveSaveModal: React.FC<Props> = ({
       // Get canvas element with robust fallback search
       const elementToCapture = await findCertificateCanvasElement(canvasRef, 15, 100);
 
-      // Render canvas with exact mathematical proportions
-      const canvas = await captureCertificateCanvas(
+      // Render canvas and capture blob with exact chosen engine, format, scale/DPI, and quality
+      const scale = driveDpi / 100;
+      const { blob, mimeType, ext } = await captureCertificateBlobUnified(
         elementToCapture as HTMLElement,
         certificateData,
-        { scale: 2.8 }
+        {
+          engine: driveEngine,
+          format: driveFormat,
+          dpi: driveDpi as any,
+          scale: scale,
+          quality: driveQuality,
+          transparentBg: false
+        }
       );
 
-      const blob: Blob = await new Promise((resolve, reject) => {
-        canvas.toBlob((b) => {
-          if (b) resolve(b);
-          else reject(new Error('فشل إنشاء صورة الشهادة'));
-        }, 'image/png', 0.98);
-      });
-
-      const cleanStudentName = certificateData.studentName.replace(/[^\w\s\u0600-\u06FF-]/gi, '').trim();
-      const fileName = `شهادة_تقدير_${cleanStudentName || 'طالب'}_${certificateData.verificationCode || 'TAQDEER'}.png`;
+      const cleanStudentName = certificateData.studentName.replace(/[^\w\s\u0600-\u06FF-]/gi, '').trim() || 'طالب';
+      const safeStudentName = cleanStudentName.replace(/\s+/g, '_');
+      const vCode = certificateData.verificationCode || generateVerificationCode();
+      const fileName = `شهادة_تقدير_${safeStudentName}_${vCode}.${ext}`;
 
       let driveRes;
       try {
@@ -269,19 +321,40 @@ export const GoogleDriveSaveModal: React.FC<Props> = ({
         }
       }
 
+      // Save defaults if requested
+      if (saveAsDefault) {
+        const currentDefaults = getSavedDefaultSettings();
+        const updatedDefaults = {
+          ...currentDefaults,
+          driveDefaultEngine: driveEngine,
+          driveDefaultFormat: driveFormat,
+          driveDefaultDpi: driveDpi as any,
+          exportImageQuality: driveQuality
+        };
+        saveDefaultSettingsToStorage(updatedDefaults);
+      }
+
       // Update certificate data
       const certId = certificateData.id && certificateData.id.startsWith('cloud-')
         ? certificateData.id
         : `cloud-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
 
+      const targetBarcodeUrl = getCertificateBarcodeUrl(
+        vCode,
+        driveRes.webViewLink,
+        barcodeTarget
+      );
+
       const updatedFields: Partial<CertificateData> = {
         id: certId,
+        verificationCode: vCode,
         isSavedCloud: true,
         driveFileId: driveRes.fileId,
         driveFileWebViewLink: driveRes.webViewLink,
         driveFileUrl: driveRes.webContentLink,
         driveUploadedAt: new Date().toISOString(),
-        qrCodeData: driveRes.webViewLink, // QR Code links directly to Google Drive download/view
+        barcodeLinkTarget: barcodeTarget,
+        qrCodeData: targetBarcodeUrl,
       };
 
       const fullUpdatedCert: CertificateData = {
@@ -300,6 +373,11 @@ export const GoogleDriveSaveModal: React.FC<Props> = ({
       const filtered = saved.filter(c => c.id !== fullUpdatedCert.id && c.verificationCode !== fullUpdatedCert.verificationCode);
       localStorage.setItem('taqdeer_saved_certs', JSON.stringify([fullUpdatedCert, ...filtered]));
 
+      setLastUploadedInfo({
+        format: driveFormat.toUpperCase(),
+        engine: driveEngine,
+        dpi: driveDpi
+      });
       setDriveUrl(driveRes.webViewLink);
       setUploadSuccess(true);
     } catch (err: any) {
@@ -539,31 +617,248 @@ export const GoogleDriveSaveModal: React.FC<Props> = ({
                     قم بتسجيل الدخول باستخدام حساب Google لرفع صورة الشهادة عالية الدقة إلى Google Drive وتفعيل رابط التوثيق المباشر للباركود.
                   </p>
 
+                  <div className="bg-white/80 p-2.5 rounded-xl border border-amber-300/60">
+                    <GoogleInFrameButton
+                      onSuccess={(res) => {
+                        setUser(res.user);
+                        setToken(res.accessToken);
+                        setErrorMsg(null);
+                      }}
+                      onError={(err) => {
+                        console.warn('In-frame login note:', err);
+                      }}
+                      theme="filled_blue"
+                      size="large"
+                      text="signin_with"
+                      shape="rectangular"
+                      showRedirectOption={true}
+                    />
+                  </div>
+
                   <button
                     type="button"
                     onClick={handleLogin}
                     disabled={isLoggingIn}
-                    className="w-full py-2.5 px-4 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-xl font-bold text-xs shadow-xs transition flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-50"
+                    className="w-full py-2 px-3 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-xl font-bold text-[11px] shadow-xs transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                   >
                     {isLoggingIn ? (
                       <>
-                        <Loader2 className="w-4 h-4 text-amber-600 animate-spin" />
+                        <Loader2 className="w-3.5 h-3.5 text-amber-600 animate-spin" />
                         <span>جاري الاتصال بـ Google...</span>
                       </>
                     ) : (
                       <>
-                        <svg className="w-4 h-4 shrink-0" viewBox="0 0 48 48">
-                          <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
-                          <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
-                          <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
-                          <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
-                        </svg>
-                        <span>تسجيل الدخول باستخدام Google</span>
+                        <span>أو فتح نافذة تسجيل الدخول المنفصلة</span>
                       </>
                     )}
                   </button>
                 </div>
               )}
+
+              {/* Barcode Link Destination Selector */}
+              <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-2.5 text-right">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <QrCode className="w-4 h-4 text-amber-600" />
+                    <span className="text-xs font-black text-slate-800">وجهة رابط الباركود وQR عند مسحه:</span>
+                  </div>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+                    {barcodeTarget === 'drive' ? '📁 ملف Drive' : '🌐 بوابة التحقق'}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setBarcodeTarget('portal')}
+                    className={`p-2.5 rounded-xl border text-right transition cursor-pointer flex flex-col justify-between gap-1.5 ${
+                      barcodeTarget === 'portal'
+                        ? 'bg-amber-500 text-slate-950 border-amber-500 shadow-xs font-black ring-1 ring-amber-400'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <Globe className="w-3.5 h-3.5" />
+                        <span className="text-[11px] font-bold">بوابة التحقق على النظام</span>
+                      </div>
+                      {barcodeTarget === 'portal' && <CheckCircle2 className="w-3.5 h-3.5 text-slate-950" />}
+                    </div>
+                    <p className={`text-[10px] leading-relaxed ${barcodeTarget === 'portal' ? 'text-slate-900' : 'text-slate-500'}`}>
+                      يفتح صفحة التحقق والاعتماد للشهادة على النظام.
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setBarcodeTarget('drive')}
+                    className={`p-2.5 rounded-xl border text-right transition cursor-pointer flex flex-col justify-between gap-1.5 ${
+                      barcodeTarget === 'drive'
+                        ? 'bg-amber-500 text-slate-950 border-amber-500 shadow-xs font-black ring-1 ring-amber-400'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <FolderCheck className="w-3.5 h-3.5" />
+                        <span className="text-[11px] font-bold">ملف Drive مباشرة</span>
+                      </div>
+                      {barcodeTarget === 'drive' && <CheckCircle2 className="w-3.5 h-3.5 text-slate-950" />}
+                    </div>
+                    <p className={`text-[10px] leading-relaxed ${barcodeTarget === 'drive' ? 'text-slate-900' : 'text-slate-500'}`}>
+                      يفتح ملف الشهادة الأصلي على Google Drive للتحميل الفوري.
+                    </p>
+                  </button>
+                </div>
+              </div>
+
+              {/* Export Engine, Format & Quality Customization */}
+              <div className="bg-slate-50/90 p-3.5 rounded-2xl border border-slate-200/80 space-y-3 text-right">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <SlidersHorizontal className="w-4 h-4 text-blue-600" />
+                    <span className="text-xs font-black text-slate-800">إعدادات محرك التصدير وجودة الملف المرفوع:</span>
+                  </div>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-900 border border-blue-200">
+                    {driveEngine} • {driveFormat.toUpperCase()} • {driveDpi} DPI
+                  </span>
+                </div>
+
+                {/* Engine Selector */}
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1.5 flex items-center gap-1">
+                    <Cpu className="w-3.5 h-3.5 text-slate-500" />
+                    <span>المكتبة ومحرك التوليد:</span>
+                  </label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                    {[
+                      { id: 'html2canvas', name: 'html2canvas 🎨', desc: 'الأكثر استقراراً للخطوط' },
+                      { id: 'modern-screenshot', name: 'Modern Screenshot ⚡', desc: 'فائق السرعة' },
+                      { id: 'html-to-image', name: 'html-to-image 🖼️', desc: 'دقة متناهية' },
+                      { id: 'jspdf', name: 'jsPDF 📐', desc: 'معايرة هندسية' }
+                    ].map((eng) => (
+                      <button
+                        key={eng.id}
+                        type="button"
+                        onClick={() => setDriveEngine(eng.id as ExportEngine)}
+                        className={`p-2 rounded-xl border text-right transition cursor-pointer flex flex-col justify-between ${
+                          driveEngine === eng.id
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-xs font-bold ring-1 ring-blue-400'
+                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100/70'
+                        }`}
+                      >
+                        <span className="text-[11px] font-bold truncate">{eng.name}</span>
+                        <span className={`text-[9px] mt-0.5 ${driveEngine === eng.id ? 'text-blue-100' : 'text-slate-500'}`}>
+                          {eng.desc}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Format and DPI row */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-slate-200/60">
+                  {/* Format */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1.5 flex items-center gap-1">
+                      <FileText className="w-3.5 h-3.5 text-slate-500" />
+                      <span>صيغة الملف المرفوع:</span>
+                    </label>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {[
+                        { id: 'png', name: 'PNG', badge: 'عالية الوضوح' },
+                        { id: 'pdf', name: 'PDF', badge: 'مستند موثق' },
+                        { id: 'jpeg', name: 'JPEG', badge: 'حجم خفيف' }
+                      ].map((fmt) => (
+                        <button
+                          key={fmt.id}
+                          type="button"
+                          onClick={() => setDriveFormat(fmt.id as any)}
+                          className={`p-2 rounded-xl border text-center transition cursor-pointer flex flex-col items-center justify-center ${
+                            driveFormat === fmt.id
+                              ? 'bg-blue-600 text-white border-blue-600 shadow-xs font-black ring-1 ring-blue-400'
+                              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100/70'
+                          }`}
+                        >
+                          <span className="text-xs font-black">{fmt.name}</span>
+                          <span className={`text-[9px] mt-0.5 ${driveFormat === fmt.id ? 'text-blue-100' : 'text-slate-500'}`}>
+                            {fmt.badge}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* DPI */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1.5 flex items-center gap-1">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                      <span>دقة الإخراج (DPI):</span>
+                    </label>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {[
+                        { dpi: 150, label: '150 DPI', tag: 'شاشة' },
+                        { dpi: 300, label: '300 DPI', tag: 'طباعة ⭐' },
+                        { dpi: 400, label: '400 DPI', tag: 'ملكية 👑' }
+                      ].map((d) => (
+                        <button
+                          key={d.dpi}
+                          type="button"
+                          onClick={() => setDriveDpi(d.dpi)}
+                          className={`p-2 rounded-xl border text-center transition cursor-pointer flex flex-col items-center justify-center ${
+                            driveDpi === d.dpi
+                              ? 'bg-amber-500 text-slate-950 border-amber-500 shadow-xs font-black ring-1 ring-amber-400'
+                              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100/70'
+                          }`}
+                        >
+                          <span className="text-[11px] font-black">{d.label}</span>
+                          <span className={`text-[9px] mt-0.5 ${driveDpi === d.dpi ? 'text-slate-900 font-bold' : 'text-slate-500'}`}>
+                            {d.tag}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Quality Slider (for PNG / JPEG) */}
+                {driveFormat !== 'pdf' && (
+                  <div className="pt-2 border-t border-slate-200/60">
+                    <div className="flex items-center justify-between text-[11px] font-bold text-slate-700 mb-1">
+                      <span>معدل جودة ضغط الصورة:</span>
+                      <span className="font-mono text-blue-700 font-black">{Math.round(driveQuality * 100)}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0.5"
+                      max="1.0"
+                      step="0.05"
+                      value={driveQuality}
+                      onChange={(e) => setDriveQuality(parseFloat(e.target.value))}
+                      className="w-full accent-blue-600 cursor-pointer"
+                    />
+                  </div>
+                )}
+
+                {/* Save as default toggle */}
+                <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={saveAsDefault}
+                      onChange={(e) => setSaveAsDefault(e.target.checked)}
+                      className="w-3.5 h-3.5 rounded-sm text-blue-600 accent-blue-600 cursor-pointer"
+                    />
+                    <span className="text-[11px] font-bold text-slate-700">حفظ هذه الإعدادات كافتراضية لتوثيق Google Drive</span>
+                  </label>
+                  {saveAsDefault && (
+                    <span className="text-[10px] text-emerald-700 font-bold flex items-center gap-1">
+                      <Check className="w-3 h-3 text-emerald-600" />
+                      <span>سيتم الحفظ التلقائي</span>
+                    </span>
+                  )}
+                </div>
+              </div>
 
               {/* Action Button */}
               {user && (
@@ -576,17 +871,17 @@ export const GoogleDriveSaveModal: React.FC<Props> = ({
                   {isUploading ? (
                     <>
                       <Loader2 className="w-5 h-5 animate-spin" />
-                      <span>جاري توليد الصورة ورفعها لـ Google Drive...</span>
+                      <span>جاري التوليد بمحرك {driveEngine} بصيغة {driveFormat.toUpperCase()} ({driveDpi} DPI) والرفع لـ Google Drive...</span>
                     </>
                   ) : uploadSuccess ? (
                     <>
                       <HardDrive className="w-5 h-5 shrink-0" />
-                      <span>إعادة رفع / تحديث الشهادة على Google Drive</span>
+                      <span>إعادة الرفع وتحديث الشهادة على Drive ({driveFormat.toUpperCase()} • {driveDpi} DPI)</span>
                     </>
                   ) : (
                     <>
                       <HardDrive className="w-5 h-5 shrink-0" />
-                      <span>حفظ ورفع الشهادة وتفعيل رابط Google Drive</span>
+                      <span>حفظ ورفع الشهادة على Drive ({driveFormat.toUpperCase()} • {driveDpi} DPI)</span>
                     </>
                   )}
                 </button>
@@ -595,12 +890,21 @@ export const GoogleDriveSaveModal: React.FC<Props> = ({
               {/* Upload Success View */}
               {uploadSuccess && driveUrl && (
                 <div className="bg-emerald-50 border border-emerald-300 p-3.5 sm:p-4 rounded-2xl space-y-3 text-right">
-                  <div className="flex items-center gap-2 text-emerald-950 font-black text-xs sm:text-sm">
-                    <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-                    <span>تم حفظ الشهادة بنجاح على Google Drive! ☁️🎉</span>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-emerald-950 font-black text-xs sm:text-sm">
+                      <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                      <span>تم حفظ وتوثيق الشهادة بنجاح على Google Drive! ☁️🎉</span>
+                    </div>
+                    {lastUploadedInfo && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-200/80 text-emerald-900">
+                        {lastUploadedInfo.engine} • {lastUploadedInfo.format} • {lastUploadedInfo.dpi} DPI
+                      </span>
+                    )}
                   </div>
                   <p className="text-[11px] text-emerald-800 leading-relaxed">
-                    أصبح باركود QR الخاص بهذه الشهادة يوجه الآن مباشرة إلى رابط التحقق والتحميل الأصلي على Google Drive.
+                    {barcodeTarget === 'drive'
+                      ? 'أصبح باركود QR الخاص بهذه الشهادة يوجه الآن مباشرة إلى رابط ملف الشهادة على Google Drive.'
+                      : 'أصبح باركود QR الخاص بهذه الشهادة يوجه إلى بوابة التحقق الرسمية على النظام، مع ربط ملف Google Drive بالشهادة.'}
                   </p>
 
                   <div className="bg-white p-2.5 rounded-xl border border-emerald-200 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">

@@ -221,6 +221,9 @@ export const CloudLibrary: React.FC<Props> = ({
       reloadAllCertificates();
     };
     window.addEventListener('taqdeer_archive_updated', handleWindowArchiveUpdate);
+    window.addEventListener('taqdeer_certs_changed', handleWindowArchiveUpdate);
+    window.addEventListener('taqdeer_batches_changed', handleWindowArchiveUpdate);
+    window.addEventListener('taqdeer_account_switched', handleWindowArchiveUpdate);
 
     // Listen to Google Drive auth changes
     const unsubDrive = initDriveAuth(
@@ -237,6 +240,9 @@ export const CloudLibrary: React.FC<Props> = ({
     return () => {
       unsubArchive();
       window.removeEventListener('taqdeer_archive_updated', handleWindowArchiveUpdate);
+      window.removeEventListener('taqdeer_certs_changed', handleWindowArchiveUpdate);
+      window.removeEventListener('taqdeer_batches_changed', handleWindowArchiveUpdate);
+      window.removeEventListener('taqdeer_account_switched', handleWindowArchiveUpdate);
       unsubDrive();
     };
   }, [currentCertificate]);

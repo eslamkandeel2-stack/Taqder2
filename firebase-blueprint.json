@@ -9,10 +9,30 @@
         "email": { "type": "string" },
         "displayName": { "type": "string" },
         "photoURL": { "type": "string" },
+        "isVerified": { "type": "boolean" },
+        "verifiedAt": { "type": "string" },
+        "verificationMethod": { "type": "string" },
         "lastSyncedAt": { "type": "string" },
         "updatedAt": { "type": "string" }
       },
       "required": ["uid"]
+    },
+    "UserVerification": {
+      "title": "UserVerification",
+      "description": "Verification status and audit logs for user email and identity",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "isVerified": { "type": "boolean" },
+        "verifiedAt": { "type": "string" },
+        "verificationMethod": { "type": "string" },
+        "emailSentAt": { "type": "string" },
+        "status": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["userId", "email", "isVerified"]
     },
     "UserSettings": {
       "title": "UserSettings",
@@ -62,6 +82,10 @@
     "/users/{userId}": {
       "schema": "UserProfile",
       "description": "User profile documents"
+    },
+    "/user_verifications/{userId}": {
+      "schema": "UserVerification",
+      "description": "Verification status records for accounts"
     },
     "/user_settings/{userId}": {
       "schema": "UserSettings",

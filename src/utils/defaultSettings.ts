@@ -99,7 +99,7 @@ export interface DefaultCertificateSettings {
   stampTitle: string;
   stampSubtext: string;
   stampColor: string;
-  stampShape: 'circle' | 'square' | 'rectangle' | 'wax' | 'ribbon';
+  stampShape: 'circle' | 'square' | 'rectangle' | 'wax' | 'ribbon' | 'andalusian';
   stampOpacity: number;
   stampImageUrl?: string;
   badgeTitle: string;
