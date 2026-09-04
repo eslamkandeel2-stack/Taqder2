@@ -19,15 +19,18 @@ import {
   Undo2,
   Redo2,
   History,
-  User as UserIcon
+  User as UserIcon,
+  Crown,
+  ShieldAlert
 } from 'lucide-react';
 import { getSavedDrafts, subscribeToDrafts } from '../utils/draftsManager';
 import { useDragScroll } from '../utils/useDragScroll';
 import { getSavedSystemConfig, isFeatureEnabled, SystemSettingsConfig } from '../utils/systemConfig';
+import { isUserAdmin } from '../services/unifiedAuthService';
 
 interface Props {
-  activeTab: 'editor' | 'batch' | 'dashboard' | 'cloud' | 'verify' | 'ai' | 'settings';
-  setActiveTab: (tab: 'editor' | 'batch' | 'dashboard' | 'cloud' | 'verify' | 'ai' | 'settings') => void;
+  activeTab: 'editor' | 'batch' | 'dashboard' | 'cloud' | 'verify' | 'ai' | 'settings' | 'admin';
+  setActiveTab: (tab: 'editor' | 'batch' | 'dashboard' | 'cloud' | 'verify' | 'ai' | 'settings' | 'admin') => void;
   onExportPDF: () => void;
   onQuickGenerateAI: () => void;
   onPrint?: () => void;
@@ -199,6 +202,23 @@ export const Navbar: React.FC<Props> = ({
               >
                 <BotMessageSquare className="w-3.5 h-3.5 text-amber-300" />
                 <span>المساعد الذكي</span>
+              </button>
+            )}
+
+            {isUserAdmin(currentUser) && (
+              <button
+                type="button"
+                onClick={() => setActiveTab('admin')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  activeTab === 'admin'
+                    ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-sm font-black'
+                    : 'text-amber-300 hover:text-amber-200 hover:bg-amber-500/10 border border-amber-500/30'
+                }`}
+                title="لوحة تحكم مدير النظام"
+              >
+                <ShieldAlert className="w-3.5 h-3.5 text-amber-400" />
+                <span>لوحة الإدارة</span>
+                <span className="text-[9px] bg-amber-400/20 text-amber-300 px-1 rounded-full font-mono">Admin</span>
               </button>
             )}
           </nav>
@@ -506,6 +526,20 @@ export const Navbar: React.FC<Props> = ({
             >
               <BotMessageSquare className="w-3.5 h-3.5 text-amber-300 shrink-0" />
               <span>مساعد AI</span>
+            </button>
+          )}
+          {isUserAdmin(currentUser) && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('admin')}
+              className={`flex items-center gap-1.5 whitespace-nowrap px-3 py-1.5 text-xs font-bold rounded-xl transition-all shrink-0 cursor-pointer ${
+                activeTab === 'admin'
+                  ? 'bg-amber-500 text-slate-950 shadow-xs font-black'
+                  : 'bg-amber-500/15 text-amber-300 hover:text-white border border-amber-500/40'
+              }`}
+            >
+              <Crown className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span>لوحة الإدارة</span>
             </button>
           )}
           {onOpenPrivacyPolicy && (

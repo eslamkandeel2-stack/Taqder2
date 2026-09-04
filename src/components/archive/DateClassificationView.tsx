@@ -281,7 +281,7 @@ export const DateClassificationView: React.FC<DateClassificationViewProps> = ({
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                       {group.certificates.map((cert, certIdx) => {
                         const isSelected = selectedIds.has(cert.id);
-                        const vCode = cert.verificationCode || `TQ-${cert.id.slice(-6).toUpperCase()}`;
+                        const vCode = cert.verificationCode || `TQ-${(cert.id ? String(cert.id).slice(-6) : '000000').toUpperCase()}`;
                         const driveLink = cert.driveFileWebViewLink || cert.driveFileUrl;
 
                         return (

@@ -19,6 +19,7 @@ import { PrintPreviewModal } from './components/PrintPreviewModal';
 import { DirectShareModal } from './components/DirectShareModal';
 import { UserAuthProfileModal } from './components/UserAuthProfileModal';
 import { PrivacyPolicyPage } from './components/PrivacyPolicyPage';
+import { AdminDashboard } from './components/AdminDashboard';
 import { DraftsManagerModal } from './components/DraftsManagerModal';
 import { HistoryManagerModal } from './components/HistoryManagerModal';
 import { ExportPreviewModal } from './components/ExportPreviewModal';
@@ -28,6 +29,7 @@ import { getSavedSystemConfig, isFeatureEnabled, SystemSettingsConfig } from './
 import { ExportFormat } from './types';
 import { User } from 'firebase/auth';
 import { initAuthListener, getCurrentUser, checkRedirectAuthResult } from './services/googleDriveService';
+import { getStoredUnifiedAccount } from './services/unifiedAuthService';
 import {
   saveActiveWorkspaceVault,
   switchAndIsolateAccount,
@@ -182,6 +184,19 @@ const getInitialUrlState = () => {
       return { isStandalone: false, isPrivacyPage: true, code: '', tab: 'editor' as const };
     }
 
+    // Check if Admin Dashboard is requested via path, hash, or query param
+    const isAdminRoute =
+      pathname === '/admin' ||
+      pathname.startsWith('/admin') ||
+      hash === '#/admin' ||
+      hash === '#admin' ||
+      params.get('tab') === 'admin' ||
+      params.get('page') === 'admin';
+
+    if (isAdminRoute) {
+      return { isStandalone: false, isPrivacyPage: false, code: '', tab: 'admin' as const };
+    }
+
     const code =
       params.get('code') ||
       params.get('verify') ||
@@ -212,7 +227,7 @@ const getInitialUrlState = () => {
     if (tab === 'verify' || finalCode) {
       return { isStandalone: false, isPrivacyPage: false, code: finalCode, tab: 'verify' as const };
     }
-    if (tab && ['editor', 'batch', 'dashboard', 'cloud', 'verify', 'ai', 'settings'].includes(tab)) {
+    if (tab && ['editor', 'batch', 'dashboard', 'cloud', 'verify', 'ai', 'settings', 'admin'].includes(tab)) {
       return { isStandalone: false, isPrivacyPage: false, code: finalCode, tab: tab as any };
     }
   } catch (e) {
@@ -223,7 +238,7 @@ const getInitialUrlState = () => {
 
 export default function App() {
   const initialUrlState = useMemo(() => getInitialUrlState(), []);
-  const [activeTab, setActiveTab] = useState<'editor' | 'batch' | 'dashboard' | 'cloud' | 'verify' | 'ai' | 'settings'>(initialUrlState.tab);
+  const [activeTab, setActiveTab] = useState<'editor' | 'batch' | 'dashboard' | 'cloud' | 'verify' | 'ai' | 'settings' | 'admin'>(initialUrlState.tab);
   const [urlVerifyCode, setUrlVerifyCode] = useState<string>(initialUrlState.code);
   const [isStandalonePortal, setIsStandalonePortal] = useState<boolean>(initialUrlState.isStandalone);
   const [isPrivacyPage, setIsPrivacyPage] = useState<boolean>(Boolean(initialUrlState.isPrivacyPage));
@@ -242,6 +257,13 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const handleOpenAdminPage = () => {
+    setIsPrivacyPage(false);
+    setActiveTab('admin');
+    window.history.pushState({}, '', '/admin');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   useEffect(() => {
     const handlePopState = () => {
       const pathname = window.location.pathname.toLowerCase();
@@ -256,6 +278,18 @@ export default function App() {
         params.get('page') === 'privacy' ||
         params.get('tab') === 'privacy';
       setIsPrivacyPage(isPrivacy);
+
+      const isAdminRoute =
+        pathname === '/admin' ||
+        pathname.startsWith('/admin') ||
+        hash === '#/admin' ||
+        hash === '#admin' ||
+        params.get('page') === 'admin' ||
+        params.get('tab') === 'admin';
+      if (isAdminRoute) {
+        setIsPrivacyPage(false);
+        setActiveTab('admin');
+      }
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
@@ -424,7 +458,7 @@ export default function App() {
   const [exportPreviewFormat, setExportPreviewFormat] = useState<ExportFormat>('pdf');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
-  const [currentUser, setCurrentUser] = useState<User | null>(() => getCurrentUser());
+  const [currentUser, setCurrentUser] = useState<any>(() => getCurrentUser() || getStoredUnifiedAccount());
 
   // Listen for Google/Firebase Auth changes & Account Workspace Isolation switches
   useEffect(() => {
@@ -1156,6 +1190,20 @@ export default function App() {
           />
         )}
 
+        {/* TAB 8: SYSTEM ADMIN CONTROL PANEL */}
+        {activeTab === 'admin' && (
+          <AdminDashboard
+            currentUser={currentUser}
+            onUserLoginSuccess={(acc) => {
+              setCurrentUser(acc);
+            }}
+            onNavigateHome={() => setActiveTab('editor')}
+            onShowToast={showToast}
+            systemConfig={systemConfig}
+            onUpdateSystemConfig={setSystemConfig}
+          />
+        )}
+
       </main>
 
       {/* AI Generator & Text Improvement Modal */}
@@ -1220,6 +1268,7 @@ export default function App() {
           setActiveTab('cloud');
         }}
         onOpenPrivacyPolicy={handleOpenPrivacyPage}
+        onNavigateAdmin={handleOpenAdminPage}
       />
 
       {/* Print Preview & Page Settings Modal */}

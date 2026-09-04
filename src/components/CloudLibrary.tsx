@@ -1293,7 +1293,7 @@ export const CloudLibrary: React.FC<Props> = ({
               {currentPagedCertificates.map((cert, idx) => {
                 const isSelected = selectedIds.has(cert.id);
                 const driveLink = cert.driveFileWebViewLink || cert.driveFileUrl;
-                const verifyCode = cert.verificationCode || `TQ-${cert.id.slice(-6).toUpperCase()}`;
+                const verifyCode = cert.verificationCode || `TQ-${(cert.id ? String(cert.id).slice(-6) : '000000').toUpperCase()}`;
 
                 return (
                   <div

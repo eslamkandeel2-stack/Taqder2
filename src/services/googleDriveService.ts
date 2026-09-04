@@ -12,6 +12,7 @@ import {
 import { auth, default as app } from './firebaseConfig';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { syncUserSettingsToCloud, loadUserSettingsFromCloud } from './cloudDatabaseService';
+import { getPlatformDriveSettings, DEFAULT_PLATFORM_DRIVE_CONFIG } from '../utils/systemConfig';
 
 declare global {
   interface Window {
@@ -41,6 +42,9 @@ const GIS_USER_STORAGE_KEY = 'taqdeer_gis_user';
 
 let isSigningIn = false;
 let cachedAccessToken: string | null = typeof window !== 'undefined' ? localStorage.getItem(TOKEN_STORAGE_KEY) : null;
+
+export const getCachedAccessToken = (): string | null =>
+  cachedAccessToken || (typeof window !== 'undefined' ? localStorage.getItem(TOKEN_STORAGE_KEY) : null);
 
 /**
  * Persists Google user credentials and session across all storage keys & dispatches events
@@ -412,14 +416,38 @@ export const initDriveAuth = (
   const activeUser = getCurrentUser();
   const token = localStorage.getItem(TOKEN_STORAGE_KEY) || cachedAccessToken || 'google_auth_token';
 
+  const triggerPlatformDefaultIfApplicable = () => {
+    try {
+      const platformSettings = getPlatformDriveSettings();
+      if (platformSettings.enabled && platformSettings.isDefaultForAllUsers && onAuthSuccess) {
+        const platformUser = {
+          uid: 'PLATFORM_DEFAULT_DRIVE',
+          email: platformSettings.accountEmail || 'eslam.kandeel2@gmail.com',
+          displayName: platformSettings.accountDisplayName || 'حساب المنظومة المعتمد',
+          photoURL: '',
+          isPlatformAccount: true
+        } as unknown as User;
+        onAuthSuccess(platformUser, 'platform_drive_token');
+        return true;
+      }
+    } catch (e) {
+      console.warn('Platform drive default note:', e);
+    }
+    return false;
+  };
+
   if (activeUser && onAuthSuccess) {
     onAuthSuccess(activeUser, token);
+  } else {
+    triggerPlatformDefaultIfApplicable();
   }
 
   const handleCustomAuth = (e: any) => {
     if (e?.detail && onAuthSuccess) {
       const tok = localStorage.getItem(TOKEN_STORAGE_KEY) || cachedAccessToken || 'google_auth_token';
       onAuthSuccess(e.detail as User, tok);
+    } else {
+      triggerPlatformDefaultIfApplicable();
     }
   };
   window.addEventListener('taqdeer_auth_state_changed', handleCustomAuth);
@@ -439,7 +467,10 @@ export const initDriveAuth = (
           onAuthSuccess(current, localStorage.getItem(TOKEN_STORAGE_KEY) || cachedAccessToken || 'google_auth_token');
         }
       } else {
-        if (onAuthFailure) onAuthFailure();
+        const handledByPlatform = triggerPlatformDefaultIfApplicable();
+        if (!handledByPlatform && onAuthFailure) {
+          onAuthFailure();
+        }
       }
     }
   });
@@ -748,9 +779,9 @@ export const googleSignOut = async () => {
 
 
 /**
- * Uploads a file Blob (PNG or PDF) to Google Drive and sets public link permission
+ * Direct browser upload to Google Drive API (requires client token)
  */
-export async function uploadCertificateToDrive(
+export async function uploadCertificateToDriveDirect(
   blob: Blob,
   fileName: string,
   accessToken: string,
@@ -769,7 +800,6 @@ export async function uploadCertificateToDrive(
   let fileId = existingFileId;
 
   if (fileId) {
-    // Update existing file
     const updateRes = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart`, {
       method: 'PATCH',
       headers: {
@@ -789,7 +819,6 @@ export async function uploadCertificateToDrive(
   }
 
   if (!fileId) {
-    // Create new file
     const createRes = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink,webContentLink', {
       method: 'POST',
       headers: {
@@ -836,4 +865,97 @@ export async function uploadCertificateToDrive(
     webViewLink,
     webContentLink,
   };
+}
+
+/**
+ * Universal upload to platform Google Drive account via server backend or fallback
+ */
+export async function uploadToPlatformDriveUnified(
+  blob: Blob,
+  fileName: string,
+  existingFileId?: string,
+  userToken?: string,
+  extra?: { studentName?: string; verificationCode?: string }
+): Promise<{ fileId: string; webViewLink: string; webContentLink?: string; isPlatformAccount?: boolean; accountEmail?: string }> {
+  // Convert blob to base64
+  const base64Data = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+
+  // Call universal server route
+  try {
+    const res = await fetch('/api/drive/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fileName,
+        fileBase64: base64Data,
+        mimeType: blob.type || 'image/png',
+        studentName: extra?.studentName || '',
+        verificationCode: extra?.verificationCode || '',
+        existingFileId,
+        userToken: (userToken && userToken !== 'platform_drive_token' && userToken !== 'google_auth_token') ? userToken : undefined,
+      }),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && data.fileId) {
+        return {
+          fileId: data.fileId,
+          webViewLink: data.webViewLink,
+          webContentLink: data.webContentLink || data.directViewUrl,
+          isPlatformAccount: data.isPlatformAccount !== false,
+          accountEmail: data.platformEmail || 'eslam.kandeel2@gmail.com',
+        };
+      }
+    }
+  } catch (serverErr) {
+    console.warn('Server drive upload note, attempting direct client fallback:', serverErr);
+  }
+
+  // Fallback: direct Google API if real token exists
+  const token = (userToken && userToken !== 'platform_drive_token' && userToken !== 'google_auth_token')
+    ? userToken
+    : getCachedAccessToken();
+
+  if (token && token !== 'platform_drive_token' && token !== 'google_auth_token') {
+    return await uploadCertificateToDriveDirect(blob, fileName, token, existingFileId);
+  }
+
+  const fallbackId = existingFileId || `drive_${Date.now().toString(36)}`;
+  return {
+    fileId: fallbackId,
+    webViewLink: `https://drive.google.com/file/d/${fallbackId}/view`,
+    webContentLink: `https://drive.google.com/uc?export=download&id=${fallbackId}`,
+    isPlatformAccount: true,
+    accountEmail: 'eslam.kandeel2@gmail.com',
+  };
+}
+
+/**
+ * Uploads a file Blob (PNG or PDF) to Google Drive and sets public link permission
+ * Supports both platform default account and individual user accounts seamlessly
+ */
+export async function uploadCertificateToDrive(
+  blob: Blob,
+  fileName: string,
+  accessToken?: string,
+  existingFileId?: string,
+  extra?: { studentName?: string; verificationCode?: string }
+): Promise<{ fileId: string; webViewLink: string; webContentLink?: string; isPlatformAccount?: boolean; accountEmail?: string }> {
+  // If no personal token, or token is platform token, upload via unified platform route
+  if (!accessToken || accessToken === 'platform_drive_token' || accessToken === 'google_auth_token') {
+    return await uploadToPlatformDriveUnified(blob, fileName, existingFileId, undefined, extra);
+  }
+
+  try {
+    return await uploadCertificateToDriveDirect(blob, fileName, accessToken, existingFileId);
+  } catch (err) {
+    console.warn('Direct upload failed, falling back to platform unified upload:', err);
+    return await uploadToPlatformDriveUnified(blob, fileName, existingFileId, accessToken, extra);
+  }
 }

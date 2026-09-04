@@ -455,6 +455,8 @@ export function saveDefaultSettingsToStorage(settings: DefaultCertificateSetting
   }
 }
 
+export const saveDefaultSettings = saveDefaultSettingsToStorage;
+
 /**
  * Extracts complete default settings structure from an existing certificate
  */

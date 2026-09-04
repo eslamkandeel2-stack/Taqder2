@@ -64,6 +64,7 @@ import {
   getLatestEmailDispatchLog,
   getStoredUnifiedAccount,
   saveStoredUnifiedAccount,
+  isUserAdmin,
   UnifiedAccount
 } from '../services/unifiedAuthService';
 
@@ -75,6 +76,7 @@ interface UserAuthProfileModalProps {
   onShowToast: (msg: string) => void;
   onOpenCloudLibrary?: () => void;
   onOpenPrivacyPolicy?: () => void;
+  onNavigateAdmin?: () => void;
 }
 
 type AuthTab = 'login' | 'quick_email' | 'register' | 'profile' | 'link_google';
@@ -86,7 +88,8 @@ export const UserAuthProfileModal: React.FC<UserAuthProfileModalProps> = ({
   onUserChange,
   onShowToast,
   onOpenCloudLibrary,
-  onOpenPrivacyPolicy
+  onOpenPrivacyPolicy,
+  onNavigateAdmin,
 }) => {
   const [activeTab, setActiveTab] = useState<AuthTab>('login');
   const [isLoading, setIsLoading] = useState(false);
@@ -1639,6 +1642,26 @@ export const UserAuthProfileModal: React.FC<UserAuthProfileModalProps> = ({
           )}
 
           <div className="flex items-center gap-2">
+            {(currentUser || unifiedAccount) && isUserAdmin(currentUser || unifiedAccount) && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  if (onNavigateAdmin) {
+                    onNavigateAdmin();
+                  } else {
+                    window.history.pushState({}, '', '/admin');
+                    window.dispatchEvent(new PopStateEvent('popstate'));
+                  }
+                }}
+                className="text-[11px] text-amber-300 hover:text-amber-200 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 px-2.5 py-1 rounded-lg flex items-center gap-1 cursor-pointer transition"
+                title="فتح لوحة تحكم مدير النظام"
+              >
+                <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
+                <span className="font-bold">لوحة الإدارة</span>
+              </button>
+            )}
+
             {(currentUser || unifiedAccount) && (
               <button
                 type="button"

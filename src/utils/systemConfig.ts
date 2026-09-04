@@ -34,18 +34,57 @@ export interface SystemFeatureToggles {
   [key: string]: boolean;
 }
 
+export interface PlatformDriveSettings {
+  enabled: boolean;
+  isDefaultForAllUsers: boolean;
+  accountEmail: string;
+  accountDisplayName: string;
+  folderName: string;
+  folderId?: string;
+  accessToken?: string;
+  refreshToken?: string;
+  clientId?: string;
+  clientSecret?: string;
+  autoPublicPermission: boolean;
+  targetBarcodeType: 'drive' | 'portal';
+  fallbackToLocalArchive?: boolean;
+  lastSyncAt?: string;
+  lastTestStatus?: 'success' | 'error' | 'none';
+  lastTestMessage?: string;
+}
+
 export interface SystemSettingsConfig {
   version: string;
   updatedAt: string;
   barcodeLinkTarget: 'portal' | 'drive'; // 'portal': بوابة التحقق المعتمدة على النظام, 'drive': ملف الشهادة على Google Drive مباشرة
   features: SystemFeatureToggles;
   lockedElements: SystemLockedElements;
+  platformDrive?: PlatformDriveSettings;
 }
+
+export const DEFAULT_PLATFORM_DRIVE_CONFIG: PlatformDriveSettings = {
+  enabled: true,
+  isDefaultForAllUsers: true,
+  accountEmail: 'eslam.kandeel2@gmail.com',
+  accountDisplayName: 'حساب المنظومة المعتمد (Google Drive)',
+  folderName: 'منصة تقدير - شهادات التقدير والتوثيق',
+  folderId: '',
+  accessToken: '',
+  refreshToken: '',
+  clientId: '',
+  clientSecret: '',
+  autoPublicPermission: true,
+  targetBarcodeType: 'portal',
+  fallbackToLocalArchive: true,
+  lastSyncAt: new Date().toISOString(),
+  lastTestStatus: 'none',
+};
 
 export const DEFAULT_SYSTEM_CONFIG: SystemSettingsConfig = {
   version: '2026.2',
   updatedAt: new Date().toISOString(),
   barcodeLinkTarget: 'portal',
+  platformDrive: DEFAULT_PLATFORM_DRIVE_CONFIG,
   features: {
     enableAutoArchive: true,
     enableAutoGenderInflection: true,
@@ -100,6 +139,10 @@ export function getSavedSystemConfig(): SystemSettingsConfig {
         lockedElements: {
           ...DEFAULT_SYSTEM_CONFIG.lockedElements,
           ...(parsed.lockedElements || {})
+        },
+        platformDrive: {
+          ...DEFAULT_PLATFORM_DRIVE_CONFIG,
+          ...(parsed.platformDrive || {})
         }
       };
     }
@@ -107,6 +150,31 @@ export function getSavedSystemConfig(): SystemSettingsConfig {
     console.warn('Failed to load system config from storage:', e);
   }
   return DEFAULT_SYSTEM_CONFIG;
+}
+
+/**
+ * Gets the current platform Google Drive configuration
+ */
+export function getPlatformDriveSettings(): PlatformDriveSettings {
+  const config = getSavedSystemConfig();
+  return config.platformDrive || DEFAULT_PLATFORM_DRIVE_CONFIG;
+}
+
+/**
+ * Updates and saves platform Google Drive settings
+ */
+export function savePlatformDriveSettings(settings: Partial<PlatformDriveSettings>): SystemSettingsConfig {
+  const current = getSavedSystemConfig();
+  const updated: SystemSettingsConfig = {
+    ...current,
+    platformDrive: {
+      ...(current.platformDrive || DEFAULT_PLATFORM_DRIVE_CONFIG),
+      ...settings,
+      lastSyncAt: new Date().toISOString()
+    }
+  };
+  saveSystemConfig(updated);
+  return updated;
 }
 
 /**

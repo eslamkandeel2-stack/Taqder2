@@ -1,0 +1,18 @@
+{
+  "users": [
+    {
+      "userId": "ADMIN-001",
+      "username": "Admin",
+      "email": "admin@taqdeer.app",
+      "displayName": "مدير النظام (Admin)",
+      "role": "admin",
+      "passwordSalt": "029a81e01884705be906434ae83bfa50",
+      "passwordHash": "9549a2667d7c27d776357c7c592d174670f82c6f491e218db57a3b8ee7a1163d",
+      "isVerified": true,
+      "verifiedAt": "2026-09-04T12:18:33.040Z",
+      "verificationMethod": "system_admin_seed",
+      "createdAt": "2026-09-04T12:18:33.040Z",
+      "updatedAt": "2026-09-04T12:18:53.399Z"
+    }
+  ]
+}

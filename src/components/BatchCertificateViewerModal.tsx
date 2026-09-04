@@ -20,6 +20,7 @@ import {
 import { generateVerificationCode } from '../utils/qrUtils';
 import { saveBatchRecord, deleteBatchRecord } from '../utils/batchManager';
 import { getSavedDefaultSettings } from '../utils/defaultSettings';
+import { getPlatformDriveSettings } from '../utils/systemConfig';
 import { User } from 'firebase/auth';
 import {
   X,
@@ -293,9 +294,15 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
 
   // 5. Google Drive Batch Upload & Verification
   const handleStartBatchDriveVerification = async () => {
-    let token = driveToken || (await getAccessToken());
+    const platformSettings = getPlatformDriveSettings();
+    const isPlatformActive = platformSettings.enabled && platformSettings.isDefaultForAllUsers;
 
-    if (!token || !driveUser) {
+    let token = driveToken;
+    if (!token && !isPlatformActive) {
+      token = await getAccessToken();
+    }
+
+    if (!token && !isPlatformActive) {
       try {
         onShowToast('جاري تسجيل الدخول بحساب Google Drive...');
         const res = await googleSignIn();
@@ -306,6 +313,15 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
         console.error('Google Sign in failed:', err);
         onShowToast(err.message || 'تعذر تسجيل الدخول بـ Google.');
         return;
+      }
+    } else if (isPlatformActive && !token) {
+      token = 'platform_drive_token';
+      if (!driveUser) {
+        setDriveUser({
+          displayName: platformSettings.accountDisplayName || 'حساب المنظومة المعتمد',
+          email: platformSettings.accountEmail || 'eslam.kandeel2@gmail.com',
+          photoURL: ''
+        } as any);
       }
     }
 
@@ -368,7 +384,11 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
           blob,
           fileName,
           token,
-          origCert.driveFileId
+          origCert.driveFileId,
+          {
+            studentName,
+            verificationCode: vCode
+          }
         );
 
         const finalizedCert: CertificateData = {
@@ -600,7 +620,7 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
                 onClick={handleStartBatchDriveVerification}
                 disabled={isUploadingToDrive || certificates.length === 0}
                 className="px-2.5 py-1.5 hover:opacity-90 disabled:opacity-50 text-slate-950 font-black text-xs rounded-r-lg transition flex items-center gap-1.5 cursor-pointer"
-                title={`توثيق الدفعة بالكامل على Google Drive (${driveEngine} - ${driveFormat.toUpperCase()})`}
+                title={`توثيق الدفعة بالكامل على Google Drive (${driveEngine} - ${(driveFormat || 'png').toUpperCase()})`}
               >
                 {isUploadingToDrive ? (
                   <>
@@ -1465,6 +1485,29 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
                 <X className="w-4 h-4" />
               </button>
             </div>
+
+            {(() => {
+              const pDrive = getPlatformDriveSettings();
+              if (pDrive.enabled && pDrive.isDefaultForAllUsers) {
+                return (
+                  <div className="bg-emerald-950/70 border border-emerald-500/40 rounded-xl p-2.5 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="w-7 h-7 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0">
+                        <HardDrive className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0 text-right">
+                        <span className="block text-[11px] font-black text-emerald-300">حساب المنظومة الافتراضي مفعل ✅</span>
+                        <span className="block text-[10px] text-slate-300 dir-ltr text-right truncate">{pDrive.accountEmail || 'eslam.kandeel2@gmail.com'}</span>
+                      </div>
+                    </div>
+                    <span className="text-[10px] bg-emerald-500/20 text-emerald-300 font-bold px-2 py-0.5 rounded-md border border-emerald-500/30 whitespace-nowrap">
+                      لا يتطلب تسجيل الدخول
+                    </span>
+                  </div>
+                );
+              }
+              return null;
+            })()}
 
             <div className="space-y-3 text-xs">
               <div>

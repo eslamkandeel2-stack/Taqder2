@@ -9,6 +9,7 @@ export interface UnifiedAccount {
   username: string;
   email: string;
   displayName: string;
+  role?: 'admin' | 'user';
   photoURL?: string;
   googleEmail?: string;
   isVerified: boolean;
@@ -19,6 +20,15 @@ export interface UnifiedAccount {
   emailSentAt?: string;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export function isUserAdmin(user: any): boolean {
+  if (!user) return false;
+  if (user.role === 'admin') return true;
+  if (user.username && user.username.toLowerCase() === 'admin') return true;
+  if (user.userId === 'ADMIN-001') return true;
+  if (user.email && user.email.toLowerCase() === 'admin@taqdeer.app') return true;
+  return false;
 }
 
 export interface AuthResponse {
@@ -51,14 +61,36 @@ interface LocalAccountRecord extends UnifiedAccount {
 }
 
 function getLocalAccountsDb(): { users: LocalAccountRecord[] } {
-  if (typeof window === 'undefined') return { users: [] };
-  try {
-    const raw = localStorage.getItem(LOCAL_ACCOUNTS_DB_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch (e) {
-    console.warn('Error reading local accounts DB:', e);
+  let db: { users: LocalAccountRecord[] } = { users: [] };
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem(LOCAL_ACCOUNTS_DB_KEY);
+      if (raw) db = JSON.parse(raw);
+    } catch (e) {
+      console.warn('Error reading local accounts DB:', e);
+    }
   }
-  return { users: [] };
+
+  // Ensure Admin account exists
+  const hasAdmin = db.users.some(
+    (u) => (u.username && u.username.toLowerCase() === 'admin') || u.userId === 'ADMIN-001'
+  );
+  if (!hasAdmin) {
+    db.users.unshift({
+      userId: 'ADMIN-001',
+      username: 'Admin',
+      email: 'admin@taqdeer.app',
+      displayName: 'مدير النظام (Admin)',
+      role: 'admin',
+      isVerified: true,
+      verifiedAt: new Date().toISOString(),
+      passwordHash: btoa('Admin'),
+      createdAt: new Date().toISOString(),
+    });
+    saveLocalAccountsDb(db);
+  }
+
+  return db;
 }
 
 function saveLocalAccountsDb(db: { users: LocalAccountRecord[] }) {
@@ -487,6 +519,7 @@ export async function loginWithCredentials(params: {
         username: user.username,
         email: user.email,
         displayName: user.displayName,
+        role: user.role || (user.username?.toLowerCase() === 'admin' || user.userId === 'ADMIN-001' ? 'admin' : 'user'),
         isVerified: false,
       },
     };
@@ -500,6 +533,7 @@ export async function loginWithCredentials(params: {
     username: user.username,
     email: user.email,
     displayName: user.displayName,
+    role: user.role || (user.username?.toLowerCase() === 'admin' || user.userId === 'ADMIN-001' ? 'admin' : 'user'),
     photoURL: user.photoURL,
     googleEmail: user.googleEmail,
     isVerified: true,

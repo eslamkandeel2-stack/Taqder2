@@ -9,7 +9,7 @@ import {
   clearAccessToken
 } from '../services/googleDriveService';
 import { generateVerificationCode } from '../utils/qrUtils';
-import { getSavedSystemConfig, getCertificateBarcodeUrl } from '../utils/systemConfig';
+import { getSavedSystemConfig, getCertificateBarcodeUrl, getPlatformDriveSettings } from '../utils/systemConfig';
 import { getSavedDefaultSettings, saveDefaultSettingsToStorage } from '../utils/defaultSettings';
 import { captureCertificateBlobUnified, findCertificateCanvasElement, EXPORT_ENGINES } from '../utils/exportUtils';
 import { User } from 'firebase/auth';
@@ -60,9 +60,11 @@ export const GoogleDriveSaveModal: React.FC<Props> = ({
   onSetExporting,
   onSaveCloudWithoutDrive
 }) => {
-  const [saveMode, setSaveMode] = useState<'cloud-only' | 'google-drive'>('cloud-only');
+  const [saveMode, setSaveMode] = useState<'cloud-only' | 'google-drive'>('google-drive');
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
+  const [platformDrive, setPlatformDrive] = useState(() => getPlatformDriveSettings());
+  const [usePersonalAccount, setUsePersonalAccount] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isSavingCloudOnly, setIsSavingCloudOnly] = useState(false);
@@ -91,6 +93,8 @@ export const GoogleDriveSaveModal: React.FC<Props> = ({
   const [saveAsDefault, setSaveAsDefault] = useState(false);
   const [lastUploadedInfo, setLastUploadedInfo] = useState<{ format: string; engine: string; dpi: number } | null>(null);
 
+  const isPlatformActive = platformDrive.enabled && platformDrive.isDefaultForAllUsers && !usePersonalAccount;
+
   useEffect(() => {
     if (isOpen) {
       setErrorMsg(null);
@@ -98,6 +102,7 @@ export const GoogleDriveSaveModal: React.FC<Props> = ({
       setUploadSuccess(!!certificateData.driveFileWebViewLink);
       setDriveUrl(certificateData.driveFileWebViewLink || '');
       setBarcodeTarget(certificateData.barcodeLinkTarget || getSavedSystemConfig().barcodeLinkTarget || 'portal');
+      setPlatformDrive(getPlatformDriveSettings());
 
       // Refresh default settings
       const defaults = getSavedDefaultSettings();
@@ -106,8 +111,9 @@ export const GoogleDriveSaveModal: React.FC<Props> = ({
       if (defaults.driveDefaultDpi) setDriveDpi(defaults.driveDefaultDpi);
       if (defaults.exportImageQuality !== undefined) setDriveQuality(defaults.exportImageQuality);
 
-      // Default mode: if already uploaded to Drive, open drive tab, else start on cloud-only tab
-      if (certificateData.driveFileWebViewLink) {
+      // Default mode: start on google-drive tab directly if platform drive is default or already uploaded
+      const currentPlatform = getPlatformDriveSettings();
+      if (certificateData.driveFileWebViewLink || (currentPlatform.enabled && currentPlatform.isDefaultForAllUsers)) {
         setSaveMode('google-drive');
       } else {
         setSaveMode('cloud-only');
@@ -221,30 +227,36 @@ const handleLogin = () => {
 
   const handleUploadToDrive = async () => {
     let activeToken = token;
-    if (!activeToken) {
-      activeToken = await getAccessToken();
-    }
 
-    if (!activeToken) {
-      try {
-        setIsLoggingIn(true);
-        const res = await googleSignIn();
-        setUser(res.user);
-        setToken(res.accessToken);
-        activeToken = res.accessToken;
-      } catch (authErr: any) {
-        if (authErr.code === 'auth/popup-closed-by-user' || authErr.code === 'auth/cancelled-popup-request' || authErr.message?.includes('تم إلغاء')) {
-          setErrorMsg('تم إلغاء تسجيل الدخول.');
-        } else {
-          setErrorMsg('انتهت صلاحية جلسة Google Drive. يرجى إعادة تسجيل الدخول لمتابعة الرفع.');
-        }
-        setToken(null);
-        clearAccessToken();
-        setIsLoggingIn(false);
-        return;
-      } finally {
-        setIsLoggingIn(false);
+    // If platform drive is active and default, we do NOT require personal user login
+    if (!isPlatformActive) {
+      if (!activeToken) {
+        activeToken = await getAccessToken();
       }
+
+      if (!activeToken) {
+        try {
+          setIsLoggingIn(true);
+          const res = await googleSignIn();
+          setUser(res.user);
+          setToken(res.accessToken);
+          activeToken = res.accessToken;
+        } catch (authErr: any) {
+          if (authErr.code === 'auth/popup-closed-by-user' || authErr.code === 'auth/cancelled-popup-request' || authErr.message?.includes('تم إلغاء')) {
+            setErrorMsg('تم إلغاء تسجيل الدخول.');
+          } else {
+            setErrorMsg('انتهت صلاحية جلسة Google Drive. يرجى إعادة تسجيل الدخول لمتابعة الرفع.');
+          }
+          setToken(null);
+          clearAccessToken();
+          setIsLoggingIn(false);
+          return;
+        } finally {
+          setIsLoggingIn(false);
+        }
+      }
+    } else {
+      activeToken = 'platform_drive_token';
     }
 
     setIsUploading(true);
@@ -291,10 +303,14 @@ const handleLogin = () => {
           blob,
           fileName,
           activeToken,
-          certificateData.driveFileId
+          certificateData.driveFileId,
+          {
+            studentName: cleanStudentName,
+            verificationCode: vCode
+          }
         );
       } catch (uploadErr: any) {
-        if (uploadErr.message?.includes('انتهت صلاحية') || uploadErr.message?.includes('401')) {
+        if (!isPlatformActive && (uploadErr.message?.includes('انتهت صلاحية') || uploadErr.message?.includes('401'))) {
           setToken(null);
           clearAccessToken();
           console.warn('Google Drive token expired. Re-authenticating...');
@@ -306,7 +322,11 @@ const handleLogin = () => {
               blob,
               fileName,
               authRes.accessToken,
-              certificateData.driveFileId
+              certificateData.driveFileId,
+              {
+                studentName: cleanStudentName,
+                verificationCode: vCode
+              }
             );
           } catch (retryAuthErr: any) {
             if (retryAuthErr.code === 'auth/popup-closed-by-user' || retryAuthErr.code === 'auth/cancelled-popup-request' || retryAuthErr.message?.includes('تم إلغاء')) {
@@ -374,7 +394,7 @@ const handleLogin = () => {
       localStorage.setItem('taqdeer_saved_certs', JSON.stringify([fullUpdatedCert, ...filtered]));
 
       setLastUploadedInfo({
-        format: driveFormat.toUpperCase(),
+        format: (driveFormat || 'png').toUpperCase(),
         engine: driveEngine,
         dpi: driveDpi
       });
@@ -582,34 +602,77 @@ const handleLogin = () => {
           {/* MODE 2: GOOGLE DRIVE (With Drive Upload) */}
           {saveMode === 'google-drive' && (
             <div className="space-y-4">
-              {/* User Account Bar */}
-              {user ? (
+              {/* User Account Bar or Platform Default Drive */}
+              {isPlatformActive ? (
+                <div className="bg-emerald-50/90 border border-emerald-300 p-3.5 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-right">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                      <HardDrive className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-xs font-black text-slate-900">
+                          {platformDrive.accountDisplayName || 'حساب Google Drive المعتمد للمنصة'}
+                        </span>
+                        <span className="bg-emerald-200/80 text-emerald-900 text-[10px] font-black px-2 py-0.5 rounded-md">
+                          افتراضي نشط بدون تسجيل دخول ✅
+                        </span>
+                      </div>
+                      <span className="block text-xs font-bold text-emerald-800 dir-ltr text-right mt-0.5 truncate">
+                        {platformDrive.accountEmail || 'eslam.kandeel2@gmail.com'}
+                      </span>
+                      <p className="text-[11px] text-slate-600 mt-0.5">
+                        يتم التوثيق والرفع التلقائي لجميع الشهادات مباشرة بهذا الحساب دون الحاجة لتسجيل دخول شخصي.
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setUsePersonalAccount(true)}
+                    className="text-[11px] text-blue-700 hover:text-blue-900 font-bold underline px-2 py-1 transition cursor-pointer shrink-0"
+                  >
+                    استخدام حساب Google شخصي آخر
+                  </button>
+                </div>
+              ) : user ? (
                 <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-2xl flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2.5 min-w-0">
                     {user.photoURL ? (
                       <img src={user.photoURL} alt={user.displayName || 'Google Account'} className="w-8 h-8 rounded-full border-2 border-emerald-500 shrink-0" />
                     ) : (
                       <div className="w-8 h-8 rounded-full bg-emerald-600 text-white font-bold flex items-center justify-center text-xs shrink-0">
-                        {user.email?.[0].toUpperCase() || 'G'}
+                        {(user.displayName?.charAt(0) || user.email?.charAt(0) || (user as any).username?.charAt(0) || 'G').toUpperCase()}
                       </div>
                     )}
                     <div className="min-w-0">
                       <span className="block text-xs font-bold text-slate-900 truncate">
-                        {user.displayName || user.email}
+                        {user.displayName || user.email || (user as any).username || 'مستخدم متصل'}
                       </span>
                       <span className="block text-[10px] text-emerald-700 font-medium truncate">
-                        متصل بحساب Google ✅
+                        {user.email ? `متصل (${user.email}) ✅` : 'متصل بالحساب ✅'}
                       </span>
                     </div>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={handleSignOut}
-                    className="text-[11px] text-slate-500 hover:text-red-600 font-bold underline px-2 py-1 transition cursor-pointer shrink-0"
-                  >
-                    تبديل
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {platformDrive.enabled && (
+                      <button
+                        type="button"
+                        onClick={() => setUsePersonalAccount(false)}
+                        className="text-[10px] text-emerald-700 hover:text-emerald-900 font-bold underline px-1.5 py-1 transition cursor-pointer"
+                      >
+                        العودة لحساب المنصة
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleSignOut}
+                      className="text-[11px] text-slate-500 hover:text-red-600 font-bold underline px-2 py-1 transition cursor-pointer shrink-0"
+                    >
+                      تبديل
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <div className="bg-amber-50/80 border border-amber-200 p-3.5 rounded-2xl text-center space-y-2.5">
@@ -635,23 +698,33 @@ const handleLogin = () => {
                     />
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={handleLogin}
-                    disabled={isLoggingIn}
-                    className="w-full py-2 px-3 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-xl font-bold text-[11px] shadow-xs transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                  >
-                    {isLoggingIn ? (
-                      <>
-                        <Loader2 className="w-3.5 h-3.5 text-amber-600 animate-spin" />
-                        <span>جاري الاتصال بـ Google...</span>
-                      </>
-                    ) : (
-                      <>
+                  <div className="flex items-center justify-between gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={handleLogin}
+                      disabled={isLoggingIn}
+                      className="flex-1 py-2 px-3 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-xl font-bold text-[11px] shadow-xs transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                    >
+                      {isLoggingIn ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 text-amber-600 animate-spin" />
+                          <span>جاري الاتصال بـ Google...</span>
+                        </>
+                      ) : (
                         <span>أو فتح نافذة تسجيل الدخول المنفصلة</span>
-                      </>
+                      )}
+                    </button>
+
+                    {platformDrive.enabled && (
+                      <button
+                        type="button"
+                        onClick={() => setUsePersonalAccount(false)}
+                        className="py-2 px-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-[11px] shadow-xs transition cursor-pointer"
+                      >
+                        استخدام حساب المنصة المعتمد
+                      </button>
                     )}
-                  </button>
+                  </div>
                 </div>
               )}
 
@@ -720,7 +793,7 @@ const handleLogin = () => {
                     <span className="text-xs font-black text-slate-800">إعدادات محرك التصدير وجودة الملف المرفوع:</span>
                   </div>
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-900 border border-blue-200">
-                    {driveEngine} • {driveFormat.toUpperCase()} • {driveDpi} DPI
+                    {driveEngine} • {(driveFormat || 'png').toUpperCase()} • {driveDpi} DPI
                   </span>
                 </div>
 
@@ -861,7 +934,7 @@ const handleLogin = () => {
               </div>
 
               {/* Action Button */}
-              {user && (
+              {(isPlatformActive || user) && (
                 <button
                   type="button"
                   onClick={handleUploadToDrive}
@@ -871,17 +944,17 @@ const handleLogin = () => {
                   {isUploading ? (
                     <>
                       <Loader2 className="w-5 h-5 animate-spin" />
-                      <span>جاري التوليد بمحرك {driveEngine} بصيغة {driveFormat.toUpperCase()} ({driveDpi} DPI) والرفع لـ Google Drive...</span>
+                      <span>جاري التوليد بمحرك {driveEngine} بصيغة {(driveFormat || 'png').toUpperCase()} ({driveDpi} DPI) والرفع لـ Google Drive...</span>
                     </>
                   ) : uploadSuccess ? (
                     <>
                       <HardDrive className="w-5 h-5 shrink-0" />
-                      <span>إعادة الرفع وتحديث الشهادة على Drive ({driveFormat.toUpperCase()} • {driveDpi} DPI)</span>
+                      <span>إعادة الرفع وتحديث الشهادة على Drive ({(driveFormat || 'png').toUpperCase()} • {driveDpi} DPI)</span>
                     </>
                   ) : (
                     <>
                       <HardDrive className="w-5 h-5 shrink-0" />
-                      <span>حفظ ورفع الشهادة على Drive ({driveFormat.toUpperCase()} • {driveDpi} DPI)</span>
+                      <span>حفظ وتوثيق على Google Drive {isPlatformActive ? 'للمنظومة بنقرة واحدة' : ''} ({(driveFormat || 'png').toUpperCase()} • {driveDpi} DPI)</span>
                     </>
                   )}
                 </button>
