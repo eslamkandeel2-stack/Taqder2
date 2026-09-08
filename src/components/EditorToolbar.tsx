@@ -584,6 +584,9 @@ export const EditorToolbar: React.FC<Props> = ({
   const isWatermarkLocked = isElementLocked(systemConfig, 'watermark');
   const isVerificationBoxLocked = isElementLocked(systemConfig, 'verificationBox');
   const isAspectRatioLocked = isElementLocked(systemConfig, 'aspectRatio');
+  const isStudentNameLocked = isElementLocked(systemConfig, 'studentName');
+  const isAppreciationTextLocked = isElementLocked(systemConfig, 'appreciationText');
+  const isDateLocked = isElementLocked(systemConfig, 'date');
 
   const isSpellcheckEnabled = isFeatureEnabled(systemConfig, 'spellcheck');
   const isPraiseBankEnabled = isFeatureEnabled(systemConfig, 'praiseBank');
@@ -2263,13 +2266,24 @@ export const EditorToolbar: React.FC<Props> = ({
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">اسم الطالب / المكرّم</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-slate-700">اسم الطالب / المكرّم</label>
+                  {isStudentNameLocked && (
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-500 text-slate-950">
+                      <Lock className="w-2.5 h-2.5" />
+                      <span>مقفل</span>
+                    </span>
+                  )}
+                </div>
                 <input
                   type="text"
+                  disabled={isStudentNameLocked}
                   value={certificateData.studentName}
                   onChange={(e) => updateField('studentName', e.target.value)}
                   placeholder="مثال: عبد الله محمد الشمري"
-                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 font-bold text-slate-800"
+                  className={`w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 font-bold ${
+                    isStudentNameLocked ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : 'text-slate-800'
+                  }`}
                 />
                 <OffsetPad
                   title="اسم الطالب"
@@ -2521,9 +2535,17 @@ export const EditorToolbar: React.FC<Props> = ({
 
             <div>
               <div className="flex items-center justify-between mb-1.5 flex-wrap gap-1.5">
-                <label className="block text-xs font-bold text-slate-700">عبارة التقدير والشكر التفصيلية</label>
+                <div className="flex items-center gap-2">
+                  <label className="block text-xs font-bold text-slate-700">عبارة التقدير والشكر التفصيلية</label>
+                  {isAppreciationTextLocked && (
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-500 text-slate-950">
+                      <Lock className="w-2.5 h-2.5" />
+                      <span>مقفل</span>
+                    </span>
+                  )}
+                </div>
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  {isPraiseBankEnabled && onOpenAppreciationSuggestionsModal && (
+                  {!isAppreciationTextLocked && isPraiseBankEnabled && onOpenAppreciationSuggestionsModal && (
                     <button
                       type="button"
                       onClick={onOpenAppreciationSuggestionsModal}
@@ -2535,7 +2557,7 @@ export const EditorToolbar: React.FC<Props> = ({
                     </button>
                   )}
 
-                  {isSpellcheckEnabled && onOpenProofreaderModal && (
+                  {!isAppreciationTextLocked && isSpellcheckEnabled && onOpenProofreaderModal && (
                     <button
                       type="button"
                       onClick={onOpenProofreaderModal}
@@ -2555,7 +2577,7 @@ export const EditorToolbar: React.FC<Props> = ({
                     </button>
                   )}
 
-                  {isAiFeaturesEnabled && (
+                  {!isAppreciationTextLocked && isAiFeaturesEnabled && (
                     <button
                       type="button"
                       onClick={() => onOpenAiModal?.('improve', 'appreciation')}
@@ -2570,10 +2592,13 @@ export const EditorToolbar: React.FC<Props> = ({
               </div>
               <textarea
                 rows={3}
+                disabled={isAppreciationTextLocked}
                 value={certificateData.appreciationText}
                 onChange={(e) => updateField('appreciationText', e.target.value)}
                 placeholder="نص التكريم المشجع..."
-                className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 leading-relaxed"
+                className={`w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 leading-relaxed ${
+                  isAppreciationTextLocked ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : ''
+                }`}
               />
               <OffsetPad
                 title="نص التقدير والشكر"
@@ -2656,13 +2681,22 @@ export const EditorToolbar: React.FC<Props> = ({
                 {/* Date customization */}
                 <div className="space-y-2.5 bg-white p-2.5 rounded-xl border border-slate-200">
                   <div className="flex items-center justify-between">
-                    <label className="text-[11px] font-bold text-slate-800 flex items-center gap-1">
-                      <Calendar className="w-3.5 h-3.5 text-amber-600" />
-                      خيارات صيغة ونظام التاريخ
-                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <label className="text-[11px] font-bold text-slate-800 flex items-center gap-1">
+                        <Calendar className="w-3.5 h-3.5 text-amber-600" />
+                        خيارات صيغة ونظام التاريخ
+                      </label>
+                      {isDateLocked && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-500 text-slate-950">
+                          <Lock className="w-2.5 h-2.5" />
+                          <span>مقفل</span>
+                        </span>
+                      )}
+                    </div>
                     <label className="flex items-center gap-1 cursor-pointer text-[10px] font-bold text-slate-600">
                       <input
                         type="checkbox"
+                        disabled={isDateLocked}
                         checked={certificateData.showHeaderDate ?? true}
                         onChange={(e) => updateField('showHeaderDate', e.target.checked)}
                         className="accent-amber-500 rounded w-3.5 h-3.5"
@@ -2743,36 +2777,45 @@ export const EditorToolbar: React.FC<Props> = ({
                         <div className="flex gap-1.5">
                           <input
                             type="text"
+                            disabled={isDateLocked}
                             value={certificateData.dateLabel || 'التاريخ'}
                             onChange={(e) => updateField('dateLabel', e.target.value)}
                             placeholder="تسمية"
-                            className="w-20 px-2 py-1.5 text-xs border border-slate-300 rounded-lg bg-slate-50 font-bold text-slate-700"
+                            className={`w-20 px-2 py-1.5 text-xs border border-slate-300 rounded-lg bg-slate-50 font-bold text-slate-700 ${
+                              isDateLocked ? 'opacity-70 cursor-not-allowed' : ''
+                            }`}
                             title="تسمية الحقل (مثلاً: التاريخ)"
                           />
 
                           {certificateData.dateFormatMode === 'hijri' && (
                             <input
                               type="text"
+                              disabled={isDateLocked}
                               value={certificateData.issueDateHijri || getTodayHijriDate()}
                               onChange={(e) => {
                                 updateField('issueDateHijri', e.target.value);
                                 updateField('issueDate', e.target.value);
                               }}
                               placeholder="1447/02/25 هـ"
-                              className="flex-1 px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg bg-white font-medium"
+                              className={`flex-1 px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg bg-white font-medium ${
+                                isDateLocked ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : ''
+                              }`}
                             />
                           )}
 
                           {certificateData.dateFormatMode === 'gregorian' && (
                             <input
                               type="text"
+                              disabled={isDateLocked}
                               value={certificateData.issueDateGregorian || certificateData.issueDate || getTodayGregorianDate()}
                               onChange={(e) => {
                                 updateField('issueDateGregorian', e.target.value);
                                 updateField('issueDate', e.target.value);
                               }}
                               placeholder="2026/08/08 م"
-                              className="flex-1 px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg bg-white font-medium"
+                              className={`flex-1 px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg bg-white font-medium ${
+                                isDateLocked ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : ''
+                              }`}
                             />
                           )}
 
@@ -2782,20 +2825,26 @@ export const EditorToolbar: React.FC<Props> = ({
                                 <span className="text-[10px] font-bold text-slate-500 w-10">هجري:</span>
                                 <input
                                   type="text"
+                                  disabled={isDateLocked}
                                   value={certificateData.issueDateHijri || getTodayHijriDate()}
                                   onChange={(e) => updateField('issueDateHijri', e.target.value)}
                                   placeholder="1447/02/25 هـ"
-                                  className="flex-1 px-2 py-1 text-xs border border-slate-300 rounded-lg bg-white font-medium"
+                                  className={`flex-1 px-2 py-1 text-xs border border-slate-300 rounded-lg bg-white font-medium ${
+                                    isDateLocked ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : ''
+                                  }`}
                                 />
                               </div>
                               <div className="flex items-center gap-1">
                                 <span className="text-[10px] font-bold text-slate-500 w-10">ميلادي:</span>
                                 <input
                                   type="text"
+                                  disabled={isDateLocked}
                                   value={certificateData.issueDateGregorian || getTodayGregorianDate()}
                                   onChange={(e) => updateField('issueDateGregorian', e.target.value)}
                                   placeholder="2026/08/08 م"
-                                  className="flex-1 px-2 py-1 text-xs border border-slate-300 rounded-lg bg-white font-medium"
+                                  className={`flex-1 px-2 py-1 text-xs border border-slate-300 rounded-lg bg-white font-medium ${
+                                    isDateLocked ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : ''
+                                  }`}
                                 />
                               </div>
                             </div>

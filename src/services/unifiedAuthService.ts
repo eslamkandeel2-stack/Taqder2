@@ -20,6 +20,10 @@ export interface UnifiedAccount {
   emailSentAt?: string;
   createdAt?: string;
   updatedAt?: string;
+  features?: any;
+  defaultSettings?: any;
+  fieldLocks?: any;
+  notes?: string;
 }
 
 export function isUserAdmin(user: any): boolean {

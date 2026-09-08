@@ -2,10 +2,13 @@ import { UnifiedAccount } from './unifiedAuthService';
 import {
   UserFeatureFlags,
   UserDefaultSettings,
+  UserFieldLocks,
   DEFAULT_USER_FEATURE_FLAGS,
   ADMIN_FEATURE_FLAGS,
+  DEFAULT_USER_FIELD_LOCKS,
   saveAccountFeaturesLocally,
   saveAccountDefaultsLocally,
+  saveAccountFieldLocksLocally,
 } from './accountPermissionsService';
 
 export interface AdminUserRecord {
@@ -25,6 +28,7 @@ export interface AdminUserRecord {
   photoURL?: string;
   features?: UserFeatureFlags;
   defaultSettings?: UserDefaultSettings;
+  fieldLocks?: UserFieldLocks;
   notes?: string;
 }
 
@@ -80,6 +84,7 @@ export async function fetchAdminUsers(): Promise<{ users: AdminUserRecord[]; sta
             photoURL: u.photoURL,
             features: u.features || (role === 'admin' ? ADMIN_FEATURE_FLAGS : DEFAULT_USER_FEATURE_FLAGS),
             defaultSettings: u.defaultSettings || null,
+            fieldLocks: u.fieldLocks || null,
             notes: u.notes || '',
           };
         });
@@ -331,12 +336,16 @@ export async function adminUpdateAccount(params: {
   notes?: string;
   features?: Partial<UserFeatureFlags>;
   defaultSettings?: UserDefaultSettings;
+  fieldLocks?: UserFieldLocks;
 }): Promise<{ success: boolean; message: string; user?: any }> {
   if (params.features) {
     saveAccountFeaturesLocally(params.targetUserId, params.features as UserFeatureFlags);
   }
   if (params.defaultSettings) {
     saveAccountDefaultsLocally(params.targetUserId, params.defaultSettings);
+  }
+  if (params.fieldLocks) {
+    saveAccountFieldLocksLocally(params.targetUserId, params.fieldLocks);
   }
 
   const res = await fetch('/api/admin/users/update-account', {
@@ -347,6 +356,41 @@ export async function adminUpdateAccount(params: {
   const data = await res.json();
   if (!res.ok || !data.success) {
     throw new Error(data.error || 'فشل تحديث ملف الحساب');
+  }
+  return data;
+}
+
+export async function adminUpdateUserFieldLocks(params: {
+  targetUserId: string;
+  fieldLocks: UserFieldLocks;
+}): Promise<{ success: boolean; message: string; fieldLocks?: any }> {
+  saveAccountFieldLocksLocally(params.targetUserId, params.fieldLocks);
+
+  const res = await fetch('/api/admin/users/update-field-locks', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || 'فشل تحديث قفل الحقول على الخادم');
+  }
+  return data;
+}
+
+export async function adminBatchUpdateFieldLocks(params: {
+  userIds: string[];
+  lockKey: keyof UserFieldLocks;
+  lockValue: boolean;
+}): Promise<{ success: boolean; message: string; updatedCount: number }> {
+  const res = await fetch('/api/admin/users/batch-field-locks', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || 'فشل تطبيق التعديل الجماعي لقفل الحقول');
   }
   return data;
 }

@@ -38,6 +38,7 @@ import {
   getAccountKey
 } from './services/accountIsolationManager';
 import { syncFullAccountToCloud, restoreAccountFromCloud, subscribeToAccountCloudSync } from './services/cloudDatabaseService';
+import { applyAccountDefaultSettings } from './services/accountPermissionsService';
 import {
   sanitizeOklchInDoc,
   waitForImagesToLoad,
@@ -508,6 +509,9 @@ export default function App() {
       setHistoryIndex(0);
       if (e?.detail?.user !== undefined) {
         setCurrentUser(e?.detail?.user);
+        if (e?.detail?.user?.defaultSettings) {
+          applyAccountDefaultSettings(e.detail.user.defaultSettings);
+        }
       }
     };
 

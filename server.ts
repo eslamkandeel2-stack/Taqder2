@@ -1862,6 +1862,7 @@ interface UserAccountRecord {
   customData?: any;
   features?: any;
   defaultSettings?: any;
+  fieldLocks?: any;
   notes?: string;
 }
 
@@ -1879,6 +1880,14 @@ function getDefaultFeatureFlags(role: string = 'user') {
     canVerifyCertificates: true,
     canAccessVault: true,
     canCustomizeTemplates: true,
+    canUploadLogos: true,
+    canUseCustomFonts: true,
+    canDirectShare: true,
+    canPrintDirect: true,
+    canManageDrafts: true,
+    canUseProofreader: true,
+    canBatchDownloadZip: true,
+    canUsePraiseBank: true,
     isAccountActive: true,
     maxCertificatesQuota: 0,
   };
@@ -3285,6 +3294,7 @@ app.get("/api/admin/users", (req, res) => {
         photoURL: u.photoURL,
         features: u.features || getDefaultFeatureFlags(resolvedRole),
         defaultSettings: u.defaultSettings || null,
+        fieldLocks: u.fieldLocks || null,
         notes: u.notes || "",
       };
     });
@@ -3620,7 +3630,7 @@ app.post("/api/admin/users/update-defaults", (req, res) => {
 // 7d. Admin: Comprehensive User Profile, Roles, Features & Defaults Update
 app.post("/api/admin/users/update-account", (req, res) => {
   try {
-    const { targetUserId, displayName, email, role, notes, features, defaultSettings } = req.body;
+    const { targetUserId, displayName, email, role, notes, features, defaultSettings, fieldLocks } = req.body;
     if (!targetUserId) {
       return res.status(400).json({ success: false, error: "معرف المستخدم مطلوب" });
     }
@@ -3655,12 +3665,16 @@ app.post("/api/admin/users/update-account", (req, res) => {
       user.defaultSettings = defaultSettings;
     }
 
+    if (fieldLocks !== undefined) {
+      user.fieldLocks = fieldLocks;
+    }
+
     user.updatedAt = new Date().toISOString();
     saveAccountsDb(db);
 
     return res.json({
       success: true,
-      message: `تم تحديث ملف وإعدادات ومميزات حساب (${user.displayName}) بنجاح.`,
+      message: `تم تحديث ملف وإعدادات ومميزات وقفل حقول حساب (${user.displayName}) بنجاح.`,
       user: {
         userId: user.userId,
         username: user.username,
@@ -3669,6 +3683,7 @@ app.post("/api/admin/users/update-account", (req, res) => {
         role: user.role,
         features: user.features,
         defaultSettings: user.defaultSettings,
+        fieldLocks: user.fieldLocks,
         notes: user.notes,
         isVerified: user.isVerified,
       },
@@ -3679,7 +3694,70 @@ app.post("/api/admin/users/update-account", (req, res) => {
   }
 });
 
-// 7e. Admin: Batch Update Features for Multiple Users
+// 7e. Admin: Update User Field Locks
+app.post("/api/admin/users/update-field-locks", (req, res) => {
+  try {
+    const { targetUserId, fieldLocks } = req.body;
+    if (!targetUserId) {
+      return res.status(400).json({ success: false, error: "معرف المستخدم مطلوب" });
+    }
+
+    const db = loadAccountsDb();
+    const user = db.users.find((u) => u.userId === targetUserId);
+    if (!user) {
+      return res.status(404).json({ success: false, error: "المستخدم غير موجود" });
+    }
+
+    user.fieldLocks = fieldLocks || null;
+    user.updatedAt = new Date().toISOString();
+    saveAccountsDb(db);
+
+    return res.json({
+      success: true,
+      message: `تم تحديث وضبط قفل الحقول لحساب (${user.displayName}) بنجاح.`,
+      fieldLocks: user.fieldLocks,
+    });
+  } catch (err: any) {
+    console.error("Admin update field locks error:", err);
+    return res.status(500).json({ success: false, error: err.message || "فشل تحديث قفل الحقول" });
+  }
+});
+
+// 7f. Admin: Batch Update Field Locks for Multiple Users
+app.post("/api/admin/users/batch-field-locks", (req, res) => {
+  try {
+    const { userIds, lockKey, lockValue } = req.body;
+    if (!Array.isArray(userIds) || !lockKey) {
+      return res.status(400).json({ success: false, error: "قائمة المستخدمين ومفتاح القفل مطلوبة" });
+    }
+
+    const db = loadAccountsDb();
+    let updatedCount = 0;
+
+    for (const u of db.users) {
+      if (userIds.includes(u.userId)) {
+        if (!u.fieldLocks || typeof u.fieldLocks !== "object") {
+          u.fieldLocks = {};
+        }
+        u.fieldLocks[lockKey] = Boolean(lockValue);
+        u.updatedAt = new Date().toISOString();
+        updatedCount++;
+      }
+    }
+
+    saveAccountsDb(db);
+    return res.json({
+      success: true,
+      message: `تم تحديث قفل الحقل (${lockKey}) لـ ${updatedCount} مستخدم بنجاح.`,
+      updatedCount,
+    });
+  } catch (err: any) {
+    console.error("Batch update field locks error:", err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 7g. Admin: Batch Update Features for Multiple Users
 app.post("/api/admin/users/batch-features", (req, res) => {
   try {
     const { userIds, featureKey, featureValue } = req.body;

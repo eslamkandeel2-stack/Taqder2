@@ -33,10 +33,14 @@ import { AdminUserRecord, adminUpdateAccount, adminResetUserPassword } from '../
 import {
   UserFeatureFlags,
   UserDefaultSettings,
+  UserFieldLocks,
   DEFAULT_USER_FEATURE_FLAGS,
   ADMIN_FEATURE_FLAGS,
+  DEFAULT_USER_FIELD_LOCKS,
   SYSTEM_FEATURES_CATALOG,
-  FeatureDefinition
+  SYSTEM_FIELD_LOCKS_CATALOG,
+  FeatureDefinition,
+  FieldLockDefinition,
 } from '../../services/accountPermissionsService';
 import { getSavedDefaultSettings } from '../../utils/defaultSettings';
 
@@ -48,7 +52,7 @@ interface Props {
   onShowToast: (msg: string) => void;
 }
 
-type ModalTab = 'features' | 'defaults' | 'profile';
+type ModalTab = 'features' | 'fieldLocks' | 'defaults' | 'profile';
 
 export const AccountSettingsModal: React.FC<Props> = ({
   isOpen,
@@ -57,42 +61,62 @@ export const AccountSettingsModal: React.FC<Props> = ({
   onUserUpdated,
   onShowToast,
 }) => {
-  if (!isOpen || !user) return null;
-
-  const isPrimaryAdmin = user.userId === 'ADMIN-001';
+  const isPrimaryAdmin = user?.userId === 'ADMIN-001';
   const [activeTab, setActiveTab] = useState<ModalTab>('features');
 
   // Form State - Features
   const [features, setFeatures] = useState<UserFeatureFlags>(() => {
+    if (!user) return DEFAULT_USER_FEATURE_FLAGS;
     return {
       ...(user.role === 'admin' ? ADMIN_FEATURE_FLAGS : DEFAULT_USER_FEATURE_FLAGS),
       ...(user.features || {}),
     };
   });
 
+  // Form State - Field Locks
+  const [fieldLocks, setFieldLocks] = useState<UserFieldLocks>(() => {
+    return {
+      ...DEFAULT_USER_FIELD_LOCKS,
+      ...(user?.fieldLocks || {}),
+    };
+  });
+
+  // Category filter for Field Locks tab inside modal
+  const [fieldLockCategory, setFieldLockCategory] = useState<string>('all');
+
   // Form State - Default Settings
   const [defaults, setDefaults] = useState<UserDefaultSettings>(() => {
     return {
-      issuerTitle: user.defaultSettings?.issuerTitle || '',
-      signatureTitle1: user.defaultSettings?.signatureTitle1 || '',
-      signatureName1: user.defaultSettings?.signatureName1 || '',
-      signatureTitle2: user.defaultSettings?.signatureTitle2 || '',
-      signatureName2: user.defaultSettings?.signatureName2 || '',
-      defaultCertificateType: user.defaultSettings?.defaultCertificateType || 'شهادة شكر وتقدير',
-      defaultPaperSize: user.defaultSettings?.defaultPaperSize || 'a4',
-      defaultOrientation: user.defaultSettings?.defaultOrientation || 'landscape',
-      showQrCode: user.defaultSettings?.showQrCode !== undefined ? user.defaultSettings?.showQrCode : true,
-      showIssueDate: user.defaultSettings?.showIssueDate !== undefined ? user.defaultSettings?.showIssueDate : true,
-      defaultNotes: user.defaultSettings?.defaultNotes || '',
-      customThemeColor: user.defaultSettings?.customThemeColor || '',
+      issuerTitle: user?.defaultSettings?.issuerTitle || '',
+      signatureTitle1: user?.defaultSettings?.signatureTitle1 || '',
+      signatureName1: user?.defaultSettings?.signatureName1 || '',
+      signatureTitle2: user?.defaultSettings?.signatureTitle2 || '',
+      signatureName2: user?.defaultSettings?.signatureName2 || '',
+      defaultCertificateType: user?.defaultSettings?.defaultCertificateType || 'شهادة شكر وتقدير',
+      defaultPaperSize: user?.defaultSettings?.defaultPaperSize || 'a4',
+      defaultOrientation: user?.defaultSettings?.defaultOrientation || 'landscape',
+      showQrCode: user?.defaultSettings?.showQrCode !== undefined ? user.defaultSettings?.showQrCode : true,
+      showIssueDate: user?.defaultSettings?.showIssueDate !== undefined ? user.defaultSettings?.showIssueDate : true,
+      defaultNotes: user?.defaultSettings?.defaultNotes || '',
+      customThemeColor: user?.defaultSettings?.customThemeColor || '',
+      defaultHonorificTitle: user?.defaultSettings?.defaultHonorificTitle || '',
+      defaultAppreciationText: user?.defaultSettings?.defaultAppreciationText || '',
+      defaultTemplateId: user?.defaultSettings?.defaultTemplateId || '',
+      defaultLogoUrl: user?.defaultSettings?.defaultLogoUrl || '',
+      defaultStampUrl: user?.defaultSettings?.defaultStampUrl || '',
+      defaultWatermarkText: user?.defaultSettings?.defaultWatermarkText || '',
+      defaultFontFamily: user?.defaultSettings?.defaultFontFamily || '',
+      defaultHeaderLine1: user?.defaultSettings?.defaultHeaderLine1 || '',
+      defaultHeaderLine2: user?.defaultSettings?.defaultHeaderLine2 || '',
+      defaultHeaderLine3: user?.defaultSettings?.defaultHeaderLine3 || '',
     };
   });
 
   // Form State - Profile
-  const [displayName, setDisplayName] = useState(user.displayName || '');
-  const [email, setEmail] = useState(user.email || '');
-  const [role, setRole] = useState<'admin' | 'user'>(user.role || 'user');
-  const [notes, setNotes] = useState(user.notes || '');
+  const [displayName, setDisplayName] = useState(user?.displayName || '');
+  const [email, setEmail] = useState(user?.email || '');
+  const [role, setRole] = useState<'admin' | 'user'>(user?.role || 'user');
+  const [notes, setNotes] = useState(user?.notes || '');
 
   // Reset Password State
   const [showPasswordBox, setShowPasswordBox] = useState(false);
@@ -109,6 +133,10 @@ export const AccountSettingsModal: React.FC<Props> = ({
         ...(user.role === 'admin' ? ADMIN_FEATURE_FLAGS : DEFAULT_USER_FEATURE_FLAGS),
         ...(user.features || {}),
       });
+      setFieldLocks({
+        ...DEFAULT_USER_FIELD_LOCKS,
+        ...(user.fieldLocks || {}),
+      });
       setDefaults({
         issuerTitle: user.defaultSettings?.issuerTitle || '',
         signatureTitle1: user.defaultSettings?.signatureTitle1 || '',
@@ -122,6 +150,16 @@ export const AccountSettingsModal: React.FC<Props> = ({
         showIssueDate: user.defaultSettings?.showIssueDate !== undefined ? user.defaultSettings?.showIssueDate : true,
         defaultNotes: user.defaultSettings?.defaultNotes || '',
         customThemeColor: user.defaultSettings?.customThemeColor || '',
+        defaultHonorificTitle: user.defaultSettings?.defaultHonorificTitle || '',
+        defaultAppreciationText: user.defaultSettings?.defaultAppreciationText || '',
+        defaultTemplateId: user.defaultSettings?.defaultTemplateId || '',
+        defaultLogoUrl: user.defaultSettings?.defaultLogoUrl || '',
+        defaultStampUrl: user.defaultSettings?.defaultStampUrl || '',
+        defaultWatermarkText: user.defaultSettings?.defaultWatermarkText || '',
+        defaultFontFamily: user.defaultSettings?.defaultFontFamily || '',
+        defaultHeaderLine1: user.defaultSettings?.defaultHeaderLine1 || '',
+        defaultHeaderLine2: user.defaultSettings?.defaultHeaderLine2 || '',
+        defaultHeaderLine3: user.defaultSettings?.defaultHeaderLine3 || '',
       });
       setDisplayName(user.displayName || '');
       setEmail(user.email || '');
@@ -141,7 +179,31 @@ export const AccountSettingsModal: React.FC<Props> = ({
     }));
   };
 
-  // Quick Preset Handlers
+  // Toggle single field lock
+  const handleToggleFieldLock = (key: keyof UserFieldLocks) => {
+    setFieldLocks((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  };
+
+  // Lock all fields for this account
+  const handleLockAllFields = () => {
+    const lockedAll: UserFieldLocks = { ...DEFAULT_USER_FIELD_LOCKS };
+    SYSTEM_FIELD_LOCKS_CATALOG.forEach((f) => {
+      lockedAll[f.key] = true;
+    });
+    setFieldLocks(lockedAll);
+    onShowToast('تم قفل جميع الحقول لهذا الحساب 🔒');
+  };
+
+  // Unlock all fields for this account
+  const handleUnlockAllFields = () => {
+    setFieldLocks({ ...DEFAULT_USER_FIELD_LOCKS });
+    onShowToast('تم فتح وإتاحة جميع الحقول لهذا الحساب 🔓');
+  };
+
+  // Quick Preset Handlers for features
   const handleApplyPreset = (preset: 'vip' | 'standard' | 'viewer' | 'frozen') => {
     if (preset === 'vip') {
       setFeatures({
@@ -189,19 +251,30 @@ export const AccountSettingsModal: React.FC<Props> = ({
   // Import system general defaults
   const handleImportSystemDefaults = () => {
     const sysDefaults = getSavedDefaultSettings();
+    const isPortrait = sysDefaults.aspectRatio?.includes('portrait');
     setDefaults({
       issuerTitle: sysDefaults.schoolName || '',
       signatureTitle1: sysDefaults.principalTitle || '',
       signatureName1: sysDefaults.principalName || '',
-      signatureTitle2: sysDefaults.supervisorTitle || '',
-      signatureName2: sysDefaults.supervisorName || '',
-      defaultCertificateType: sysDefaults.certificateType || 'شهادة شكر وتقدير',
-      defaultPaperSize: (sysDefaults.paperSize as any) || 'a4',
-      defaultOrientation: (sysDefaults.orientation as any) || 'landscape',
-      showQrCode: sysDefaults.showQrCode !== undefined ? sysDefaults.showQrCode : true,
-      showIssueDate: sysDefaults.showIssueDate !== undefined ? sysDefaults.showIssueDate : true,
+      signatureTitle2: sysDefaults.teacherTitle || '',
+      signatureName2: sysDefaults.teacherName || '',
+      defaultCertificateType: sysDefaults.defaultTitle || 'شهادة شكر وتقدير',
+      defaultPaperSize: 'a4',
+      defaultOrientation: isPortrait ? 'portrait' : 'landscape',
+      showQrCode: sysDefaults.showVerificationQr !== undefined ? sysDefaults.showVerificationQr : true,
+      showIssueDate: sysDefaults.autoTodayDate !== undefined ? sysDefaults.autoTodayDate : true,
       defaultNotes: '',
-      customThemeColor: '',
+      customThemeColor: sysDefaults.primaryColor || '',
+      defaultHonorificTitle: sysDefaults.recipientIntroMale || '',
+      defaultAppreciationText: (sysDefaults as any).defaultAppreciationText || sysDefaults.defaultSubtitle || '',
+      defaultTemplateId: sysDefaults.layoutPreset || sysDefaults.frameStyle || '',
+      defaultLogoUrl: sysDefaults.logoUrl || '',
+      defaultStampUrl: sysDefaults.stampImageUrl || '',
+      defaultWatermarkText: sysDefaults.watermarkText || '',
+      defaultFontFamily: sysDefaults.fontFamily || '',
+      defaultHeaderLine1: sysDefaults.headerLine1 || '',
+      defaultHeaderLine2: sysDefaults.headerLine2 || '',
+      defaultHeaderLine3: sysDefaults.headerLine3 || '',
     });
     onShowToast('تم استيراد القيم الافتراضية العامة للنظام بنجاح 📥');
   };
@@ -218,6 +291,7 @@ export const AccountSettingsModal: React.FC<Props> = ({
         notes: notes.trim(),
         features,
         defaultSettings: defaults,
+        fieldLocks,
       });
 
       if (res.success && res.user) {
@@ -228,6 +302,7 @@ export const AccountSettingsModal: React.FC<Props> = ({
           role: res.user.role,
           features: res.user.features,
           defaultSettings: res.user.defaultSettings,
+          fieldLocks: res.user.fieldLocks || fieldLocks,
           notes: res.user.notes,
         };
         onUserUpdated(updatedRecord);
@@ -281,6 +356,10 @@ export const AccountSettingsModal: React.FC<Props> = ({
       default: return <Sliders className="w-4 h-4 text-slate-400" />;
     }
   };
+
+  if (!isOpen || !user) {
+    return null;
+  }
 
   return (
     <div
@@ -338,6 +417,19 @@ export const AccountSettingsModal: React.FC<Props> = ({
           >
             <Zap className="w-4 h-4" />
             <span>مميزات وصلاحيات النظام ({Object.values(features).filter((v) => v === true).length})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('fieldLocks')}
+            className={`pb-3 pt-2 px-3 text-xs sm:text-sm font-bold border-b-2 transition flex items-center gap-2 cursor-pointer whitespace-nowrap ${
+              activeTab === 'fieldLocks'
+                ? 'border-amber-400 text-amber-300'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Lock className="w-4 h-4" />
+            <span>قفل وتثبيت الحقول ({Object.values(fieldLocks).filter(Boolean).length})</span>
           </button>
 
           <button
@@ -480,6 +572,124 @@ export const AccountSettingsModal: React.FC<Props> = ({
             </div>
           )}
 
+          {/* TAB: FIELD LOCKS */}
+          {activeTab === 'fieldLocks' && (
+            <div className="space-y-4 animate-fade-in">
+              {/* Field Locks Header & Presets */}
+              <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3.5 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Lock className="w-4 h-4 text-amber-400" />
+                      <span className="text-xs font-bold text-white">قفل وتثبيت حقول التحرير في محرر الشهادات</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      الحقول المقفلة لن يتمكن هذا الحساب من تعديلها في محرر الشهادات، وستبقى ثابتة بالقيم الافتراضية المحددة له.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={handleLockAllFields}
+                      className="px-2.5 py-1 bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                    >
+                      <Lock className="w-3 h-3" />
+                      <span>قفل الكل</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleUnlockAllFields}
+                      className="px-2.5 py-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                    >
+                      <Unlock className="w-3 h-3" />
+                      <span>إتاحة الكل</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Category Pills */}
+                <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-slate-800/80">
+                  {[
+                    { id: 'all', label: 'الكل' },
+                    { id: 'identity', label: 'المنشأة والهوية' },
+                    { id: 'content', label: 'المحتوى والنصوص' },
+                    { id: 'signatures', label: 'التواقيع والأختام' },
+                    { id: 'appearance', label: 'المظهر والسمات' },
+                  ].map((cat) => (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => setFieldLockCategory(cat.id)}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
+                        fieldLockCategory === cat.id
+                          ? 'bg-amber-500 text-slate-950 shadow-sm'
+                          : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                      }`}
+                    >
+                      {cat.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Grid of Lockable Fields */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {SYSTEM_FIELD_LOCKS_CATALOG.filter((f) =>
+                  fieldLockCategory === 'all' ? true : f.category === fieldLockCategory
+                ).map((field) => {
+                  const isLocked = Boolean(fieldLocks[field.key]);
+
+                  return (
+                    <div
+                      key={field.key}
+                      onClick={() => handleToggleFieldLock(field.key)}
+                      className={`p-3 rounded-xl border transition-all cursor-pointer select-none flex items-center justify-between gap-3 ${
+                        isLocked
+                          ? 'bg-rose-950/20 border-rose-500/50 shadow-md shadow-rose-950/20'
+                          : 'bg-slate-950/50 border-slate-800 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-start gap-2.5 overflow-hidden">
+                        <div
+                          className={`p-2 rounded-lg flex-shrink-0 ${
+                            isLocked
+                              ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                              : 'bg-slate-900 text-slate-400 border border-slate-800'
+                          }`}
+                        >
+                          {isLocked ? <Lock className="w-4 h-4 text-rose-400" /> : <Unlock className="w-4 h-4 text-slate-400" />}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className={`text-xs font-bold truncate ${isLocked ? 'text-rose-200' : 'text-white'}`}>
+                              {field.title}
+                            </span>
+                            <span className="text-[10px] bg-slate-800 text-slate-400 px-1.5 py-0.2 rounded font-mono shrink-0">
+                              {field.badge}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-400 mt-1 leading-relaxed line-clamp-2">
+                            {field.description}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Switch */}
+                      <div
+                        className={`w-10 h-6 rounded-full p-1 transition-colors flex-shrink-0 flex items-center ${
+                          isLocked ? 'bg-rose-500 justify-end' : 'bg-slate-700 justify-start'
+                        }`}
+                      >
+                        <div className="w-4 h-4 rounded-full bg-white shadow-sm" />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* TAB 2: DEFAULT CERTIFICATE SETTINGS */}
           {activeTab === 'defaults' && (
             <div className="space-y-4 animate-fade-in">
@@ -509,6 +719,98 @@ export const AccountSettingsModal: React.FC<Props> = ({
                     value={defaults.issuerTitle || ''}
                     onChange={(e) => setDefaults((p) => ({ ...p, issuerTitle: e.target.value }))}
                     placeholder="مثال: ثانوية الأندلس النموذجية أو أكاديمية العلوم المتقدمة"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+
+                {/* Triple Official Header Lines */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                    <FileText className="w-3.5 h-3.5 text-amber-400" />
+                    <span>سطر الترويسة 1 (المملكة / الدولة):</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={defaults.defaultHeaderLine1 || ''}
+                    onChange={(e) => setDefaults((p) => ({ ...p, defaultHeaderLine1: e.target.value }))}
+                    placeholder="مثال: المملكة العربية السعودية"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                    <FileText className="w-3.5 h-3.5 text-amber-400" />
+                    <span>سطر الترويسة 2 (الوزارة / الهيئة):</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={defaults.defaultHeaderLine2 || ''}
+                    onChange={(e) => setDefaults((p) => ({ ...p, defaultHeaderLine2: e.target.value }))}
+                    placeholder="مثال: وزارة التعليم"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+
+                <div className="space-y-1.5 sm:col-span-2">
+                  <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                    <FileText className="w-3.5 h-3.5 text-amber-400" />
+                    <span>سطر الترويسة 3 (الإدارة / القطاع):</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={defaults.defaultHeaderLine3 || ''}
+                    onChange={(e) => setDefaults((p) => ({ ...p, defaultHeaderLine3: e.target.value }))}
+                    placeholder="مثال: الإدارة العامة للتعليم بمنطقة الرياض"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+
+                {/* Honorific Title & Appreciation Text */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                    <Award className="w-3.5 h-3.5 text-amber-400" />
+                    <span>اللقب التكريمي الافتراضي:</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={defaults.defaultHonorificTitle || ''}
+                    onChange={(e) => setDefaults((p) => ({ ...p, defaultHonorificTitle: e.target.value }))}
+                    placeholder="مثال: الطالب المتميز / المعلم الفاضل / المتدرب"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                    <Sliders className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>الخط الطباعي الافتراضي:</span>
+                  </label>
+                  <select
+                    value={defaults.defaultFontFamily || ''}
+                    onChange={(e) => setDefaults((p) => ({ ...p, defaultFontFamily: e.target.value }))}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-400 cursor-pointer"
+                  >
+                    <option value="">افتراضي المنظومة (خط تجوال / Amiri)</option>
+                    <option value="Amiri">Amiri (أميري أصيل)</option>
+                    <option value="Tajawal">Tajawal (تجوال حديث)</option>
+                    <option value="Cairo">Cairo (كايرو احترافي)</option>
+                    <option value="Almarai">Almarai (المراعي هادئ)</option>
+                    <option value="Changa">Changa (تشانغا مميز)</option>
+                    <option value="Reem Kufi">Reem Kufi (كوفي هندسي)</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1.5 sm:col-span-2">
+                  <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                    <span>صيغة الشكر والثناء الافتراضية المعتمدة:</span>
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={defaults.defaultAppreciationText || ''}
+                    onChange={(e) => setDefaults((p) => ({ ...p, defaultAppreciationText: e.target.value }))}
+                    placeholder="يسر إدارة المنشأة أن تتقدم بوافر الشكر والتقدير والاعتزاز نظير التميز والجهود المباركة..."
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-400"
                   />
                 </div>
@@ -667,6 +969,48 @@ export const AccountSettingsModal: React.FC<Props> = ({
                     placeholder="أي توجيهات أو رقم اعتماد أو نص يظهر في تذييل الشهادة..."
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-400"
                   />
+                </div>
+
+                {/* Default Media & Assets (Logo, Stamp, Watermark) */}
+                <div className="space-y-1.5 sm:col-span-2 pt-2 border-t border-slate-800/80">
+                  <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5 mb-2">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>الأصول والوسائط الافتراضية المعتمدة للحساب (اختياري):</span>
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[11px] text-slate-400">رابط الشعار المعتمد (Logo URL):</label>
+                      <input
+                        type="text"
+                        value={defaults.defaultLogoUrl || ''}
+                        onChange={(e) => setDefaults((p) => ({ ...p, defaultLogoUrl: e.target.value }))}
+                        placeholder="https://... أو data:image..."
+                        dir="ltr"
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-400 font-mono"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[11px] text-slate-400">رابط الختم الرقمي (Stamp URL):</label>
+                      <input
+                        type="text"
+                        value={defaults.defaultStampUrl || ''}
+                        onChange={(e) => setDefaults((p) => ({ ...p, defaultStampUrl: e.target.value }))}
+                        placeholder="https://... أو data:image..."
+                        dir="ltr"
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-400 font-mono"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[11px] text-slate-400">العلامة المائية الافتراضية (نص):</label>
+                      <input
+                        type="text"
+                        value={defaults.defaultWatermarkText || ''}
+                        onChange={(e) => setDefaults((p) => ({ ...p, defaultWatermarkText: e.target.value }))}
+                        placeholder="مثال: نسخة رسمية معتمدة"
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-400"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

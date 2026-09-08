@@ -153,8 +153,8 @@ export const AccountDefaultsTab: React.FC<Props> = ({
             const issuer = u.defaultSettings?.issuerTitle || sysDefaults.schoolName || '— (افتراضي النظام)';
             const sig1Title = u.defaultSettings?.signatureTitle1 || sysDefaults.principalTitle || 'مدير المدرسة';
             const sig1Name = u.defaultSettings?.signatureName1 || sysDefaults.principalName || '—';
-            const sig2Title = u.defaultSettings?.signatureTitle2 || sysDefaults.supervisorTitle;
-            const sig2Name = u.defaultSettings?.signatureName2 || sysDefaults.supervisorName;
+            const sig2Title = u.defaultSettings?.signatureTitle2 || sysDefaults.teacherTitle;
+            const sig2Name = u.defaultSettings?.signatureName2 || sysDefaults.teacherName;
             const certType = u.defaultSettings?.defaultCertificateType || 'شهادة شكر وتقدير';
             const paperSize = (u.defaultSettings?.defaultPaperSize || 'a4').toUpperCase();
             const orientation = u.defaultSettings?.defaultOrientation === 'portrait' ? 'رأسي' : 'أفقي';

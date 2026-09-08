@@ -87,6 +87,7 @@ import { DatabaseManager } from './admin/DatabaseManager';
 import { AccountSettingsModal } from './admin/AccountSettingsModal';
 import { FeaturePermissionsTab } from './admin/FeaturePermissionsTab';
 import { AccountDefaultsTab } from './admin/AccountDefaultsTab';
+import { FieldLocksTab } from './admin/FieldLocksTab';
 
 interface Props {
   currentUser?: UnifiedAccount | null;
@@ -97,7 +98,7 @@ interface Props {
   onUpdateSystemConfig: (newConfig: SystemSettingsConfig) => void;
 }
 
-type AdminTab = 'overview' | 'users' | 'permissions' | 'account-defaults' | 'settings' | 'security' | 'database';
+type AdminTab = 'overview' | 'users' | 'permissions' | 'field-locks' | 'account-defaults' | 'settings' | 'security' | 'database';
 
 export const AdminDashboard: React.FC<Props> = ({
   currentUser,
@@ -807,6 +808,19 @@ export const AdminDashboard: React.FC<Props> = ({
 
           <button
             type="button"
+            onClick={() => setActiveTab('field-locks')}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer whitespace-nowrap ${
+              activeTab === 'field-locks'
+                ? 'bg-amber-500 text-slate-950 font-black shadow-sm'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+            }`}
+          >
+            <Lock className="w-4 h-4" />
+            <span>قفل وتثبيت الحقول</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setActiveTab('account-defaults')}
             className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer whitespace-nowrap ${
               activeTab === 'account-defaults'
@@ -1331,6 +1345,23 @@ export const AdminDashboard: React.FC<Props> = ({
            ========================================== */}
         {activeTab === 'permissions' && (
           <FeaturePermissionsTab
+            users={users}
+            onUsersUpdated={(updated) => {
+              setUsers(updated);
+            }}
+            onSelectUserForEdit={(u) => {
+              setSelectedUserForModal(u);
+              setIsAccountModalOpen(true);
+            }}
+            onShowToast={(msg) => onShowToast?.(msg)}
+          />
+        )}
+
+        {/* ==========================================
+            TAB: FIELD LOCKS (قفل وتثبيت الحقول)
+           ========================================== */}
+        {activeTab === 'field-locks' && (
+          <FieldLocksTab
             users={users}
             onUsersUpdated={(updated) => {
               setUsers(updated);
@@ -2818,18 +2849,20 @@ export const AdminDashboard: React.FC<Props> = ({
       {/* ==========================================
           MODAL: ACCOUNT SETTINGS & FEATURE PERMISSIONS
          ========================================== */}
-      <AccountSettingsModal
-        isOpen={isAccountModalOpen}
-        onClose={() => {
-          setIsAccountModalOpen(false);
-          setSelectedUserForModal(null);
-        }}
-        user={selectedUserForModal}
-        onUserUpdated={(updatedUser) => {
-          setUsers((prev) => prev.map((u) => (u.userId === updatedUser.userId ? updatedUser : u)));
-        }}
-        onShowToast={(msg) => onShowToast?.(msg)}
-      />
+      {isAccountModalOpen && selectedUserForModal && (
+        <AccountSettingsModal
+          isOpen={isAccountModalOpen}
+          onClose={() => {
+            setIsAccountModalOpen(false);
+            setSelectedUserForModal(null);
+          }}
+          user={selectedUserForModal}
+          onUserUpdated={(updatedUser) => {
+            setUsers((prev) => prev.map((u) => (u.userId === updatedUser.userId ? updatedUser : u)));
+          }}
+          onShowToast={(msg) => onShowToast?.(msg)}
+        />
+      )}
     </div>
   );
 };

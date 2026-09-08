@@ -14,6 +14,9 @@ export interface SystemLockedElements {
   poemOrQuote: boolean;
   aspectRatio: boolean;
   title: boolean;
+  studentName?: boolean;
+  appreciationText?: boolean;
+  date?: boolean;
 }
 
 export interface SystemFeatureToggles {
@@ -177,6 +180,9 @@ export const DEFAULT_SYSTEM_CONFIG: SystemSettingsConfig = {
     poemOrQuote: false,
     aspectRatio: false,
     title: false,
+    studentName: false,
+    appreciationText: false,
+    date: false,
   }
 };
 
@@ -371,17 +377,74 @@ export function resetSystemConfig(): SystemSettingsConfig {
 
 /**
  * Checks if a specific element is locked (supports either (key, config) or (config, key))
+ * Automatically respects both system-wide locks and account-level field locks configured by the admin.
  */
 export function isElementLocked(
   arg1: keyof SystemLockedElements | SystemSettingsConfig,
   arg2?: keyof SystemLockedElements | SystemSettingsConfig
 ): boolean {
+  let elementKey: string = '';
+  let config: SystemSettingsConfig | null = null;
+
   if (typeof arg1 === 'string') {
-    const config = (typeof arg2 === 'object' && arg2 ? arg2 : getSavedSystemConfig()) as SystemSettingsConfig;
-    return !!config?.lockedElements?.[arg1 as keyof SystemLockedElements];
+    elementKey = arg1;
+    config = (typeof arg2 === 'object' && arg2 ? arg2 : getSavedSystemConfig()) as SystemSettingsConfig;
   } else if (typeof arg1 === 'object' && arg1 && typeof arg2 === 'string') {
-    return !!arg1?.lockedElements?.[arg2 as keyof SystemLockedElements];
+    elementKey = arg2;
+    config = arg1 as SystemSettingsConfig;
   }
+
+  // 1. Check system-wide locked elements
+  if (config?.lockedElements && (config.lockedElements as any)[elementKey]) {
+    return true;
+  }
+
+  // 2. Check active user account field locks (applies to non-admin accounts)
+  if (typeof window !== 'undefined' && elementKey) {
+    try {
+      const rawUser = localStorage.getItem('taqdeer_unified_active_user_v1');
+      if (rawUser) {
+        const activeUser = JSON.parse(rawUser);
+        const isAdmin =
+          activeUser.role === 'admin' ||
+          activeUser.username?.toLowerCase() === 'admin' ||
+          activeUser.userId === 'ADMIN-001';
+
+        if (!isAdmin) {
+          // Check cached locks or account fieldLocks
+          const cachedLocksRaw = localStorage.getItem(`taqdeer_user_field_locks_${activeUser.userId}`);
+          const fieldLocks =
+            (cachedLocksRaw ? JSON.parse(cachedLocksRaw) : null) ||
+            activeUser.fieldLocks ||
+            {};
+
+          const lockPropKey = `lock${elementKey.charAt(0).toUpperCase()}${elementKey.slice(1)}`;
+          if (fieldLocks[lockPropKey]) return true;
+
+          // Direct property check if passed as lockX
+          if (fieldLocks[elementKey]) return true;
+
+          // Element key aliases
+          if ((elementKey === 'verificationBox' || elementKey === 'qrVerification' || elementKey === 'qrCode') && fieldLocks.lockQrVerification) return true;
+          if ((elementKey === 'recipientName' || elementKey === 'studentName') && fieldLocks.lockStudentName) return true;
+          if ((elementKey === 'appreciationText' || elementKey === 'text') && fieldLocks.lockAppreciationText) return true;
+          if ((elementKey === 'date' || elementKey === 'issueDate') && fieldLocks.lockDate) return true;
+          if ((elementKey === 'schoolName' || elementKey === 'issuerTitle') && fieldLocks.lockSchoolName) return true;
+          if ((elementKey === 'officialHeader' || elementKey === 'headerLines') && fieldLocks.lockOfficialHeader) return true;
+          if ((elementKey === 'certificateTitle' || elementKey === 'title') && fieldLocks.lockCertificateTitle) return true;
+          if ((elementKey === 'signatures' || elementKey === 'signature') && fieldLocks.lockSignatures) return true;
+          if ((elementKey === 'stamp') && fieldLocks.lockStamp) return true;
+          if ((elementKey === 'watermark') && fieldLocks.lockWatermark) return true;
+          if ((elementKey === 'themeColor' || elementKey === 'color') && fieldLocks.lockThemeColor) return true;
+          if ((elementKey === 'fontFamily' || elementKey === 'font') && fieldLocks.lockFontFamily) return true;
+          if ((elementKey === 'background' || elementKey === 'frame' || elementKey === 'template') && fieldLocks.lockBackground) return true;
+        }
+      }
+    } catch (e) {
+      // ignore parsing errors
+    }
+  }
+
   return false;
 }
 
