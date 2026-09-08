@@ -48,10 +48,68 @@ export interface PlatformDriveSettings {
   autoPublicPermission: boolean;
   targetBarcodeType: 'drive' | 'portal';
   fallbackToLocalArchive?: boolean;
+  hideAccountDetailsInModal?: boolean; // إخفاء بيانات الحساب الرسمي عن نافذة التوثيق للمستخدمين
+  allowPersonalGoogleAccount?: boolean; // السماح للمستخدمين باستخدام حساب Google شخصي أو قصر التوثيق على حساب المنظومة فقط
   lastSyncAt?: string;
   lastTestStatus?: 'success' | 'error' | 'none';
   lastTestMessage?: string;
 }
+
+export type DatabaseProviderType = 'local' | 'firestore' | 'vercel-postgres' | 'custom-postgres';
+
+export interface SystemDatabaseSettings {
+  provider: DatabaseProviderType;
+  status: 'connected' | 'disconnected' | 'untested';
+  lastTestedAt?: string;
+  lastTestMessage?: string;
+  firestore?: {
+    projectId: string;
+    apiKey?: string;
+    authDomain?: string;
+    storageBucket?: string;
+    messagingSenderId?: string;
+    appId?: string;
+    collectionName?: string;
+  };
+  postgres?: {
+    connectionUrl?: string;
+    connectionString?: string;
+    host?: string;
+    port?: number;
+    database?: string;
+    user?: string;
+    password?: string;
+    ssl?: boolean;
+  };
+  autoSyncCertificates: boolean;
+  autoSyncAccounts: boolean;
+  autoSyncUsers?: boolean;
+}
+
+export const DEFAULT_DATABASE_SETTINGS: SystemDatabaseSettings = {
+  provider: 'local',
+  status: 'untested',
+  firestore: {
+    projectId: '',
+    apiKey: '',
+    authDomain: '',
+    storageBucket: '',
+    messagingSenderId: '',
+    appId: '',
+    collectionName: 'certificates',
+  },
+  postgres: {
+    connectionUrl: '',
+    host: '',
+    port: 5432,
+    database: '',
+    user: '',
+    password: '',
+    ssl: true,
+  },
+  autoSyncCertificates: true,
+  autoSyncAccounts: true,
+};
 
 export interface SystemSettingsConfig {
   version: string;
@@ -60,6 +118,7 @@ export interface SystemSettingsConfig {
   features: SystemFeatureToggles;
   lockedElements: SystemLockedElements;
   platformDrive?: PlatformDriveSettings;
+  database?: SystemDatabaseSettings;
 }
 
 export const DEFAULT_PLATFORM_DRIVE_CONFIG: PlatformDriveSettings = {
@@ -76,6 +135,8 @@ export const DEFAULT_PLATFORM_DRIVE_CONFIG: PlatformDriveSettings = {
   autoPublicPermission: true,
   targetBarcodeType: 'portal',
   fallbackToLocalArchive: true,
+  hideAccountDetailsInModal: false,
+  allowPersonalGoogleAccount: true,
   lastSyncAt: new Date().toISOString(),
   lastTestStatus: 'none',
 };
@@ -85,6 +146,7 @@ export const DEFAULT_SYSTEM_CONFIG: SystemSettingsConfig = {
   updatedAt: new Date().toISOString(),
   barcodeLinkTarget: 'portal',
   platformDrive: DEFAULT_PLATFORM_DRIVE_CONFIG,
+  database: DEFAULT_DATABASE_SETTINGS,
   features: {
     enableAutoArchive: true,
     enableAutoGenderInflection: true,
@@ -143,6 +205,10 @@ export function getSavedSystemConfig(): SystemSettingsConfig {
         platformDrive: {
           ...DEFAULT_PLATFORM_DRIVE_CONFIG,
           ...(parsed.platformDrive || {})
+        },
+        database: {
+          ...DEFAULT_DATABASE_SETTINGS,
+          ...(parsed.database || {})
         }
       };
     }
@@ -158,6 +224,14 @@ export function getSavedSystemConfig(): SystemSettingsConfig {
 export function getPlatformDriveSettings(): PlatformDriveSettings {
   const config = getSavedSystemConfig();
   return config.platformDrive || DEFAULT_PLATFORM_DRIVE_CONFIG;
+}
+
+/**
+ * Gets the current system database settings
+ */
+export function getDatabaseSettings(): SystemDatabaseSettings {
+  const config = getSavedSystemConfig();
+  return config.database || DEFAULT_DATABASE_SETTINGS;
 }
 
 /**

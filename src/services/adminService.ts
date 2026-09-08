@@ -1,4 +1,12 @@
 import { UnifiedAccount } from './unifiedAuthService';
+import {
+  UserFeatureFlags,
+  UserDefaultSettings,
+  DEFAULT_USER_FEATURE_FLAGS,
+  ADMIN_FEATURE_FLAGS,
+  saveAccountFeaturesLocally,
+  saveAccountDefaultsLocally,
+} from './accountPermissionsService';
 
 export interface AdminUserRecord {
   userId: string;
@@ -15,6 +23,9 @@ export interface AdminUserRecord {
   googleEmail?: string;
   hasPassword?: boolean;
   photoURL?: string;
+  features?: UserFeatureFlags;
+  defaultSettings?: UserDefaultSettings;
+  notes?: string;
 }
 
 export interface AdminStats {
@@ -52,20 +63,26 @@ export async function fetchAdminUsers(): Promise<{ users: AdminUserRecord[]; sta
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed.users)) {
-        users = parsed.users.map((u: any) => ({
-          userId: u.userId,
-          username: u.username || '',
-          email: u.email || '',
-          displayName: u.displayName || u.username || 'مستخدم',
-          role: u.role || (u.username?.toLowerCase() === 'admin' || u.userId === 'ADMIN-001' ? 'admin' : 'user'),
-          isVerified: !!u.isVerified,
-          verifiedAt: u.verifiedAt,
-          createdAt: u.createdAt,
-          updatedAt: u.updatedAt,
-          lastLoginAt: u.lastLoginAt,
-          hasPassword: !!u.passwordHash,
-          photoURL: u.photoURL,
-        }));
+        users = parsed.users.map((u: any) => {
+          const role = u.role || (u.username?.toLowerCase() === 'admin' || u.userId === 'ADMIN-001' ? 'admin' : 'user');
+          return {
+            userId: u.userId,
+            username: u.username || '',
+            email: u.email || '',
+            displayName: u.displayName || u.username || 'مستخدم',
+            role,
+            isVerified: !!u.isVerified,
+            verifiedAt: u.verifiedAt,
+            createdAt: u.createdAt,
+            updatedAt: u.updatedAt,
+            lastLoginAt: u.lastLoginAt,
+            hasPassword: !!u.passwordHash,
+            photoURL: u.photoURL,
+            features: u.features || (role === 'admin' ? ADMIN_FEATURE_FLAGS : DEFAULT_USER_FEATURE_FLAGS),
+            defaultSettings: u.defaultSettings || null,
+            notes: u.notes || '',
+          };
+        });
       }
     }
   } catch (e) {
@@ -83,6 +100,8 @@ export async function fetchAdminUsers(): Promise<{ users: AdminUserRecord[]; sta
       isVerified: true,
       createdAt: new Date().toISOString(),
       hasPassword: true,
+      features: ADMIN_FEATURE_FLAGS,
+      notes: 'الحساب الإداري الرئيسي للمنظومة',
     });
   }
 
@@ -234,6 +253,121 @@ export async function adminDeleteUser(params: {
   return data;
 }
 
+export async function adminUpdateUserFeatures(params: {
+  targetUserId: string;
+  features: Partial<UserFeatureFlags>;
+}): Promise<{ success: boolean; message: string; features?: UserFeatureFlags }> {
+  // Sync locally as well
+  saveAccountFeaturesLocally(params.targetUserId, params.features as UserFeatureFlags);
+  try {
+    const raw = localStorage.getItem(LOCAL_ACCOUNTS_DB_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed.users)) {
+        const u = parsed.users.find((user: any) => user.userId === params.targetUserId);
+        if (u) {
+          u.features = { ...(u.features || DEFAULT_USER_FEATURE_FLAGS), ...params.features };
+          u.updatedAt = new Date().toISOString();
+          localStorage.setItem(LOCAL_ACCOUNTS_DB_KEY, JSON.stringify(parsed));
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('Local accounts db features update note:', e);
+  }
+
+  const res = await fetch('/api/admin/users/update-features', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || 'فشل تحديث مميزات الحساب على الخادم');
+  }
+  return data;
+}
+
+export async function adminUpdateUserDefaults(params: {
+  targetUserId: string;
+  defaultSettings: UserDefaultSettings;
+}): Promise<{ success: boolean; message: string; defaultSettings?: UserDefaultSettings }> {
+  // Sync locally
+  saveAccountDefaultsLocally(params.targetUserId, params.defaultSettings);
+  try {
+    const raw = localStorage.getItem(LOCAL_ACCOUNTS_DB_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed.users)) {
+        const u = parsed.users.find((user: any) => user.userId === params.targetUserId);
+        if (u) {
+          u.defaultSettings = params.defaultSettings;
+          u.updatedAt = new Date().toISOString();
+          localStorage.setItem(LOCAL_ACCOUNTS_DB_KEY, JSON.stringify(parsed));
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('Local accounts db defaults update note:', e);
+  }
+
+  const res = await fetch('/api/admin/users/update-defaults', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || 'فشل تحديث الإعدادات الافتراضية للحساب على الخادم');
+  }
+  return data;
+}
+
+export async function adminUpdateAccount(params: {
+  targetUserId: string;
+  displayName?: string;
+  email?: string;
+  role?: 'admin' | 'user';
+  notes?: string;
+  features?: Partial<UserFeatureFlags>;
+  defaultSettings?: UserDefaultSettings;
+}): Promise<{ success: boolean; message: string; user?: any }> {
+  if (params.features) {
+    saveAccountFeaturesLocally(params.targetUserId, params.features as UserFeatureFlags);
+  }
+  if (params.defaultSettings) {
+    saveAccountDefaultsLocally(params.targetUserId, params.defaultSettings);
+  }
+
+  const res = await fetch('/api/admin/users/update-account', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || 'فشل تحديث ملف الحساب');
+  }
+  return data;
+}
+
+export async function adminBatchUpdateFeatures(params: {
+  userIds: string[];
+  featureKey: keyof UserFeatureFlags;
+  featureValue: boolean;
+}): Promise<{ success: boolean; message: string; updatedCount: number }> {
+  const res = await fetch('/api/admin/users/batch-features', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || 'فشل تطبيق التعديل الجماعي للميزات');
+  }
+  return data;
+}
+
 export async function fetchServerSystemConfig(): Promise<any> {
   try {
     const res = await fetch('/api/admin/system-config');
@@ -321,3 +455,206 @@ export async function testServerDriveConnection(params?: any): Promise<{
     folderUrl: data.folderUrl || (data.folderId ? `https://drive.google.com/drive/folders/${data.folderId}` : undefined),
   };
 }
+
+export async function fetchServerDatabaseConfig(): Promise<any> {
+  try {
+    const res = await fetch('/api/admin/database/config');
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && data.config) {
+        return data.config;
+      }
+    }
+  } catch (e) {
+    console.warn('Note: server database config fetch fallback:', e);
+  }
+  return null;
+}
+
+export async function saveServerDatabaseConfig(payload: any): Promise<{ success: boolean; message: string; config?: any }> {
+  const res = await fetch('/api/admin/database/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || 'فشل حفظ إعدادات قاعدة البيانات على الخادم');
+  }
+  return data;
+}
+
+export async function testServerDatabaseConnection(payload: any): Promise<{
+  success: boolean;
+  connected: boolean;
+  message: string;
+  provider: string;
+  latencyMs?: number;
+  diagnostics?: any;
+  recommendations?: string[];
+}> {
+  const res = await fetch('/api/admin/database/test', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || data.message || 'فشل فحص اتصال قاعدة البيانات');
+  }
+  return {
+    ...data,
+    connected: data.connected ?? data.success ?? true,
+    message: data.message || 'تم الاتصال بقاعدة البيانات بنجاح',
+    provider: data.provider || payload.provider || 'local',
+  };
+}
+
+export interface DatabaseStatsOverview {
+  provider: string;
+  status: string;
+  lastTestedAt?: string;
+  environment?: string;
+  dataDirectory?: string;
+  stats: {
+    accounts: {
+      totalUsers: number;
+      adminsCount: number;
+      verifiedCount: number;
+      size: string;
+      bytes: number;
+    };
+    cloudSync: {
+      userBundlesCount: number;
+      totalSyncedCertificates: number;
+      size: string;
+      bytes: number;
+    };
+    driveStorage: {
+      filesCount: number;
+      size: string;
+      bytes: number;
+    };
+    backups: {
+      count: number;
+      latestBackupDate?: string;
+      size: string;
+      bytes: number;
+    };
+    totalDatabaseSizeBytes: number;
+    totalDatabaseSize: string;
+  };
+  files: Array<{
+    name: string;
+    bytes: number;
+    size: string;
+    lastModified: string;
+    type: string;
+  }>;
+}
+
+export interface DatabaseBackupRecord {
+  filename: string;
+  createdAt: string;
+  fileSizeBytes: number;
+  fileSize: string;
+  downloadUrl: string;
+  stats?: {
+    accountsCount?: number;
+    adminsCount?: number;
+    cloudSyncBundlesCount?: number;
+    driveArchivesCount?: number;
+  };
+}
+
+export async function fetchDatabaseOverview(): Promise<DatabaseStatsOverview | null> {
+  try {
+    const res = await fetch('/api/admin/database/overview');
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && data.overview) {
+        return data.overview;
+      }
+    }
+  } catch (e) {
+    console.warn('fetchDatabaseOverview note:', e);
+  }
+  return null;
+}
+
+export async function fetchDatabaseRecords(
+  collection: 'accounts' | 'cloud_sync' | 'drive_storage' | 'system_configs' | 'backups',
+  query = '',
+  limit = 100
+): Promise<{ success: boolean; collection: string; total: number; records: any[] }> {
+  const url = `/api/admin/database/records?collection=${encodeURIComponent(collection)}&query=${encodeURIComponent(query)}&limit=${limit}`;
+  const res = await fetch(url);
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || 'فشل تحميل بيانات السجلات');
+  }
+  return data;
+}
+
+export async function createDatabaseBackup(): Promise<{
+  success: boolean;
+  message: string;
+  filename: string;
+  fileSize: string;
+  createdAt: string;
+  stats: any;
+  backup: any;
+}> {
+  const res = await fetch('/api/admin/database/backup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || 'فشل إنشاء النسخة الاحتياطية');
+  }
+  return data;
+}
+
+export async function fetchDatabaseBackupsList(): Promise<DatabaseBackupRecord[]> {
+  try {
+    const res = await fetch('/api/admin/database/backups');
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && Array.isArray(data.backups)) {
+        return data.backups;
+      }
+    }
+  } catch (e) {
+    console.warn('fetchDatabaseBackupsList note:', e);
+  }
+  return [];
+}
+
+export async function restoreDatabaseBackup(params: {
+  filename?: string;
+  backupPayload?: any;
+}): Promise<{ success: boolean; message: string; restoredStats?: any }> {
+  const res = await fetch('/api/admin/database/restore', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || 'فشل استعادة النسخة الاحتياطية');
+  }
+  return data;
+}
+
+export async function deleteDatabaseBackup(filename: string): Promise<{ success: boolean; message: string }> {
+  const res = await fetch(`/api/admin/database/backups/${encodeURIComponent(filename)}`, {
+    method: 'DELETE',
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || 'فشل حذف ملف النسخة الاحتياطية');
+  }
+  return data;
+}
+

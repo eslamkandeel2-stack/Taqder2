@@ -305,7 +305,7 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
     if (!token && !isPlatformActive) {
       try {
         onShowToast('جاري تسجيل الدخول بحساب Google Drive...');
-        const res = await googleSignIn();
+        const res = await googleSignIn({ isExplicitPrimaryLogin: false });
         setDriveUser(res.user);
         setDriveToken(res.accessToken);
         token = res.accessToken;
@@ -1496,8 +1496,14 @@ export const BatchCertificateViewerModal: React.FC<Props> = ({
                         <HardDrive className="w-4 h-4" />
                       </div>
                       <div className="min-w-0 text-right">
-                        <span className="block text-[11px] font-black text-emerald-300">حساب المنظومة الافتراضي مفعل ✅</span>
-                        <span className="block text-[10px] text-slate-300 dir-ltr text-right truncate">{pDrive.accountEmail || 'eslam.kandeel2@gmail.com'}</span>
+                        <span className="block text-[11px] font-black text-emerald-300">
+                          {pDrive.hideAccountDetailsInModal ? 'سحابة التوثيق السحابية المعتمدة للمنظومة ✅' : 'حساب المنظومة الافتراضي مفعل ✅'}
+                        </span>
+                        {!pDrive.hideAccountDetailsInModal ? (
+                          <span className="block text-[10px] text-slate-300 dir-ltr text-right truncate">{pDrive.accountEmail || 'eslam.kandeel2@gmail.com'}</span>
+                        ) : (
+                          <span className="block text-[10px] text-emerald-400">توثيق وحفظ آلي ومباشر لجميع شهادات الدفعة</span>
+                        )}
                       </div>
                     </div>
                     <span className="text-[10px] bg-emerald-500/20 text-emerald-300 font-bold px-2 py-0.5 rounded-md border border-emerald-500/30 whitespace-nowrap">

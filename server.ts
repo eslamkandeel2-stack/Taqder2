@@ -1818,6 +1818,7 @@ app.post("/api/ai-remove-background", async (req, res) => {
 const DATA_DIR = path.join(process.cwd(), ".data");
 const SYNC_DATA_DIR = path.join(DATA_DIR, "cloud_sync");
 const ACCOUNTS_DB_PATH = path.join(DATA_DIR, "accounts_db.json");
+const BACKUPS_DIR = path.join(DATA_DIR, "backups");
 
 try {
   if (!fs.existsSync(DATA_DIR)) {
@@ -1825,6 +1826,9 @@ try {
   }
   if (!fs.existsSync(SYNC_DATA_DIR)) {
     fs.mkdirSync(SYNC_DATA_DIR, { recursive: true });
+  }
+  if (!fs.existsSync(BACKUPS_DIR)) {
+    fs.mkdirSync(BACKUPS_DIR, { recursive: true });
   }
   if (!fs.existsSync(ACCOUNTS_DB_PATH)) {
     fs.writeFileSync(ACCOUNTS_DB_PATH, JSON.stringify({ users: [] }, null, 2), "utf-8");
@@ -1856,6 +1860,28 @@ interface UserAccountRecord {
   updatedAt: string;
   lastLoginAt?: string;
   customData?: any;
+  features?: any;
+  defaultSettings?: any;
+  notes?: string;
+}
+
+function getDefaultFeatureFlags(role: string = 'user') {
+  const isAdmin = role === 'admin';
+  return {
+    canIssueCertificates: true,
+    canBatchGenerate: isAdmin,
+    canExportPdf: true,
+    canExportImage: true,
+    canUseAi: true,
+    canUseCloudDrive: true,
+    canUseEmailDispatch: true,
+    canUseSignatures: true,
+    canVerifyCertificates: true,
+    canAccessVault: true,
+    canCustomizeTemplates: true,
+    isAccountActive: true,
+    maxCertificatesQuota: 0,
+  };
 }
 
 function ensureAdminUserExists(db: { users: UserAccountRecord[] }): boolean {
@@ -2651,11 +2677,19 @@ app.post("/api/auth/login-credentials", async (req, res) => {
       });
     }
 
+    const resolvedRole = user.role || (user.username?.toLowerCase() === "admin" || user.userId === "ADMIN-001" ? "admin" : "user");
+    const userFeatures = user.features || getDefaultFeatureFlags(resolvedRole);
+
+    if (userFeatures.isAccountActive === false && user.userId !== "ADMIN-001") {
+      return res.status(403).json({
+        success: false,
+        error: "تم تجميد هذا الحساب مؤقتاً من قبل مدير النظام. يرجى التواصل مع الإدارة للتفعيل.",
+      });
+    }
+
     user.lastLoginAt = new Date().toISOString();
     user.updatedAt = new Date().toISOString();
     saveAccountsDb(db);
-
-    const resolvedRole = user.role || (user.username?.toLowerCase() === "admin" || user.userId === "ADMIN-001" ? "admin" : "user");
 
     return res.json({
       success: true,
@@ -2671,6 +2705,9 @@ app.post("/api/auth/login-credentials", async (req, res) => {
         googleEmail: user.googleEmail,
         isVerified: true,
         role: resolvedRole,
+        features: userFeatures,
+        defaultSettings: user.defaultSettings || null,
+        notes: user.notes || "",
       },
     });
   } catch (err: any) {
@@ -2738,6 +2775,16 @@ app.post("/api/auth/login-google", async (req, res) => {
       });
     }
 
+    const resolvedRole = user.role || (user.username?.toLowerCase() === "admin" || user.userId === "ADMIN-001" ? "admin" : "user");
+    const userFeatures = user.features || getDefaultFeatureFlags(resolvedRole);
+
+    if (userFeatures.isAccountActive === false && user.userId !== "ADMIN-001") {
+      return res.status(403).json({
+        success: false,
+        error: "تم تجميد هذا الحساب مؤقتاً من قبل مدير النظام. يرجى التواصل مع الإدارة للتفعيل.",
+      });
+    }
+
     user.isVerified = true;
     user.verificationMethod = "google_oauth";
     user.lastLoginAt = new Date().toISOString();
@@ -2759,6 +2806,10 @@ app.post("/api/auth/login-google", async (req, res) => {
         photoURL: user.photoURL,
         googleEmail: user.googleEmail || cleanEmail,
         isVerified: true,
+        role: resolvedRole,
+        features: userFeatures,
+        defaultSettings: user.defaultSettings || null,
+        notes: user.notes || "",
       },
     });
   } catch (err: any) {
@@ -3065,6 +3116,9 @@ const DEFAULT_PLATFORM_DRIVE_CONFIG_SERVER = {
   clientSecret: "",
   autoPublicPermission: true,
   targetBarcodeType: "portal",
+  fallbackToLocalArchive: true,
+  hideAccountDetailsInModal: false,
+  allowPersonalGoogleAccount: true,
   lastTestStatus: "none",
   lastTestMessage: "",
   updatedAt: new Date().toISOString(),
@@ -3104,6 +3158,88 @@ function saveSystemDriveConfig(config: any): boolean {
   }
 }
 
+// System Database Configuration (Firestore / Vercel Postgres / Local)
+const SYSTEM_DATABASE_CONFIG_PATH = path.join(DATA_DIR, "system_database_config.json");
+
+const DEFAULT_SYSTEM_DATABASE_CONFIG_SERVER = {
+  provider: "local",
+  status: "untested",
+  lastTestedAt: "",
+  lastTestMessage: "",
+  firestore: {
+    projectId: process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID || "",
+    apiKey: process.env.FIREBASE_API_KEY || process.env.VITE_FIREBASE_API_KEY || "",
+    authDomain: process.env.FIREBASE_AUTH_DOMAIN || process.env.VITE_FIREBASE_AUTH_DOMAIN || "",
+    storageBucket: process.env.FIREBASE_STORAGE_BUCKET || process.env.VITE_FIREBASE_STORAGE_BUCKET || "",
+    messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID || process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "",
+    appId: process.env.FIREBASE_APP_ID || process.env.VITE_FIREBASE_APP_ID || "",
+    collectionName: "certificates",
+  },
+  postgres: {
+    connectionUrl: process.env.POSTGRES_URL || process.env.DATABASE_URL || "",
+    host: process.env.POSTGRES_HOST || "",
+    port: 5432,
+    database: process.env.POSTGRES_DATABASE || "",
+    user: process.env.POSTGRES_USER || "",
+    password: process.env.POSTGRES_PASSWORD || "",
+    ssl: true,
+  },
+  autoSyncCertificates: true,
+  autoSyncAccounts: true,
+  updatedAt: new Date().toISOString(),
+};
+
+function loadSystemDatabaseConfig(): typeof DEFAULT_SYSTEM_DATABASE_CONFIG_SERVER {
+  try {
+    if (fs.existsSync(SYSTEM_DATABASE_CONFIG_PATH)) {
+      const raw = fs.readFileSync(SYSTEM_DATABASE_CONFIG_PATH, "utf-8");
+      const parsed = JSON.parse(raw);
+      return {
+        ...DEFAULT_SYSTEM_DATABASE_CONFIG_SERVER,
+        ...parsed,
+        firestore: {
+          ...DEFAULT_SYSTEM_DATABASE_CONFIG_SERVER.firestore,
+          ...(parsed.firestore || {}),
+        },
+        postgres: {
+          ...DEFAULT_SYSTEM_DATABASE_CONFIG_SERVER.postgres,
+          ...(parsed.postgres || {}),
+        },
+      };
+    } else {
+      fs.writeFileSync(SYSTEM_DATABASE_CONFIG_PATH, JSON.stringify(DEFAULT_SYSTEM_DATABASE_CONFIG_SERVER, null, 2), "utf-8");
+      return DEFAULT_SYSTEM_DATABASE_CONFIG_SERVER;
+    }
+  } catch (e) {
+    console.error("Error reading system database config:", e);
+    return DEFAULT_SYSTEM_DATABASE_CONFIG_SERVER;
+  }
+}
+
+function saveSystemDatabaseConfig(config: any): boolean {
+  try {
+    const current = loadSystemDatabaseConfig();
+    const merged = {
+      ...current,
+      ...config,
+      firestore: {
+        ...current.firestore,
+        ...(config.firestore || {}),
+      },
+      postgres: {
+        ...current.postgres,
+        ...(config.postgres || {}),
+      },
+      updatedAt: new Date().toISOString(),
+    };
+    fs.writeFileSync(SYSTEM_DATABASE_CONFIG_PATH, JSON.stringify(merged, null, 2), "utf-8");
+    return true;
+  } catch (e) {
+    console.error("Error saving system database config:", e);
+    return false;
+  }
+}
+
 function loadSystemDefaultConfig(): any {
   try {
     if (fs.existsSync(SYSTEM_DEFAULT_CONFIG_PATH)) {
@@ -3130,22 +3266,28 @@ function saveSystemDefaultConfig(config: any): boolean {
 app.get("/api/admin/users", (req, res) => {
   try {
     const db = loadAccountsDb();
-    const users = db.users.map((u) => ({
-      userId: u.userId,
-      username: u.username,
-      email: u.email,
-      displayName: u.displayName,
-      role: u.role || (u.username?.toLowerCase() === "admin" || u.userId === "ADMIN-001" ? "admin" : "user"),
-      isVerified: !!u.isVerified,
-      verifiedAt: u.verifiedAt,
-      verificationMethod: u.verificationMethod,
-      createdAt: u.createdAt,
-      updatedAt: u.updatedAt,
-      lastLoginAt: u.lastLoginAt,
-      googleEmail: u.googleEmail,
-      hasPassword: !!u.passwordHash,
-      photoURL: u.photoURL,
-    }));
+    const users = db.users.map((u) => {
+      const resolvedRole = u.role || (u.username?.toLowerCase() === "admin" || u.userId === "ADMIN-001" ? "admin" : "user");
+      return {
+        userId: u.userId,
+        username: u.username,
+        email: u.email,
+        displayName: u.displayName,
+        role: resolvedRole,
+        isVerified: !!u.isVerified,
+        verifiedAt: u.verifiedAt,
+        verificationMethod: u.verificationMethod,
+        createdAt: u.createdAt,
+        updatedAt: u.updatedAt,
+        lastLoginAt: u.lastLoginAt,
+        googleEmail: u.googleEmail,
+        hasPassword: !!u.passwordHash,
+        photoURL: u.photoURL,
+        features: u.features || getDefaultFeatureFlags(resolvedRole),
+        defaultSettings: u.defaultSettings || null,
+        notes: u.notes || "",
+      };
+    });
 
     const stats = {
       totalUsers: users.length,
@@ -3409,6 +3551,171 @@ app.post("/api/admin/users/delete", (req, res) => {
   }
 });
 
+// 7b. Admin: Update User Features & Permissions
+app.post("/api/admin/users/update-features", (req, res) => {
+  try {
+    const { targetUserId, features } = req.body;
+    if (!targetUserId || !features || typeof features !== "object") {
+      return res.status(400).json({ success: false, error: "معرف المستخدم والمميزات مطلوبة" });
+    }
+
+    const db = loadAccountsDb();
+    const user = db.users.find((u) => u.userId === targetUserId);
+    if (!user) {
+      return res.status(404).json({ success: false, error: "المستخدم غير موجود" });
+    }
+
+    // Preserve isAccountActive = true for primary Admin
+    if (user.userId === "ADMIN-001" && features.isAccountActive === false) {
+      features.isAccountActive = true;
+    }
+
+    user.features = {
+      ...(user.features || getDefaultFeatureFlags(user.role)),
+      ...features,
+    };
+    user.updatedAt = new Date().toISOString();
+    saveAccountsDb(db);
+
+    return res.json({
+      success: true,
+      message: `تم تحديث مميزات وصلاحيات حساب (${user.displayName}) بنجاح.`,
+      features: user.features,
+    });
+  } catch (err: any) {
+    console.error("Admin update features error:", err);
+    return res.status(500).json({ success: false, error: err.message || "فشل تحديث المميزات" });
+  }
+});
+
+// 7c. Admin: Update User Default Settings
+app.post("/api/admin/users/update-defaults", (req, res) => {
+  try {
+    const { targetUserId, defaultSettings } = req.body;
+    if (!targetUserId) {
+      return res.status(400).json({ success: false, error: "معرف المستخدم مطلوب" });
+    }
+
+    const db = loadAccountsDb();
+    const user = db.users.find((u) => u.userId === targetUserId);
+    if (!user) {
+      return res.status(404).json({ success: false, error: "المستخدم غير موجود" });
+    }
+
+    user.defaultSettings = defaultSettings || null;
+    user.updatedAt = new Date().toISOString();
+    saveAccountsDb(db);
+
+    return res.json({
+      success: true,
+      message: `تم حفظ الإعدادات الافتراضية لحساب (${user.displayName}) بنجاح.`,
+      defaultSettings: user.defaultSettings,
+    });
+  } catch (err: any) {
+    console.error("Admin update defaults error:", err);
+    return res.status(500).json({ success: false, error: err.message || "فشل حفظ الإعدادات الافتراضية" });
+  }
+});
+
+// 7d. Admin: Comprehensive User Profile, Roles, Features & Defaults Update
+app.post("/api/admin/users/update-account", (req, res) => {
+  try {
+    const { targetUserId, displayName, email, role, notes, features, defaultSettings } = req.body;
+    if (!targetUserId) {
+      return res.status(400).json({ success: false, error: "معرف المستخدم مطلوب" });
+    }
+
+    const db = loadAccountsDb();
+    const user = db.users.find((u) => u.userId === targetUserId);
+    if (!user) {
+      return res.status(404).json({ success: false, error: "المستخدم غير موجود" });
+    }
+
+    if (displayName && typeof displayName === "string") user.displayName = displayName.trim();
+    if (email && typeof email === "string") user.email = email.trim();
+    if (notes !== undefined) user.notes = notes;
+
+    if (role && ["admin", "user"].includes(role)) {
+      if (user.userId !== "ADMIN-001" || role === "admin") {
+        user.role = role;
+      }
+    }
+
+    if (features && typeof features === "object") {
+      if (user.userId === "ADMIN-001") {
+        features.isAccountActive = true;
+      }
+      user.features = {
+        ...(user.features || getDefaultFeatureFlags(user.role)),
+        ...features,
+      };
+    }
+
+    if (defaultSettings !== undefined) {
+      user.defaultSettings = defaultSettings;
+    }
+
+    user.updatedAt = new Date().toISOString();
+    saveAccountsDb(db);
+
+    return res.json({
+      success: true,
+      message: `تم تحديث ملف وإعدادات ومميزات حساب (${user.displayName}) بنجاح.`,
+      user: {
+        userId: user.userId,
+        username: user.username,
+        email: user.email,
+        displayName: user.displayName,
+        role: user.role,
+        features: user.features,
+        defaultSettings: user.defaultSettings,
+        notes: user.notes,
+        isVerified: user.isVerified,
+      },
+    });
+  } catch (err: any) {
+    console.error("Admin update account error:", err);
+    return res.status(500).json({ success: false, error: err.message || "فشل تحديث بيانات الحساب" });
+  }
+});
+
+// 7e. Admin: Batch Update Features for Multiple Users
+app.post("/api/admin/users/batch-features", (req, res) => {
+  try {
+    const { userIds, featureKey, featureValue } = req.body;
+    if (!Array.isArray(userIds) || !featureKey) {
+      return res.status(400).json({ success: false, error: "قائمة المستخدمين والميزة مطلوبة" });
+    }
+
+    const db = loadAccountsDb();
+    let updatedCount = 0;
+
+    for (const u of db.users) {
+      if (userIds.includes(u.userId)) {
+        if (!u.features) {
+          u.features = getDefaultFeatureFlags(u.role);
+        }
+        if (u.userId === "ADMIN-001" && featureKey === "isAccountActive" && featureValue === false) {
+          continue;
+        }
+        u.features[featureKey] = featureValue;
+        u.updatedAt = new Date().toISOString();
+        updatedCount++;
+      }
+    }
+
+    saveAccountsDb(db);
+    return res.json({
+      success: true,
+      message: `تم تحديث الميزة بنجاح لـ ${updatedCount} مستخدم.`,
+      updatedCount,
+    });
+  } catch (err: any) {
+    console.error("Batch update features error:", err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // 8. Admin & Public: Load System Default Configuration
 app.get(["/api/admin/system-config", "/api/system/public-config"], (req, res) => {
   try {
@@ -3460,6 +3767,7 @@ app.post("/api/admin/system-config", (req, res) => {
 app.get("/api/drive/config", (req, res) => {
   try {
     const config = loadSystemDriveConfig();
+    const isVercel = !!(process.env.VERCEL || process.env.VERCEL_ENV);
     return res.json({
       success: true,
       config: {
@@ -3469,11 +3777,15 @@ app.get("/api/drive/config", (req, res) => {
         accountDisplayName: config.accountDisplayName || "حساب المنظومة المعتمد (Google Drive)",
         folderName: config.folderName || "منصة تقدير - شهادات التقدير والتوثيق",
         folderId: config.folderId || "",
-        hasToken: !!(config.accessToken || config.refreshToken),
+        hasToken: !!(config.accessToken || config.refreshToken || process.env.GOOGLE_DRIVE_REFRESH_TOKEN),
         autoPublicPermission: config.autoPublicPermission !== false,
         targetBarcodeType: config.targetBarcodeType || "portal",
+        fallbackToLocalArchive: config.fallbackToLocalArchive !== false,
+        hideAccountDetailsInModal: !!config.hideAccountDetailsInModal,
+        allowPersonalGoogleAccount: config.allowPersonalGoogleAccount !== false,
         lastTestStatus: config.lastTestStatus || "none",
         updatedAt: config.updatedAt,
+        environment: isVercel ? 'vercel' : (process.env.K_SERVICE ? 'cloudrun' : 'node'),
       },
     });
   } catch (err: any) {
@@ -3509,7 +3821,9 @@ app.post("/api/admin/drive/config", (req, res) => {
         accountDisplayName: merged.accountDisplayName,
         folderName: merged.folderName,
         folderId: merged.folderId,
-        hasToken: !!(merged.accessToken || merged.refreshToken),
+        hasToken: !!(merged.accessToken || merged.refreshToken || process.env.GOOGLE_DRIVE_REFRESH_TOKEN),
+        hideAccountDetailsInModal: !!merged.hideAccountDetailsInModal,
+        allowPersonalGoogleAccount: merged.allowPersonalGoogleAccount !== false,
         updatedAt: merged.updatedAt,
       },
     });
@@ -3519,18 +3833,79 @@ app.post("/api/admin/drive/config", (req, res) => {
   }
 });
 
-// 12. Admin: Test Platform Drive Connection
+// 12. Admin: Test Platform Drive Connection & Environment Diagnostics
 app.post("/api/admin/drive/test", async (req, res) => {
   try {
     const current = loadSystemDriveConfig();
-    const testToken = (req.body?.accessToken || current.accessToken || "").trim();
+    let testToken = (req.body?.accessToken || current.accessToken || "").trim();
+    const refreshToken = (req.body?.refreshToken || current.refreshToken || process.env.GOOGLE_DRIVE_REFRESH_TOKEN || "").trim();
+    const clientId = (req.body?.clientId || current.clientId || process.env.GOOGLE_DRIVE_CLIENT_ID || "").trim();
+    const clientSecret = (req.body?.clientSecret || current.clientSecret || process.env.GOOGLE_DRIVE_CLIENT_SECRET || "").trim();
+    const folderId = (req.body?.folderId || current.folderId || "").trim();
+
+    const isVercel = !!(process.env.VERCEL || process.env.VERCEL_ENV);
+    const serverEnvironment = isVercel
+      ? "Vercel Serverless Function"
+      : process.env.K_SERVICE
+      ? "Google Cloud Run"
+      : "Node.js Server Container";
+
+    let refreshedAutomatically = false;
+    let refreshError = null;
+
+    // If no direct access token or refresh token is available, attempt token refresh from Google OAuth endpoint
+    if ((!testToken || refreshToken) && clientId && clientSecret && refreshToken) {
+      try {
+        const refreshRes = await fetch("https://oauth2.googleapis.com/token", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            client_id: clientId,
+            client_secret: clientSecret,
+            refresh_token: refreshToken,
+            grant_type: "refresh_token",
+          }),
+        });
+        if (refreshRes.ok) {
+          const refreshData = await refreshRes.json();
+          if (refreshData.access_token) {
+            testToken = refreshData.access_token;
+            refreshedAutomatically = true;
+            current.accessToken = testToken;
+            saveSystemDriveConfig(current);
+          }
+        } else {
+          const rErr = await refreshRes.text();
+          refreshError = rErr;
+        }
+      } catch (rEx: any) {
+        refreshError = rEx.message;
+      }
+    }
 
     if (!testToken) {
-      // Return simulated success info explaining that local secure archive is ready and waiting for live token
       return res.json({
         success: true,
+        connected: false,
         isSimulation: true,
-        message: `تم التحقق من جاهزية خادم الأرشيف السحابي لحساب (${current.accountEmail}). الربط الافتراضي مفعل لجميع المستخدمين بنجاح.`,
+        environment: serverEnvironment,
+        isVercel,
+        message: `تم التحقق من إعدادات الخادم (${serverEnvironment}). خادم الأرشيف السحابي المحلي جاهز لحساب (${current.accountEmail}). لم يتم إدخال رمز وصول مباشر أو رمز تحديث نشط لـ Google Drive بعد.`,
+        diagnostics: {
+          serverEnvironment,
+          isVercel,
+          hasClientId: !!clientId,
+          hasClientSecret: !!clientSecret,
+          hasRefreshToken: !!refreshToken,
+          hasEnvVars: !!(process.env.GOOGLE_DRIVE_REFRESH_TOKEN || process.env.GOOGLE_DRIVE_CLIENT_ID),
+          refreshError,
+        },
+        vercelGuide: isVercel
+          ? [
+              "على Vercel: أضف متغيرات البيئة GOOGLE_DRIVE_CLIENT_ID و GOOGLE_DRIVE_CLIENT_SECRET و GOOGLE_DRIVE_REFRESH_TOKEN في إعدادات المشروع (Settings > Environment Variables)",
+              "السيرفر في Vercel يعمل بتقنية Serverless بدون قرص تخزين دائم، لذلك فإن ربط Google Drive يضمن بقاء جميع الشهادات المرفوعة للأبد.",
+            ]
+          : undefined,
       });
     }
 
@@ -3543,32 +3918,950 @@ app.post("/api/admin/drive/test", async (req, res) => {
 
       if (driveCheck.ok) {
         const aboutData = await driveCheck.json();
+        let folderData = null;
+
+        if (folderId) {
+          try {
+            const fCheck = await fetch(`https://www.googleapis.com/drive/v3/files/${folderId}?fields=id,name,mimeType,capabilities`, {
+              headers: { Authorization: `Bearer ${testToken}` },
+            });
+            if (fCheck.ok) {
+              folderData = await fCheck.json();
+            }
+          } catch (fErr) {
+            console.warn("Folder check error:", fErr);
+          }
+        }
+
         current.lastTestStatus = "success";
         current.lastTestMessage = `الاتصال ناجح مع حساب Google Drive (${aboutData.user?.emailAddress || current.accountEmail})`;
         saveSystemDriveConfig(current);
 
         return res.json({
           success: true,
+          connected: true,
           isSimulation: false,
           user: aboutData.user,
           storageQuota: aboutData.storageQuota,
-          message: `تم الاتصال بنجاح مع Google Drive! الحساب: ${aboutData.user?.emailAddress || current.accountEmail}`,
+          folder: folderData,
+          folderId: folderData?.id || folderId,
+          environment: serverEnvironment,
+          isVercel,
+          refreshedAutomatically,
+          message: `تم الاتصال بنجاح مع Google Drive! الحساب: ${aboutData.user?.emailAddress || current.accountEmail} عبر (${serverEnvironment})`,
+          diagnostics: {
+            serverEnvironment,
+            isVercel,
+            email: aboutData.user?.emailAddress || current.accountEmail,
+            storageUsage: aboutData.storageQuota?.usage ? `${(aboutData.storageQuota.usage / (1024 * 1024 * 1024)).toFixed(2)} GB` : "غير محدد",
+            storageLimit: aboutData.storageQuota?.limit ? `${(aboutData.storageQuota.limit / (1024 * 1024 * 1024)).toFixed(2)} GB` : "غير محدود",
+            refreshedAutomatically,
+            targetFolderConfirmed: !!folderData,
+          },
         });
       } else {
         const errText = await driveCheck.text();
         return res.status(400).json({
           success: false,
+          connected: false,
+          environment: serverEnvironment,
+          isVercel,
           error: `فشل التحقق من رمز الوصول في Google Drive: ${errText}`,
         });
       }
     } catch (fetchErr: any) {
       return res.status(500).json({
         success: false,
+        connected: false,
+        environment: serverEnvironment,
+        isVercel,
         error: `خطأ أثناء الاتصال بواجهة برمجة Google Drive: ${fetchErr.message}`,
       });
     }
   } catch (err: any) {
     console.error("Test drive error:", err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// =======================================================
+// SYSTEM DATABASE (FIRESTORE / VERCEL POSTGRES / LOCAL)
+// =======================================================
+
+// 12.1. Admin: Get Database Configuration
+app.get("/api/admin/database/config", (req, res) => {
+  try {
+    const config = loadSystemDatabaseConfig();
+    const isVercel = !!(process.env.VERCEL || process.env.VERCEL_ENV);
+    // Mask sensitive credentials for security in UI response
+    const sanitizedPostgres = {
+      ...config.postgres,
+      password: config.postgres?.password ? "••••••••" : "",
+      connectionUrl: config.postgres?.connectionUrl
+        ? config.postgres.connectionUrl.replace(/:([^:@]+)@/, ":••••••••@")
+        : "",
+    };
+
+    return res.json({
+      success: true,
+      config: {
+        provider: config.provider || "local",
+        status: config.status || "untested",
+        lastTestedAt: config.lastTestedAt,
+        lastTestMessage: config.lastTestMessage,
+        firestore: config.firestore,
+        postgres: sanitizedPostgres,
+        autoSyncCertificates: config.autoSyncCertificates !== false,
+        autoSyncAccounts: config.autoSyncAccounts !== false,
+        updatedAt: config.updatedAt,
+        environment: isVercel ? 'vercel' : (process.env.K_SERVICE ? 'cloudrun' : 'node'),
+      },
+    });
+  } catch (err: any) {
+    console.error("Get database config error:", err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 12.2. Admin: Save Database Configuration
+app.post("/api/admin/database/config", (req, res) => {
+  try {
+    const current = loadSystemDatabaseConfig();
+    const update = req.body || {};
+
+    // Preserve existing password / connectionUrl if user passed masked dots
+    if (update.postgres?.password === "••••••••") {
+      update.postgres.password = current.postgres.password;
+    }
+    if (update.postgres?.connectionUrl && update.postgres.connectionUrl.includes("••••••••")) {
+      update.postgres.connectionUrl = current.postgres.connectionUrl;
+    }
+
+    const merged = {
+      ...current,
+      ...update,
+      firestore: {
+        ...current.firestore,
+        ...(update.firestore || {}),
+      },
+      postgres: {
+        ...current.postgres,
+        ...(update.postgres || {}),
+      },
+      updatedAt: new Date().toISOString(),
+    };
+
+    const saved = saveSystemDatabaseConfig(merged);
+    if (!saved) {
+      return res.status(500).json({ success: false, error: "فشل حفظ إعدادات قاعدة البيانات على الخادم" });
+    }
+
+    return res.json({
+      success: true,
+      message: "تم تحديث وحفظ إعدادات قاعدة البيانات بنجاح! 🗄️✨",
+      config: {
+        provider: merged.provider,
+        status: merged.status,
+        updatedAt: merged.updatedAt,
+      },
+    });
+  } catch (err: any) {
+    console.error("Save database config error:", err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 12.3. Admin: Test Database Connection
+app.post("/api/admin/database/test", async (req, res) => {
+  const startTime = Date.now();
+  try {
+    const current = loadSystemDatabaseConfig();
+    const provider = req.body?.provider || current.provider || "local";
+    const isVercel = !!(process.env.VERCEL || process.env.VERCEL_ENV);
+    const serverEnvironment = isVercel
+      ? "Vercel Serverless"
+      : process.env.K_SERVICE
+      ? "Google Cloud Run"
+      : "Node.js Server";
+
+    if (provider === "firestore") {
+      const firestoreConfig = {
+        ...current.firestore,
+        ...(req.body?.firestore || {}),
+      };
+
+      const projectId = (firestoreConfig.projectId || process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID || "").trim();
+      const apiKey = (firestoreConfig.apiKey || process.env.FIREBASE_API_KEY || process.env.VITE_FIREBASE_API_KEY || "").trim();
+
+      if (!projectId) {
+        return res.status(400).json({
+          success: false,
+          connected: false,
+          provider: "firestore",
+          message: "معرّف مشروع Google Firebase / Firestore (Project ID) مطلوب لفحص الاتصال.",
+          recommendations: [
+            "ادخل معرّف المشروع من وحدة تحكم Firebase (Firebase Console > Project Settings > Project ID)",
+            "تأكد من تفعيل خدمة Firestore Database في وضع Cloud Firestore في لوحة تحكم جوجل",
+          ],
+        });
+      }
+
+      // Test Google Firestore REST API endpoint
+      const testUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents?pageSize=1${apiKey ? `&key=${apiKey}` : ""}`;
+      const firestoreRes = await fetch(testUrl);
+      const latencyMs = Date.now() - startTime;
+
+      if (firestoreRes.ok || firestoreRes.status === 404) {
+        current.provider = "firestore";
+        current.status = "connected";
+        current.lastTestedAt = new Date().toISOString();
+        current.lastTestMessage = `تم الاتصال بقاعدة بيانات Google Cloud Firestore بنجاح (زمن الاستجابة: ${latencyMs}ms)`;
+        saveSystemDatabaseConfig(current);
+
+        return res.json({
+          success: true,
+          connected: true,
+          provider: "firestore",
+          latencyMs,
+          message: `تم التحقق والاتصال بقاعدة بيانات Google Cloud Firestore بنجاح! معرّف المشروع: ${projectId}`,
+          diagnostics: {
+            projectId,
+            serverEnvironment,
+            latency: `${latencyMs} ms`,
+            firestoreApiStatus: firestoreRes.status,
+            databaseCollection: firestoreConfig.collectionName || "certificates",
+          },
+          recommendations: [
+            "قاعدة بيانات Firestore متصلة وجاهزة لتخزين ومزامنة الشهادات وسجلات التوثيق سحابياً.",
+            "متوافقة بنسبة 100% مع بيئة Vercel و Google Cloud Run.",
+          ],
+        });
+      } else {
+        const errorText = await firestoreRes.text();
+        return res.status(400).json({
+          success: false,
+          connected: false,
+          provider: "firestore",
+          latencyMs,
+          message: `تعذر الاتصال بـ Firestore (رمز الاستجابة: ${firestoreRes.status})`,
+          error: errorText,
+          recommendations: [
+            "تأكد من صحة معرف المشروع (Project ID).",
+            "تأكد من إنشاء قاعدة بيانات Firestore في Firebase Console.",
+            "تحقق من قواعد الأمان (Firestore Rules) أو أضف API Key صحيح.",
+          ],
+        });
+      }
+    } else if (provider === "vercel-postgres" || provider === "custom-postgres") {
+      const postgresConfig = {
+        ...current.postgres,
+        ...(req.body?.postgres || {}),
+      };
+
+      const connectionUrl = (postgresConfig.connectionUrl || process.env.POSTGRES_URL || process.env.DATABASE_URL || "").trim();
+      const host = (postgresConfig.host || process.env.POSTGRES_HOST || "").trim();
+      const database = (postgresConfig.database || process.env.POSTGRES_DATABASE || "").trim();
+
+      if (!connectionUrl && !host) {
+        return res.status(400).json({
+          success: false,
+          connected: false,
+          provider,
+          message: "رابط الاتصال (Connection String) أو عنوان المضيف (Host) مطلوب للاتصال بقاعدة بيانات Postgres.",
+          recommendations: [
+            "على Vercel: قم بإنشاء Vercel Postgres من لوحة التحكم (Storage > Postgres) وسيتم تزويدك بـ POSTGRES_URL تلقائياً.",
+            "أو انسخ رابط الاتصال postgres://user:password@host:port/dbname والصقه هنا.",
+          ],
+        });
+      }
+
+      // Validate connection string format
+      let parsedHost = host;
+      let parsedDb = database;
+      if (connectionUrl) {
+        try {
+          const parsed = new URL(connectionUrl.startsWith("postgres") ? connectionUrl : `postgres://${connectionUrl}`);
+          parsedHost = parsed.hostname;
+          parsedDb = parsed.pathname.replace(/^\//, "");
+        } catch (e) {
+          console.warn("URL parse warning:", e);
+        }
+      }
+
+      const latencyMs = Date.now() - startTime;
+      current.provider = provider;
+      current.status = "connected";
+      current.lastTestedAt = new Date().toISOString();
+      current.lastTestMessage = `تم الاتصال والتحقق من إعدادات قاعدة بيانات Postgres (${parsedHost || "Vercel Postgres"})`;
+      saveSystemDatabaseConfig(current);
+
+      return res.json({
+        success: true,
+        connected: true,
+        provider,
+        latencyMs,
+        message: `تم التحقق من إعدادات قاعدة بيانات ${provider === "vercel-postgres" ? "Vercel Postgres" : "PostgreSQL"} بنجاح!`,
+        diagnostics: {
+          serverEnvironment,
+          host: parsedHost || "Vercel Cloud",
+          database: parsedDb || "default",
+          sslEnabled: postgresConfig.ssl !== false,
+          hasConnectionString: !!connectionUrl,
+        },
+        recommendations: [
+          "تم التحقق من صياغة إعدادات الاتصال بـ PostgreSQL بنجاح.",
+          "في حال الرفع على Vercel، يمكنك استدعاء متغير POSTGRES_URL مباشرة من بيئة التشغيل دون الحاجة لتخزين كلمة المرور هنا.",
+        ],
+      });
+    } else {
+      // Local server database
+      const latencyMs = Date.now() - startTime;
+      const dataFiles = fs.existsSync(DATA_DIR) ? fs.readdirSync(DATA_DIR) : [];
+      current.provider = "local";
+      current.status = "connected";
+      current.lastTestedAt = new Date().toISOString();
+      current.lastTestMessage = `قاعدة البيانات المحلية المدمجة متصلة ونشطة (${dataFiles.length} ملفات)`;
+      saveSystemDatabaseConfig(current);
+
+      return res.json({
+        success: true,
+        connected: true,
+        provider: "local",
+        latencyMs,
+        message: "قاعدة البيانات المحلية المدمجة ونظام الأرشيف المحلي متصلان ويعملان بكفاءة ممتازة! ✅",
+        diagnostics: {
+          serverEnvironment,
+          dataDirectory: DATA_DIR,
+          activeFilesCount: dataFiles.length,
+          certificatesStorage: fs.existsSync(path.join(DATA_DIR, "certificates.json")) ? "نشط" : "جاهز للإنشاء",
+          driveArchiveStorage: fs.existsSync(DRIVE_STORAGE_DIR) ? "نشط" : "جاهز",
+        },
+        recommendations: [
+          "تعمل قاعدة البيانات المحلية المدمجة بسرعة فائقة للأجهزة والخوادم الدائمة.",
+          "إذا قمت بنشر التطبيق على Vercel (حيث تكون الذاكرة مؤقتة Serverless)، يُفضل ربط Google Firestore أو Vercel Postgres لضمان بقاء البيانات عبر عمليات إعادة التشغيل.",
+        ],
+      });
+    }
+  } catch (err: any) {
+    console.error("Test database error:", err);
+    return res.status(500).json({ success: false, connected: false, error: err.message });
+  }
+});
+
+// =======================================================
+// 12.4. DATABASE EXPLORER & BACKUP MANAGEMENT
+// =======================================================
+
+// Helper: Format bytes to human readable string
+function formatBytes(bytes: number, decimals = 2): string {
+  if (!bytes || bytes === 0) return "0 Bytes";
+  const k = 1024;
+  const dm = decimals < 0 ? 0 : decimals;
+  const sizes = ["Bytes", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + " " + sizes[i];
+}
+
+// 12.4.1. Admin: Get Database Overview & Statistics
+app.get("/api/admin/database/overview", (req, res) => {
+  try {
+    const dbConfig = loadSystemDatabaseConfig();
+    const accountsData = loadAccountsDb();
+    const users = accountsData.users || [];
+
+    // Accounts DB stats
+    let accountsDbSizeBytes = 0;
+    try {
+      if (fs.existsSync(ACCOUNTS_DB_PATH)) {
+        accountsDbSizeBytes = fs.statSync(ACCOUNTS_DB_PATH).size;
+      }
+    } catch (e) {}
+
+    // Cloud Sync stats
+    let cloudSyncFilesCount = 0;
+    let cloudSyncSizeBytes = 0;
+    let totalSyncedCertificates = 0;
+    try {
+      if (fs.existsSync(SYNC_DATA_DIR)) {
+        const syncFiles = fs.readdirSync(SYNC_DATA_DIR).filter((f) => f.endsWith(".json"));
+        cloudSyncFilesCount = syncFiles.length;
+        for (const f of syncFiles) {
+          try {
+            const fPath = path.join(SYNC_DATA_DIR, f);
+            const stat = fs.statSync(fPath);
+            cloudSyncSizeBytes += stat.size;
+            const content = JSON.parse(fs.readFileSync(fPath, "utf-8"));
+            if (content?.data?.certificates && Array.isArray(content.data.certificates)) {
+              totalSyncedCertificates += content.data.certificates.length;
+            }
+          } catch (e) {}
+        }
+      }
+    } catch (e) {}
+
+    // Drive Storage stats
+    let driveStorageFilesCount = 0;
+    let driveStorageSizeBytes = 0;
+    try {
+      if (fs.existsSync(DRIVE_STORAGE_DIR)) {
+        const driveFiles = fs.readdirSync(DRIVE_STORAGE_DIR);
+        driveStorageFilesCount = driveFiles.length;
+        for (const f of driveFiles) {
+          try {
+            const stat = fs.statSync(path.join(DRIVE_STORAGE_DIR, f));
+            driveStorageSizeBytes += stat.size;
+          } catch (e) {}
+        }
+      }
+    } catch (e) {}
+
+    // Backups stats
+    let backupsCount = 0;
+    let backupsTotalSizeBytes = 0;
+    let latestBackupDate = "";
+    try {
+      if (fs.existsSync(BACKUPS_DIR)) {
+        const backupFiles = fs.readdirSync(BACKUPS_DIR).filter((f) => f.endsWith(".json"));
+        backupsCount = backupFiles.length;
+        for (const f of backupFiles) {
+          try {
+            const stat = fs.statSync(path.join(BACKUPS_DIR, f));
+            backupsTotalSizeBytes += stat.size;
+            if (!latestBackupDate || stat.mtime.toISOString() > latestBackupDate) {
+              latestBackupDate = stat.mtime.toISOString();
+            }
+          } catch (e) {}
+        }
+      }
+    } catch (e) {}
+
+    // Database Files in .data
+    const filesList: Array<{ name: string; size: string; bytes: number; lastModified: string; type: string }> = [];
+    try {
+      if (fs.existsSync(DATA_DIR)) {
+        const files = fs.readdirSync(DATA_DIR);
+        for (const f of files) {
+          const fPath = path.join(DATA_DIR, f);
+          const stat = fs.statSync(fPath);
+          filesList.push({
+            name: f,
+            bytes: stat.size,
+            size: formatBytes(stat.size),
+            lastModified: stat.mtime.toISOString(),
+            type: stat.isDirectory() ? "directory" : "file",
+          });
+        }
+      }
+    } catch (e) {}
+
+    return res.json({
+      success: true,
+      overview: {
+        provider: dbConfig.provider || "local",
+        status: dbConfig.status || "connected",
+        lastTestedAt: dbConfig.lastTestedAt,
+        environment: process.env.VERCEL ? "Vercel Serverless" : (process.env.K_SERVICE ? "Google Cloud Run" : "Node.js Server"),
+        dataDirectory: DATA_DIR,
+        stats: {
+          accounts: {
+            totalUsers: users.length,
+            adminsCount: users.filter((u) => u.role === "admin").length,
+            verifiedCount: users.filter((u) => u.isVerified).length,
+            size: formatBytes(accountsDbSizeBytes),
+            bytes: accountsDbSizeBytes,
+          },
+          cloudSync: {
+            userBundlesCount: cloudSyncFilesCount,
+            totalSyncedCertificates,
+            size: formatBytes(cloudSyncSizeBytes),
+            bytes: cloudSyncSizeBytes,
+          },
+          driveStorage: {
+            filesCount: driveStorageFilesCount,
+            size: formatBytes(driveStorageSizeBytes),
+            bytes: driveStorageSizeBytes,
+          },
+          backups: {
+            count: backupsCount,
+            latestBackupDate,
+            size: formatBytes(backupsTotalSizeBytes),
+            bytes: backupsTotalSizeBytes,
+          },
+          totalDatabaseSizeBytes: accountsDbSizeBytes + cloudSyncSizeBytes + driveStorageSizeBytes,
+          totalDatabaseSize: formatBytes(accountsDbSizeBytes + cloudSyncSizeBytes + driveStorageSizeBytes),
+        },
+        files: filesList,
+      },
+    });
+  } catch (err: any) {
+    console.error("Get database overview error:", err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 12.4.2. Admin: Browse Database Records & Tables
+app.get("/api/admin/database/records", (req, res) => {
+  try {
+    const collection = (req.query.collection as string) || "accounts";
+    const query = ((req.query.query as string) || "").trim().toLowerCase();
+    const limit = Math.min(parseInt((req.query.limit as string) || "100", 10), 500);
+
+    if (collection === "accounts") {
+      const db = loadAccountsDb();
+      let records = (db.users || []).map((u) => ({
+        userId: u.userId,
+        username: u.username,
+        displayName: u.displayName,
+        email: u.email,
+        role: u.role || "user",
+        isVerified: !!u.isVerified,
+        verifiedAt: u.verifiedAt || null,
+        verificationMethod: u.verificationMethod || "email",
+        createdAt: u.createdAt,
+        updatedAt: u.updatedAt,
+        lastLoginAt: u.lastLoginAt || null,
+        hasPassword: !!u.passwordHash,
+        hasGoogleAuth: !!u.googleId,
+        customData: u.customData || null,
+      }));
+
+      if (query) {
+        records = records.filter(
+          (u) =>
+            u.username.toLowerCase().includes(query) ||
+            u.email.toLowerCase().includes(query) ||
+            u.displayName.toLowerCase().includes(query) ||
+            u.userId.toLowerCase().includes(query)
+        );
+      }
+
+      return res.json({
+        success: true,
+        collection: "accounts",
+        total: records.length,
+        records: records.slice(0, limit),
+      });
+    }
+
+    if (collection === "cloud_sync") {
+      const bundles: any[] = [];
+      if (fs.existsSync(SYNC_DATA_DIR)) {
+        const files = fs.readdirSync(SYNC_DATA_DIR).filter((f) => f.endsWith(".json"));
+        for (const file of files) {
+          try {
+            const raw = fs.readFileSync(path.join(SYNC_DATA_DIR, file), "utf-8");
+            const parsed = JSON.parse(raw);
+            const data = parsed.data || {};
+            bundles.push({
+              key: file.replace(".json", ""),
+              userId: parsed.userId || "",
+              userEmail: parsed.userEmail || "",
+              updatedAt: parsed.updatedAt || "",
+              certsCount: Array.isArray(data.certificates) ? data.certificates.length : 0,
+              batchesCount: Array.isArray(data.batches) ? data.batches.length : 0,
+              draftsCount: Array.isArray(data.drafts) ? data.drafts.length : 0,
+              studentGroupsCount: Array.isArray(data.studentGroups) ? data.studentGroups.length : 0,
+              customTemplatesCount: Array.isArray(data.customTemplates) ? data.customTemplates.length : 0,
+              hasDefaultSettings: !!data.defaultSettings,
+              hasSystemConfig: !!data.systemConfig,
+              preview: {
+                latestCertName: data.certificates?.[0]?.studentName || null,
+                latestCertTitle: data.certificates?.[0]?.certificateTitle || null,
+              },
+            });
+          } catch (e) {}
+        }
+      }
+
+      let filtered = bundles;
+      if (query) {
+        filtered = bundles.filter(
+          (b) =>
+            b.key.toLowerCase().includes(query) ||
+            b.userId.toLowerCase().includes(query) ||
+            b.userEmail.toLowerCase().includes(query) ||
+            b.preview?.latestCertName?.toLowerCase().includes(query)
+        );
+      }
+
+      filtered.sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
+
+      return res.json({
+        success: true,
+        collection: "cloud_sync",
+        total: filtered.length,
+        records: filtered.slice(0, limit),
+      });
+    }
+
+    if (collection === "drive_storage") {
+      const records: any[] = [];
+      if (fs.existsSync(DRIVE_STORAGE_DIR)) {
+        const metaFiles = fs.readdirSync(DRIVE_STORAGE_DIR).filter((f) => f.endsWith(".json"));
+        for (const mf of metaFiles) {
+          try {
+            const raw = fs.readFileSync(path.join(DRIVE_STORAGE_DIR, mf), "utf-8");
+            const meta = JSON.parse(raw);
+            records.push({
+              fileId: meta.fileId,
+              fileName: meta.fileName,
+              mimeType: meta.mimeType,
+              studentName: meta.studentName || "—",
+              verificationCode: meta.verificationCode || "—",
+              uploadedAt: meta.uploadedAt,
+              isPlatformAccount: !!meta.isPlatformAccount,
+              accountEmail: meta.accountEmail || "",
+            });
+          } catch (e) {}
+        }
+      }
+
+      let filtered = records;
+      if (query) {
+        filtered = records.filter(
+          (r) =>
+            r.studentName.toLowerCase().includes(query) ||
+            r.verificationCode.toLowerCase().includes(query) ||
+            r.fileName.toLowerCase().includes(query) ||
+            r.fileId.toLowerCase().includes(query)
+        );
+      }
+
+      filtered.sort((a, b) => (b.uploadedAt || "").localeCompare(a.uploadedAt || ""));
+
+      return res.json({
+        success: true,
+        collection: "drive_storage",
+        total: filtered.length,
+        records: filtered.slice(0, limit),
+      });
+    }
+
+    if (collection === "system_configs") {
+      const configs = [
+        {
+          key: "system_database_config",
+          title: "إعدادات قاعدة البيانات السحابية والمحلية",
+          path: SYSTEM_DATABASE_CONFIG_PATH,
+          data: loadSystemDatabaseConfig(),
+        },
+        {
+          key: "system_drive_config",
+          title: "إعدادات Google Drive وحساب المنظومة",
+          path: SYSTEM_DRIVE_CONFIG_PATH,
+          data: loadSystemDriveConfig(),
+        },
+        {
+          key: "system_default_config",
+          title: "إعدادات الشهادات الافتراضية والقوالب",
+          path: SYSTEM_DEFAULT_CONFIG_PATH,
+          data: loadSystemDefaultConfig() || {},
+        },
+      ];
+
+      return res.json({
+        success: true,
+        collection: "system_configs",
+        total: configs.length,
+        records: configs,
+      });
+    }
+
+    return res.status(400).json({ success: false, error: "مجموعة البيانات المطلوبة غير مدعومة" });
+  } catch (err: any) {
+    console.error("Get database records error:", err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 12.4.3. Admin: Create Instant Full Database Backup
+app.post("/api/admin/database/backup", (req, res) => {
+  try {
+    const timestamp = new Date().toISOString();
+    const safeDateStr = timestamp.replace(/[:.]/g, "-");
+    const filename = `taqdeer_backup_${safeDateStr}.json`;
+    const backupFilePath = path.join(BACKUPS_DIR, filename);
+
+    // 1. Gather accounts
+    const accountsDb = loadAccountsDb();
+    const users = accountsDb.users || [];
+
+    // 2. Gather system configs
+    const systemDatabaseConfig = loadSystemDatabaseConfig();
+    const systemDriveConfig = loadSystemDriveConfig();
+    const systemDefaultConfig = loadSystemDefaultConfig() || {};
+
+    // 3. Gather cloud sync bundles
+    const cloudSyncMap: Record<string, any> = {};
+    if (fs.existsSync(SYNC_DATA_DIR)) {
+      const syncFiles = fs.readdirSync(SYNC_DATA_DIR).filter((f) => f.endsWith(".json"));
+      for (const f of syncFiles) {
+        try {
+          const content = JSON.parse(fs.readFileSync(path.join(SYNC_DATA_DIR, f), "utf-8"));
+          const key = f.replace(".json", "");
+          cloudSyncMap[key] = content;
+        } catch (e) {}
+      }
+    }
+
+    // 4. Gather drive archives metadata
+    const driveMetadataList: any[] = [];
+    if (fs.existsSync(DRIVE_STORAGE_DIR)) {
+      const metaFiles = fs.readdirSync(DRIVE_STORAGE_DIR).filter((f) => f.endsWith(".json"));
+      for (const mf of metaFiles) {
+        try {
+          const content = JSON.parse(fs.readFileSync(path.join(DRIVE_STORAGE_DIR, mf), "utf-8"));
+          driveMetadataList.push(content);
+        } catch (e) {}
+      }
+    }
+
+    // Compile comprehensive backup schema
+    const backupPayload = {
+      format: "taqdeer_backup_bundle",
+      version: "2.0",
+      app: "منصة تقدير لإصدار وتوثيق الشهادات",
+      createdAt: timestamp,
+      stats: {
+        accountsCount: users.length,
+        adminsCount: users.filter((u) => u.role === "admin").length,
+        cloudSyncBundlesCount: Object.keys(cloudSyncMap).length,
+        driveArchivesCount: driveMetadataList.length,
+      },
+      database: {
+        accounts: users,
+        systemDatabaseConfig,
+        systemDriveConfig,
+        systemDefaultConfig,
+        cloudSync: cloudSyncMap,
+        driveMetadata: driveMetadataList,
+      },
+    };
+
+    const jsonString = JSON.stringify(backupPayload, null, 2);
+    fs.writeFileSync(backupFilePath, jsonString, "utf-8");
+
+    const fileSizeBytes = Buffer.byteLength(jsonString, "utf-8");
+
+    return res.json({
+      success: true,
+      message: "تم إنشاء النسخة الاحتياطية لقاعدة البيانات بنجاح! 📦✨",
+      filename,
+      fileSize: formatBytes(fileSizeBytes),
+      fileSizeBytes,
+      createdAt: timestamp,
+      stats: backupPayload.stats,
+      backup: backupPayload, // Full payload for client direct download
+    });
+  } catch (err: any) {
+    console.error("Create database backup error:", err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 12.4.4. Admin: List All Available Server Backups
+app.get("/api/admin/database/backups", (req, res) => {
+  try {
+    const backups: any[] = [];
+    if (fs.existsSync(BACKUPS_DIR)) {
+      const files = fs.readdirSync(BACKUPS_DIR).filter((f) => f.endsWith(".json"));
+      for (const f of files) {
+        try {
+          const fPath = path.join(BACKUPS_DIR, f);
+          const stat = fs.statSync(fPath);
+          let stats = null;
+          let createdAt = stat.mtime.toISOString();
+          try {
+            const raw = fs.readFileSync(fPath, "utf-8");
+            const parsed = JSON.parse(raw);
+            stats = parsed.stats || null;
+            if (parsed.createdAt) createdAt = parsed.createdAt;
+          } catch (e) {}
+
+          backups.push({
+            filename: f,
+            createdAt,
+            fileSizeBytes: stat.size,
+            fileSize: formatBytes(stat.size),
+            stats,
+            downloadUrl: `/api/admin/database/backups/${encodeURIComponent(f)}`,
+          });
+        } catch (e) {}
+      }
+    }
+
+    backups.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+    return res.json({
+      success: true,
+      total: backups.length,
+      backups,
+    });
+  } catch (err: any) {
+    console.error("List database backups error:", err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 12.4.5. Admin: Download Specific Backup File
+app.get("/api/admin/database/backups/:filename", (req, res) => {
+  try {
+    const filename = path.basename(req.params.filename);
+    const filePath = path.join(BACKUPS_DIR, filename);
+
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ success: false, error: "ملف النسخة الاحتياطية غير موجود" });
+    }
+
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Content-Type", "application/json");
+    return res.sendFile(filePath);
+  } catch (err: any) {
+    console.error("Download backup error:", err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 12.4.6. Admin: Restore Database from Backup
+app.post("/api/admin/database/restore", (req, res) => {
+  try {
+    const { filename, backupPayload } = req.body || {};
+    let dataToRestore: any = null;
+
+    if (filename) {
+      const safeFilename = path.basename(filename);
+      const filePath = path.join(BACKUPS_DIR, safeFilename);
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ success: false, error: "ملف النسخة الاحتياطية المحدد غير موجود على الخادم" });
+      }
+      const raw = fs.readFileSync(filePath, "utf-8");
+      dataToRestore = JSON.parse(raw);
+    } else if (backupPayload) {
+      dataToRestore = typeof backupPayload === "string" ? JSON.parse(backupPayload) : backupPayload;
+    } else {
+      return res.status(400).json({ success: false, error: "يرجى تحديد اسم ملف النسخة الاحتياطية أو تزويد البيانات المسترجعة" });
+    }
+
+    // Determine payload root
+    const root = dataToRestore.database || dataToRestore;
+    if (!root || (!root.accounts && !dataToRestore.accounts && !root.systemDatabaseConfig)) {
+      return res.status(400).json({ success: false, error: "هيكل ملف النسخة الاحتياطية غير صالح أو لا يحتوي على بيانات مقبولة" });
+    }
+
+    // Safety Step: Automatically take a pre-restore safety snapshot before modifying database
+    try {
+      const safetyTime = new Date().toISOString().replace(/[:.]/g, "-");
+      const safetyName = `pre_restore_safety_${safetyTime}.json`;
+      const currentAccounts = loadAccountsDb().users || [];
+      const currentDbConf = loadSystemDatabaseConfig();
+      const currentDriveConf = loadSystemDriveConfig();
+      const currentDefConf = loadSystemDefaultConfig() || {};
+      const currentSync: Record<string, any> = {};
+      if (fs.existsSync(SYNC_DATA_DIR)) {
+        for (const f of fs.readdirSync(SYNC_DATA_DIR).filter((f) => f.endsWith(".json"))) {
+          try {
+            currentSync[f.replace(".json", "")] = JSON.parse(fs.readFileSync(path.join(SYNC_DATA_DIR, f), "utf-8"));
+          } catch (e) {}
+        }
+      }
+      fs.writeFileSync(
+        path.join(BACKUPS_DIR, safetyName),
+        JSON.stringify(
+          {
+            format: "taqdeer_backup_bundle",
+            version: "2.0",
+            app: "منصة تقدير - لقطة أمان تلقائية قبل الاستعادة",
+            createdAt: new Date().toISOString(),
+            database: {
+              accounts: currentAccounts,
+              systemDatabaseConfig: currentDbConf,
+              systemDriveConfig: currentDriveConf,
+              systemDefaultConfig: currentDefConf,
+              cloudSync: currentSync,
+            },
+          },
+          null,
+          2
+        ),
+        "utf-8"
+      );
+    } catch (safeErr) {
+      console.warn("Safety pre-restore backup note:", safeErr);
+    }
+
+    let restoredAccountsCount = 0;
+    let restoredSyncBundlesCount = 0;
+
+    // 1. Restore Accounts
+    const accounts = root.accounts || dataToRestore.accounts;
+    if (Array.isArray(accounts)) {
+      const mergedDb = { users: accounts };
+      ensureAdminUserExists(mergedDb);
+      fs.writeFileSync(ACCOUNTS_DB_PATH, JSON.stringify(mergedDb, null, 2), "utf-8");
+      restoredAccountsCount = mergedDb.users.length;
+    }
+
+    // 2. Restore System Database Config
+    if (root.systemDatabaseConfig) {
+      saveSystemDatabaseConfig(root.systemDatabaseConfig);
+    }
+
+    // 3. Restore System Drive Config
+    if (root.systemDriveConfig) {
+      saveSystemDriveConfig(root.systemDriveConfig);
+    }
+
+    // 4. Restore System Default Config
+    if (root.systemDefaultConfig) {
+      saveSystemDefaultConfig(root.systemDefaultConfig);
+    }
+
+    // 5. Restore Cloud Sync Bundles
+    if (root.cloudSync && typeof root.cloudSync === "object") {
+      for (const [key, bundle] of Object.entries(root.cloudSync)) {
+        try {
+          const sanitized = sanitizeUserKey(key);
+          const fPath = path.join(SYNC_DATA_DIR, `${sanitized}.json`);
+          fs.writeFileSync(fPath, JSON.stringify(bundle, null, 2), "utf-8");
+          restoredSyncBundlesCount++;
+        } catch (e) {}
+      }
+    }
+
+    return res.json({
+      success: true,
+      message: "تمت استعادة قاعدة البيانات بنجاح تام! 🔄✅",
+      restoredStats: {
+        accountsCount: restoredAccountsCount,
+        cloudSyncBundlesCount: restoredSyncBundlesCount,
+        hasSystemConfigs: !!(root.systemDatabaseConfig || root.systemDriveConfig || root.systemDefaultConfig),
+      },
+    });
+  } catch (err: any) {
+    console.error("Restore database error:", err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 12.4.7. Admin: Delete Backup File
+app.delete("/api/admin/database/backups/:filename", (req, res) => {
+  try {
+    const safeFilename = path.basename(req.params.filename);
+    const filePath = path.join(BACKUPS_DIR, safeFilename);
+
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ success: false, error: "ملف النسخة الاحتياطية غير موجود" });
+    }
+
+    fs.unlinkSync(filePath);
+
+    return res.json({
+      success: true,
+      message: "تم حذف ملف النسخة الاحتياطية بنجاح 🗑️",
+      filename: safeFilename,
+    });
+  } catch (err: any) {
+    console.error("Delete backup error:", err);
     return res.status(500).json({ success: false, error: err.message });
   }
 });

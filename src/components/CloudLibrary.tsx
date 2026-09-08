@@ -645,7 +645,7 @@ export const CloudLibrary: React.FC<Props> = ({
     if (!token || !driveUser) {
       try {
         showToast('جاري تسجيل الدخول بحساب Google Drive...');
-        const res = await googleSignIn();
+        const res = await googleSignIn({ isExplicitPrimaryLogin: false });
         setDriveUser(res.user);
         setDriveToken(res.accessToken);
         token = res.accessToken;

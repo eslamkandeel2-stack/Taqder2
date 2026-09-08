@@ -100,7 +100,7 @@ export const DirectShareModal: React.FC<DirectShareModalProps> = ({
 
       if (!token) {
         onShowToast('جاري توثيق الدخول بحساب Google للإرسال عبر Gmail...');
-        const authRes = await googleSignIn();
+        const authRes = await googleSignIn({ isExplicitPrimaryLogin: false });
         token = authRes.accessToken;
       }
 

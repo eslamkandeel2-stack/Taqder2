@@ -1,4 +1,4 @@
-import { initializeApp, getApps, getApp } from 'firebase/app';
+import { initializeApp, getApps, getApp, setLogLevel as setAppLogLevel } from 'firebase/app';
 import { 
   getAuth, 
   initializeAuth, 
@@ -13,9 +13,23 @@ import {
   getFirestore, 
   initializeFirestore, 
   memoryLocalCache,
-  Firestore
+  Firestore,
+  setLogLevel as setFirestoreLogLevel
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
+
+// Silence verbose Firebase and Firestore logs when running offline or in preview containers
+try {
+  setAppLogLevel('silent');
+} catch (e) {
+  // Ignore if unsupported
+}
+
+try {
+  setFirestoreLogLevel('silent');
+} catch (e) {
+  // Ignore if unsupported
+}
 
 // Initialize Firebase App instance singleton
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
@@ -34,10 +48,10 @@ try {
 // Explicitly enforce browser local persistence for Vercel and standard web browsers
 try {
   setPersistence(authInstance, browserLocalPersistence).catch((err) => {
-    console.warn('Set browserLocalPersistence fallback:', err);
+    // Harmless persistence fallback note in restricted iframe environments
   });
 } catch (err) {
-  console.warn('Set persistence exception:', err);
+  // Ignore persistence init note
 }
 
 let dbInstance: Firestore;

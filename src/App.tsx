@@ -480,6 +480,12 @@ export default function App() {
     }).catch(e => console.warn('checkRedirectAuthResult notice:', e));
 
     const unsub = initAuthListener(async (user) => {
+      const currentPrimary = getStoredUnifiedAccount();
+      // If a primary unified user is already active, preserve it
+      if (!user && currentPrimary && currentPrimary.userId) {
+        return;
+      }
+
       const activeKey = getActiveAccountKey();
       const userKey = getAccountKey(user);
 
@@ -505,6 +511,14 @@ export default function App() {
       }
     };
 
+    const handleAllAccountsLoggedOut = () => {
+      setCurrentUser(null);
+      const freshData = getAutosavedInitialData();
+      setHistory([freshData]);
+      setHistoryIndex(0);
+      setToastMessage('تم تسجيل الخروج واستعادة خيارات وإعدادات النظام العام بنجاح.');
+    };
+
     const handleAutosaveCertUpdated = (e: any) => {
       if (e?.detail && typeof e.detail === 'object' && e.detail.title) {
         setHistory([e.detail]);
@@ -517,11 +531,13 @@ export default function App() {
     };
 
     window.addEventListener('taqdeer_account_switched', handleAccountSwitched);
+    window.addEventListener('taqdeer_all_accounts_logged_out', handleAllAccountsLoggedOut);
     window.addEventListener('taqdeer_autosave_cert_updated', handleAutosaveCertUpdated);
 
     return () => {
       unsub();
       window.removeEventListener('taqdeer_account_switched', handleAccountSwitched);
+      window.removeEventListener('taqdeer_all_accounts_logged_out', handleAllAccountsLoggedOut);
       window.removeEventListener('taqdeer_autosave_cert_updated', handleAutosaveCertUpdated);
     };
   }, []);

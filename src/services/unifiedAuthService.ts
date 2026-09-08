@@ -106,10 +106,14 @@ function generateVerificationCode(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
-function generateUserId(prefix: string = 'USR'): string {
-  const randomStr = Math.random().toString(36).substring(2, 7).toUpperCase();
-  const dateStr = Date.now().toString().slice(-4);
-  return `${prefix}-${randomStr}${dateStr}`;
+export function generateUserId(prefix: string = 'USR'): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    const rawUuid = crypto.randomUUID().replace(/-/g, '').toLowerCase().slice(0, 10);
+    return `${prefix}_${rawUuid}`;
+  }
+  const randomStr = Math.random().toString(36).substring(2, 10).toLowerCase();
+  const timeStr = Date.now().toString(36);
+  return `${prefix}_${randomStr}${timeStr}`;
 }
 
 export function getStoredUnifiedAccount(): UnifiedAccount | null {

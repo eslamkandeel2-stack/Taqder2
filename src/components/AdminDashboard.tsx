@@ -34,7 +34,16 @@ import {
   HardDrive,
   ExternalLink,
   Copy,
-  FolderOpen
+  FolderOpen,
+  Server,
+  Cloud,
+  Link,
+  Globe,
+  HelpCircle,
+  Info,
+  CheckCircle,
+  Zap,
+  Terminal
 } from 'lucide-react';
 import {
   AdminUserRecord,
@@ -50,7 +59,10 @@ import {
   saveServerSystemConfig,
   fetchServerDriveConfig,
   saveServerDriveConfig,
-  testServerDriveConnection
+  testServerDriveConnection,
+  fetchServerDatabaseConfig,
+  saveServerDatabaseConfig,
+  testServerDatabaseConnection
 } from '../services/adminService';
 import { isUserAdmin, loginWithCredentials, UnifiedAccount } from '../services/unifiedAuthService';
 import {
@@ -60,7 +72,10 @@ import {
   saveSystemConfig,
   PlatformDriveSettings,
   getPlatformDriveSettings,
-  savePlatformDriveSettings
+  savePlatformDriveSettings,
+  SystemDatabaseSettings,
+  DEFAULT_DATABASE_SETTINGS,
+  getDatabaseSettings
 } from '../utils/systemConfig';
 import {
   DefaultCertificateSettings,
@@ -68,6 +83,10 @@ import {
   getSavedDefaultSettings,
   saveDefaultSettings
 } from '../utils/defaultSettings';
+import { DatabaseManager } from './admin/DatabaseManager';
+import { AccountSettingsModal } from './admin/AccountSettingsModal';
+import { FeaturePermissionsTab } from './admin/FeaturePermissionsTab';
+import { AccountDefaultsTab } from './admin/AccountDefaultsTab';
 
 interface Props {
   currentUser?: UnifiedAccount | null;
@@ -78,7 +97,7 @@ interface Props {
   onUpdateSystemConfig: (newConfig: SystemSettingsConfig) => void;
 }
 
-type AdminTab = 'overview' | 'users' | 'settings' | 'security';
+type AdminTab = 'overview' | 'users' | 'permissions' | 'account-defaults' | 'settings' | 'security' | 'database';
 
 export const AdminDashboard: React.FC<Props> = ({
   currentUser,
@@ -89,6 +108,10 @@ export const AdminDashboard: React.FC<Props> = ({
   onUpdateSystemConfig,
 }) => {
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
+
+  // Account settings & features modal state
+  const [selectedUserForModal, setSelectedUserForModal] = useState<AdminUserRecord | null>(null);
+  const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
 
   // Admin gate login state
   const [gateUsername, setGateUsername] = useState('Admin');
@@ -144,9 +167,32 @@ export const AdminDashboard: React.FC<Props> = ({
   // Platform Google Drive State
   const [platformDrive, setPlatformDrive] = useState<PlatformDriveSettings>(() => getPlatformDriveSettings());
   const [testingDrive, setTestingDrive] = useState(false);
-  const [driveTestResult, setDriveTestResult] = useState<{ success: boolean; message: string; folderId?: string; folderUrl?: string } | null>(null);
+  const [driveTestResult, setDriveTestResult] = useState<{
+    success: boolean;
+    message: string;
+    folderId?: string;
+    folderUrl?: string;
+    environment?: string;
+    isVercel?: boolean;
+    diagnostics?: any;
+    vercelGuide?: string[];
+  } | null>(null);
   const [savingDrive, setSavingDrive] = useState(false);
   const [driveSuccessMessage, setDriveSuccessMessage] = useState<string | null>(null);
+
+  // System Database State (Google Firestore / Vercel Postgres / Local)
+  const [dbSettings, setDbSettings] = useState<SystemDatabaseSettings>(() => getDatabaseSettings());
+  const [testingDb, setTestingDb] = useState(false);
+  const [dbTestResult, setDbTestResult] = useState<{
+    success: boolean;
+    message: string;
+    provider?: string;
+    latencyMs?: number;
+    diagnostics?: any;
+    recommendations?: string[];
+  } | null>(null);
+  const [savingDb, setSavingDb] = useState(false);
+  const [dbSuccessMessage, setDbSuccessMessage] = useState<string | null>(null);
 
   const isAdmin = useMemo(() => isUserAdmin(currentUser), [currentUser]);
 
@@ -196,6 +242,20 @@ export const AdminDashboard: React.FC<Props> = ({
       }
     } catch (e) {
       console.warn('Error loading remote drive config:', e);
+    }
+
+    try {
+      const dbRes = await fetchServerDatabaseConfig();
+      if (dbRes) {
+        setDbSettings((prev) => ({
+          ...prev,
+          ...dbRes,
+          firestore: { ...prev.firestore, ...(dbRes.firestore || {}) },
+          postgres: { ...prev.postgres, ...(dbRes.postgres || {}) },
+        }));
+      }
+    } catch (e) {
+      console.warn('Error loading remote database config:', e);
     }
   };
 
@@ -442,7 +502,11 @@ export const AdminDashboard: React.FC<Props> = ({
         success: res.connected,
         message: res.message,
         folderId: res.folderId,
-        folderUrl: res.folderUrl
+        folderUrl: res.folderUrl,
+        environment: (res as any).environment,
+        isVercel: (res as any).isVercel,
+        diagnostics: (res as any).diagnostics,
+        vercelGuide: (res as any).vercelGuide,
       });
       if (res.connected) {
         notify('تم اختبار الاتصال بـ Google Drive بنجاح! ☁️✅');
@@ -457,6 +521,51 @@ export const AdminDashboard: React.FC<Props> = ({
       notify('فشل اختبار الاتصال بدرايف');
     } finally {
       setTestingDrive(false);
+    }
+  };
+
+  // System Database Handlers
+  const handleSaveDatabaseConfig = async () => {
+    setSavingDb(true);
+    setDbSuccessMessage(null);
+    try {
+      const res = await saveServerDatabaseConfig(dbSettings);
+      setDbSuccessMessage(res.message || 'تم حفظ إعدادات قاعدة البيانات بنجاح!');
+      notify('تم حفظ إعدادات قاعدة البيانات بنجاح! 🗄️✅');
+    } catch (err: any) {
+      setDbSuccessMessage('فشل الحفظ على الخادم');
+      notify(err.message || 'فشل حفظ إعدادات قاعدة البيانات');
+    } finally {
+      setSavingDb(false);
+    }
+  };
+
+  const handleTestDatabaseConnection = async () => {
+    setTestingDb(true);
+    setDbTestResult(null);
+    try {
+      const res = await testServerDatabaseConnection(dbSettings);
+      setDbTestResult({
+        success: res.connected,
+        message: res.message,
+        provider: res.provider,
+        latencyMs: res.latencyMs,
+        diagnostics: res.diagnostics,
+        recommendations: res.recommendations,
+      });
+      if (res.connected) {
+        notify('تم اختبار الاتصال بقاعدة البيانات بنجاح! 🗄️✅');
+      } else {
+        notify(res.message || 'تنبيه بشأن فحص قاعدة البيانات');
+      }
+    } catch (err: any) {
+      setDbTestResult({
+        success: false,
+        message: err.message || 'فشل فحص الاتصال بقاعدة البيانات',
+      });
+      notify('فشل اختبار الاتصال بقاعدة البيانات');
+    } finally {
+      setTestingDb(false);
     }
   };
 
@@ -680,7 +789,33 @@ export const AdminDashboard: React.FC<Props> = ({
             }`}
           >
             <Users className="w-4 h-4" />
-            <span>إدارة حسابات المستخدمين ({stats.totalUsers})</span>
+            <span>إدارة الحسابات ({stats.totalUsers})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('permissions')}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer whitespace-nowrap ${
+              activeTab === 'permissions'
+                ? 'bg-amber-500 text-slate-950 font-black shadow-sm'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+            }`}
+          >
+            <Zap className="w-4 h-4" />
+            <span>صلاحيات ومميزات النظام</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('account-defaults')}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer whitespace-nowrap ${
+              activeTab === 'account-defaults'
+                ? 'bg-amber-500 text-slate-950 font-black shadow-sm'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+            }`}
+          >
+            <School className="w-4 h-4" />
+            <span>الإعدادات الافتراضية للحسابات</span>
           </button>
 
           <button
@@ -693,7 +828,7 @@ export const AdminDashboard: React.FC<Props> = ({
             }`}
           >
             <Sliders className="w-4 h-4" />
-            <span>إعدادات النظام الافتراضية</span>
+            <span>إعدادات النظام العامة</span>
           </button>
 
           <button
@@ -707,6 +842,19 @@ export const AdminDashboard: React.FC<Props> = ({
           >
             <KeyRound className="w-4 h-4" />
             <span>تغيير كلمة مرور المدير</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('database')}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer whitespace-nowrap ${
+              activeTab === 'database'
+                ? 'bg-amber-500 text-slate-950 font-black shadow-sm'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+            }`}
+          >
+            <Database className="w-4 h-4" />
+            <span>قاعدة البيانات والنسخ الاحتياطي</span>
           </button>
         </div>
       </header>
@@ -804,7 +952,7 @@ export const AdminDashboard: React.FC<Props> = ({
             </div>
 
             {/* Quick Actions Shortcuts */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <div
                 onClick={() => setActiveTab('users')}
                 className="bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-amber-500/40 rounded-2xl p-4 cursor-pointer transition group"
@@ -825,19 +973,57 @@ export const AdminDashboard: React.FC<Props> = ({
               </div>
 
               <div
-                onClick={() => setActiveTab('settings')}
+                onClick={() => setActiveTab('permissions')}
                 className="bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-amber-500/40 rounded-2xl p-4 cursor-pointer transition group"
               >
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center group-hover:scale-105 transition">
+                    <Zap className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white group-hover:text-amber-300 transition">
+                      صلاحيات ومميزات المنظومة
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      فتح وإغلاق المميزات (AI، Drive، التوليد الجماعي) والتحكم بالمصفوفة
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div
+                onClick={() => setActiveTab('account-defaults')}
+                className="bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-amber-500/40 rounded-2xl p-4 cursor-pointer transition group"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-sky-500/20 text-sky-400 flex items-center justify-center group-hover:scale-105 transition">
                     <School className="w-5 h-5" />
                   </div>
                   <div>
                     <h3 className="text-sm font-bold text-white group-hover:text-amber-300 transition">
-                      الترويسات والهوية المؤسسية
+                      الإعدادات الافتراضية للحسابات
                     </h3>
                     <p className="text-xs text-slate-400 mt-0.5">
-                      تحديد اسم المنشأة، المسؤولين، الترويسات الرسمية، وقفل العناصر الثابتة
+                      تخصيص المدرسة، المسميات، التواقيع، ومقاس الشهادة لكل حساب
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div
+                onClick={() => setActiveTab('settings')}
+                className="bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-amber-500/40 rounded-2xl p-4 cursor-pointer transition group"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center group-hover:scale-105 transition">
+                    <Sliders className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white group-hover:text-amber-300 transition">
+                      إعدادات النظام العامة
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      تحديد اسم المنشأة العام، الترويسات الرسمية، وقفل العناصر الثابتة
                     </p>
                   </div>
                 </div>
@@ -848,7 +1034,7 @@ export const AdminDashboard: React.FC<Props> = ({
                 className="bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-amber-500/40 rounded-2xl p-4 cursor-pointer transition group"
               >
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center group-hover:scale-105 transition">
+                  <div className="w-10 h-10 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center group-hover:scale-105 transition">
                     <KeyRound className="w-5 h-5" />
                   </div>
                   <div>
@@ -856,7 +1042,26 @@ export const AdminDashboard: React.FC<Props> = ({
                       أمان حساب المدير (Admin)
                     </h3>
                     <p className="text-xs text-slate-400 mt-0.5">
-                      تغيير كلمة المرور الافتراضية (Admin) وتأمين حساب المشرف الأساسي
+                      تغيير كلمة المرور وتأمين حساب المشرف الأساسي
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div
+                onClick={() => setActiveTab('database')}
+                className="bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-amber-500/40 rounded-2xl p-4 cursor-pointer transition group"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center group-hover:scale-105 transition">
+                    <Database className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white group-hover:text-amber-300 transition">
+                      قاعدة البيانات والنسخ الاحتياطي
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      استعراض الجداول والسجلات، وتنزيل أو استعادة النسخ الاحتياطية
                     </p>
                   </div>
                 </div>
@@ -926,6 +1131,7 @@ export const AdminDashboard: React.FC<Props> = ({
                       <th className="p-3.5">البريد الإلكتروني</th>
                       <th className="p-3.5">الرتبة والدور</th>
                       <th className="p-3.5">حالة التفعيل</th>
+                      <th className="p-3.5">المميزات والإعدادات</th>
                       <th className="p-3.5">تاريخ التسجيل</th>
                       <th className="p-3.5 text-center">إجراءات الإدارة</th>
                     </tr>
@@ -933,15 +1139,21 @@ export const AdminDashboard: React.FC<Props> = ({
                   <tbody className="divide-y divide-slate-800/80">
                     {filteredUsers.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="p-8 text-center text-slate-500">
+                        <td colSpan={8} className="p-8 text-center text-slate-500">
                           {loadingUsers ? 'جارٍ تحميل قائمة المستخدمين...' : 'لا يوجد مستخدمون مطابقون لمعايير البحث'}
                         </td>
                       </tr>
                     ) : (
                       filteredUsers.map((u) => {
                         const isPrimaryAdmin = u.userId === 'ADMIN-001';
+                        const isFrozen = u.features?.isAccountActive === false;
+                        const hasCustomDefaults = Boolean(u.defaultSettings && u.defaultSettings.issuerTitle);
+                        const enabledFeaturesCount = u.features
+                          ? Object.values(u.features).filter((v) => v === true).length
+                          : u.role === 'admin' ? 12 : 9;
+
                         return (
-                          <tr key={u.userId} className="hover:bg-slate-800/40 transition">
+                          <tr key={u.userId} className={`hover:bg-slate-800/40 transition ${isFrozen ? 'bg-rose-950/10' : ''}`}>
                             <td className="p-3.5">
                               <div className="flex items-center gap-2.5">
                                 {u.photoURL ? (
@@ -1004,12 +1216,50 @@ export const AdminDashboard: React.FC<Props> = ({
                               )}
                             </td>
 
+                            {/* Features & Defaults Summary Pill */}
+                            <td className="p-3.5">
+                              <div className="flex flex-col gap-1">
+                                <div className="flex items-center gap-1.5">
+                                  {isFrozen ? (
+                                    <span className="text-[10px] bg-rose-500/20 text-rose-400 border border-rose-500/30 px-2 py-0.5 rounded-full font-bold">
+                                      مجمّد
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] bg-amber-500/10 text-amber-300 border border-amber-500/20 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                                      <Zap className="w-2.5 h-2.5 text-amber-400" />
+                                      <span>{enabledFeaturesCount} ميزة مفعلة</span>
+                                    </span>
+                                  )}
+                                </div>
+                                {hasCustomDefaults && (
+                                  <span className="text-[9px] text-sky-400 flex items-center gap-1 truncate max-w-[140px]" title={u.defaultSettings?.issuerTitle}>
+                                    <School className="w-2.5 h-2.5 flex-shrink-0" />
+                                    <span>{u.defaultSettings?.issuerTitle}</span>
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+
                             <td className="p-3.5 text-slate-400 text-[11px] font-mono">
                               {u.createdAt ? new Date(u.createdAt).toLocaleDateString('ar-SA') : '—'}
                             </td>
 
                             <td className="p-3.5 text-center">
                               <div className="flex items-center justify-center gap-1.5">
+                                {/* Customize Permissions & Defaults Modal Button */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedUserForModal(u);
+                                    setIsAccountModalOpen(true);
+                                  }}
+                                  className="px-2.5 py-1 bg-amber-500/10 hover:bg-amber-500 hover:text-slate-950 text-amber-300 border border-amber-500/30 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                                  title="تخصيص الصلاحيات والمميزات والإعدادات الافتراضية"
+                                >
+                                  <Sliders className="w-3.5 h-3.5" />
+                                  <span className="hidden sm:inline">تخصيص</span>
+                                </button>
+
                                 {/* Toggle Role Button */}
                                 <button
                                   type="button"
@@ -1074,6 +1324,40 @@ export const AdminDashboard: React.FC<Props> = ({
               </div>
             </div>
           </div>
+        )}
+
+        {/* ==========================================
+            TAB: FEATURE PERMISSIONS MATRIX
+           ========================================== */}
+        {activeTab === 'permissions' && (
+          <FeaturePermissionsTab
+            users={users}
+            onUsersUpdated={(updated) => {
+              setUsers(updated);
+            }}
+            onSelectUserForEdit={(u) => {
+              setSelectedUserForModal(u);
+              setIsAccountModalOpen(true);
+            }}
+            onShowToast={(msg) => onShowToast?.(msg)}
+          />
+        )}
+
+        {/* ==========================================
+            TAB: ACCOUNT DEFAULT SETTINGS
+           ========================================== */}
+        {activeTab === 'account-defaults' && (
+          <AccountDefaultsTab
+            users={users}
+            onUsersUpdated={(updated) => {
+              setUsers(updated);
+            }}
+            onSelectUserForEdit={(u) => {
+              setSelectedUserForModal(u);
+              setIsAccountModalOpen(true);
+            }}
+            onShowToast={(msg) => onShowToast?.(msg)}
+          />
         )}
 
         {/* ==========================================
@@ -1453,32 +1737,55 @@ export const AdminDashboard: React.FC<Props> = ({
 
                 {driveTestResult && (
                   <div
-                    className={`p-3.5 rounded-xl text-xs border ${
+                    className={`p-4 rounded-2xl text-xs border ${
                       driveTestResult.success
                         ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-200'
                         : 'bg-amber-950/60 border-amber-500/40 text-amber-200'
                     }`}
                   >
                     <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-start gap-2">
+                      <div className="flex items-start gap-2.5">
                         {driveTestResult.success ? (
                           <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
                         ) : (
                           <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
                         )}
-                        <div>
-                          <p className="font-bold">{driveTestResult.message}</p>
+                        <div className="space-y-1.5">
+                          <p className="font-bold text-sm">{driveTestResult.message}</p>
                           {driveTestResult.folderUrl && (
                             <a
                               href={driveTestResult.folderUrl}
                               target="_blank"
                               rel="noreferrer"
-                              className="inline-flex items-center gap-1 text-[11px] text-amber-400 hover:underline mt-1 font-bold"
+                              className="inline-flex items-center gap-1 text-[11px] text-amber-400 hover:underline font-bold"
                             >
                               <FolderOpen className="w-3.5 h-3.5" />
-                              <span>فتح مجلد الأرشفة والشهادات المعتمدة</span>
+                              <span>فتح مجلد الأرشفة والشهادات المعتمدة في Google Drive</span>
                               <ExternalLink className="w-3 h-3" />
                             </a>
+                          )}
+                          {driveTestResult.environment && (
+                            <div className="flex flex-wrap gap-1.5 pt-1">
+                              <span className="px-2 py-0.5 rounded-md bg-slate-800/80 text-slate-300 font-mono text-[10px] border border-slate-700">
+                                البيئة: {driveTestResult.environment}
+                              </span>
+                              {driveTestResult.isVercel && (
+                                <span className="px-2 py-0.5 rounded-md bg-purple-500/20 text-purple-300 font-mono text-[10px] border border-purple-500/30">
+                                  ▲ Vercel Deployment Detected
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          {driveTestResult.vercelGuide && driveTestResult.vercelGuide.length > 0 && (
+                            <div className="mt-2 p-2 bg-slate-900/80 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1">
+                              <span className="font-bold text-amber-400 block mb-1">إرشادات النشر على سيرفر خارجي:</span>
+                              {driveTestResult.vercelGuide.map((tip, idx) => (
+                                <div key={idx} className="flex items-center gap-1.5">
+                                  <span className="text-amber-400">•</span>
+                                  <span>{tip}</span>
+                                </div>
+                              ))}
+                            </div>
                           )}
                         </div>
                       </div>
@@ -1494,55 +1801,93 @@ export const AdminDashboard: React.FC<Props> = ({
                 )}
 
                 {/* Toggles */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <label className={`flex items-center gap-3 p-3 rounded-xl border transition cursor-pointer ${
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  <label className={`flex items-start gap-3 p-3.5 rounded-2xl border transition cursor-pointer ${
                     platformDrive.enabled
-                      ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-200'
+                      ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-200 shadow-sm'
                       : 'bg-slate-800/60 border-slate-700/60 text-slate-400 hover:bg-slate-800'
                   }`}>
                     <input
                       type="checkbox"
                       checked={platformDrive.enabled}
                       onChange={(e) => setPlatformDrive({ ...platformDrive, enabled: e.target.checked })}
-                      className="w-4 h-4 rounded text-emerald-500 focus:ring-0 bg-slate-700 border-slate-600 cursor-pointer"
+                      className="w-4 h-4 mt-0.5 rounded text-emerald-500 focus:ring-0 bg-slate-700 border-slate-600 cursor-pointer"
                     />
                     <div className="text-right">
                       <span className="block text-xs font-black">تفعيل ربط Google Drive</span>
-                      <span className="block text-[10px] text-slate-400">تشغيل ميزة الأرشفة السحابية</span>
+                      <span className="block text-[10px] text-slate-400 mt-0.5">تشغيل ميزة الأرشفة السحابية للشهادات</span>
                     </div>
                   </label>
 
-                  <label className={`flex items-center gap-3 p-3 rounded-xl border transition cursor-pointer ${
+                  <label className={`flex items-start gap-3 p-3.5 rounded-2xl border transition cursor-pointer ${
                     platformDrive.isDefaultForAllUsers
-                      ? 'bg-amber-500/10 border-amber-500/40 text-amber-200'
+                      ? 'bg-amber-500/10 border-amber-500/40 text-amber-200 shadow-sm'
                       : 'bg-slate-800/60 border-slate-700/60 text-slate-400 hover:bg-slate-800'
                   }`}>
                     <input
                       type="checkbox"
                       checked={platformDrive.isDefaultForAllUsers}
                       onChange={(e) => setPlatformDrive({ ...platformDrive, isDefaultForAllUsers: e.target.checked })}
-                      className="w-4 h-4 rounded text-amber-500 focus:ring-0 bg-slate-700 border-slate-600 cursor-pointer"
+                      className="w-4 h-4 mt-0.5 rounded text-amber-500 focus:ring-0 bg-slate-700 border-slate-600 cursor-pointer"
                     />
                     <div className="text-right">
                       <span className="block text-xs font-black">افتراضي لجميع المستخدمين</span>
-                      <span className="block text-[10px] text-slate-400">دون الحاجة لتسجيل دخولهم بحساب شخصي</span>
+                      <span className="block text-[10px] text-slate-400 mt-0.5">دون الحاجة لتسجيل دخولهم بحساب شخصي</span>
                     </div>
                   </label>
 
-                  <label className={`flex items-center gap-3 p-3 rounded-xl border transition cursor-pointer ${
+                  <label className={`flex items-start gap-3 p-3.5 rounded-2xl border transition cursor-pointer ${
+                    platformDrive.hideAccountDetailsInModal
+                      ? 'bg-purple-500/10 border-purple-500/40 text-purple-200 shadow-sm'
+                      : 'bg-slate-800/60 border-slate-700/60 text-slate-400 hover:bg-slate-800'
+                  }`}>
+                    <input
+                      type="checkbox"
+                      checked={!!platformDrive.hideAccountDetailsInModal}
+                      onChange={(e) => setPlatformDrive({ ...platformDrive, hideAccountDetailsInModal: e.target.checked })}
+                      className="w-4 h-4 mt-0.5 rounded text-purple-500 focus:ring-0 bg-slate-700 border-slate-600 cursor-pointer"
+                    />
+                    <div className="text-right">
+                      <span className="block text-xs font-black">إخفاء بيانات الحساب من نافذة التوثيق</span>
+                      <span className="block text-[10px] text-slate-400 mt-0.5">تظهر السحابة كخدمة نظام موحدة بدون كشف البريد</span>
+                    </div>
+                  </label>
+
+                  <label className={`flex items-start gap-3 p-3.5 rounded-2xl border transition cursor-pointer ${
+                    platformDrive.allowPersonalGoogleAccount !== false
+                      ? 'bg-blue-500/10 border-blue-500/40 text-blue-200 shadow-sm'
+                      : 'bg-rose-500/10 border-rose-500/40 text-rose-300 shadow-sm'
+                  }`}>
+                    <input
+                      type="checkbox"
+                      checked={platformDrive.allowPersonalGoogleAccount !== false}
+                      onChange={(e) => setPlatformDrive({ ...platformDrive, allowPersonalGoogleAccount: e.target.checked })}
+                      className="w-4 h-4 mt-0.5 rounded text-blue-500 focus:ring-0 bg-slate-700 border-slate-600 cursor-pointer"
+                    />
+                    <div className="text-right">
+                      <span className="block text-xs font-black">السماح باستخدام حساب شخصي</span>
+                      <span className="block text-[10px] text-slate-400 mt-0.5">
+                        {platformDrive.allowPersonalGoogleAccount !== false
+                          ? 'يمكن للمستخدمين التبديل لحساباتهم الخاصة'
+                          : 'مُعطل: التوثيق مقصور تماماً على حساب المنظومة'}
+                      </span>
+                    </div>
+                  </label>
+
+                  <label className={`flex items-start gap-3 p-3.5 rounded-2xl border transition cursor-pointer ${
                     platformDrive.fallbackToLocalArchive
-                      ? 'bg-blue-500/10 border-blue-500/40 text-blue-200'
+                      ? 'bg-teal-500/10 border-teal-500/40 text-teal-200 shadow-sm'
                       : 'bg-slate-800/60 border-slate-700/60 text-slate-400 hover:bg-slate-800'
                   }`}>
                     <input
                       type="checkbox"
                       checked={platformDrive.fallbackToLocalArchive}
                       onChange={(e) => setPlatformDrive({ ...platformDrive, fallbackToLocalArchive: e.target.checked })}
-                      className="w-4 h-4 rounded text-blue-500 focus:ring-0 bg-slate-700 border-slate-600 cursor-pointer"
+                      className="w-4 h-4 mt-0.5 rounded text-teal-500 focus:ring-0 bg-slate-700 border-slate-600 cursor-pointer"
                     />
                     <div className="text-right">
                       <span className="block text-xs font-black">أرشفة احتياطية فورية على السيرفر</span>
-                      <span className="block text-[10px] text-slate-400">ضمان عدم ضياع الشهادات في أي ظرف</span>
+                      <span className="block text-[10px] text-slate-400 mt-0.5">ضمان عدم ضياع الشهادات في أي ظرف</span>
                     </div>
                   </label>
                 </div>
@@ -1561,7 +1906,7 @@ export const AdminDashboard: React.FC<Props> = ({
                       placeholder="eslam.kandeel2@gmail.com"
                     />
                     <p className="text-[10px] text-slate-400 mt-1">
-                      البريد الذي سيظهر للمستخدمين كحساب معتمد للأرشفة والتوثيق المباشر.
+                      البريد الذي سيُعتمد للأرشفة والتوثيق المباشر.
                     </p>
                   </div>
 
@@ -1606,11 +1951,12 @@ export const AdminDashboard: React.FC<Props> = ({
                 </div>
 
                 {/* Google OAuth & API Credentials (Optional/Advanced) */}
-                <details className="bg-slate-950/60 border border-slate-800 rounded-xl p-3.5">
-                  <summary className="text-xs font-bold text-amber-400 cursor-pointer select-none">
-                    إعدادات متقدمة: بيانات اعتماد Google Drive API (OAuth 2.0 Client & Refresh Token)
+                <details className="bg-slate-950/60 border border-slate-800 rounded-2xl p-4">
+                  <summary className="text-xs font-bold text-amber-400 cursor-pointer select-none flex items-center justify-between">
+                    <span>إعدادات متقدمة: بيانات اعتماد Google Drive API (OAuth 2.0 Client & Refresh Token)</span>
+                    <span className="text-[11px] text-slate-400">انقر للفتح ▾</span>
                   </summary>
-                  <p className="text-[11px] text-slate-400 mt-2 mb-3">
+                  <p className="text-[11px] text-slate-400 mt-2 mb-3 leading-relaxed">
                     عند إدخال Refresh Token لحساب ({platformDrive.accountEmail})، يتولى السيرفر تجديد مفاتيح الرفع دورياً ورفع الشهادات مباشرة إلى مجلد الدرايف الحقيقي لحسابك على Google دون تدخل يدوي.
                   </p>
                   <div className="space-y-3">
@@ -1643,6 +1989,482 @@ export const AdminDashboard: React.FC<Props> = ({
                         className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white font-mono dir-ltr text-right"
                         placeholder="1//••••••••••••••••••••"
                       />
+                    </div>
+                  </div>
+                </details>
+
+                {/* Explanation Card for External Servers (Vercel / Cloud) */}
+                <div className="p-4 bg-slate-950/70 border border-amber-500/20 rounded-2xl">
+                  <div className="flex items-center gap-2 mb-2 text-amber-300 text-xs font-bold">
+                    <Info className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>دليل ربط Google Drive عند رفع النظام على سيرفر خارجي (مثل Vercel)</span>
+                  </div>
+                  <div className="text-[11px] text-slate-300 space-y-1.5 leading-relaxed">
+                    <p>
+                      • خوادم <strong>Vercel Serverless</strong> تعمل بنظام بدون حالة (Stateless)، لذا لا يُفضل الاعتماد على تخزين الملفات محلياً.
+                    </p>
+                    <p>
+                      • عند ضبط <strong>Client ID</strong> و <strong>Client Secret</strong> و <strong>Refresh Token</strong> أعلاه (أو كمتغيرات بيئة في لوحة Vercel)، يقوم الخادم برفع الشهادات إلى Google Drive فور صدورها مباشرة.
+                    </p>
+                    <p>
+                      • يمكنك إضافة هذه المتغيرات في لوحة Vercel Settings &gt; Environment Variables:
+                      <code className="text-amber-300 mx-1 font-mono">GOOGLE_DRIVE_CLIENT_ID</code> و 
+                      <code className="text-amber-300 mx-1 font-mono">GOOGLE_DRIVE_CLIENT_SECRET</code> و 
+                      <code className="text-amber-300 mx-1 font-mono">GOOGLE_DRIVE_REFRESH_TOKEN</code>.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* ============================================================
+                NEW: CLOUD DATABASE INTEGRATION (GOOGLE FIRESTORE / VERCEL POSTGRES)
+               ============================================================ */}
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-xl relative overflow-hidden">
+              <div className="space-y-6">
+                {/* Header */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-800">
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-cyan-500/20 to-blue-500/30 border border-cyan-500/40 flex items-center justify-center text-cyan-400 shadow-md">
+                      <Database className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-base sm:text-lg font-black text-white">
+                          ربط قاعدة بيانات جوجل أو Vercel السحابية
+                        </h3>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                          Enterprise Storage
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        ربط وحفظ بيانات المنظومة والشهادات بقاعدة بيانات خارجية دائمة (Google Firestore أو Vercel Postgres)
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={handleTestDatabaseConnection}
+                      disabled={testingDb}
+                      className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/40 rounded-xl text-xs font-bold flex items-center gap-2 transition disabled:opacity-50"
+                      title="فحص الاتصال بقاعدة البيانات والتحقق من صلاحية الإعدادات"
+                    >
+                      {testingDb ? (
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Zap className="w-3.5 h-3.5" />
+                      )}
+                      <span>فحص اتصال القاعدة</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleSaveDatabaseConfig}
+                      disabled={savingDb}
+                      className="px-4 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold rounded-xl text-xs flex items-center gap-2 transition shadow-lg shadow-cyan-900/30 disabled:opacity-50"
+                    >
+                      {savingDb ? (
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Save className="w-3.5 h-3.5" />
+                      )}
+                      <span>حفظ إعدادات القاعدة</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Feedback Message */}
+                {dbSuccessMessage && (
+                  <div className="p-3 bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 rounded-xl text-xs flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+                      <span>{dbSuccessMessage}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setDbSuccessMessage(null)}
+                      className="text-slate-400 hover:text-white text-xs"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )}
+
+                {/* Test Result Display */}
+                {dbTestResult && (
+                  <div
+                    className={`p-4 rounded-2xl text-xs border ${
+                      dbTestResult.success
+                        ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-200'
+                        : 'bg-amber-950/60 border-amber-500/40 text-amber-200'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-start gap-2.5">
+                        {dbTestResult.success ? (
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                        ) : (
+                          <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                        )}
+                        <div className="space-y-2">
+                          <p className="font-bold text-sm">{dbTestResult.message}</p>
+                          
+                          {/* Metrics & Badges */}
+                          <div className="flex flex-wrap gap-2 pt-0.5">
+                            {dbTestResult.provider && (
+                              <span className="px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 font-mono text-[10px] border border-slate-700">
+                                المزود: {dbTestResult.provider}
+                              </span>
+                            )}
+                            {dbTestResult.latencyMs !== undefined && (
+                              <span className="px-2 py-0.5 rounded-md bg-cyan-900/50 text-cyan-300 font-mono text-[10px] border border-cyan-700/50">
+                                زمن الاستجابة: {dbTestResult.latencyMs}ms
+                              </span>
+                            )}
+                            {dbTestResult.diagnostics && (
+                              <span className="px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 font-mono text-[10px] border border-slate-700">
+                                الحالة: {dbTestResult.diagnostics.status || (dbTestResult.success ? 'جاهز' : 'يحتاج ضبط')}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Recommendations */}
+                          {dbTestResult.recommendations && dbTestResult.recommendations.length > 0 && (
+                            <div className="mt-2 p-2.5 bg-slate-900/80 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1">
+                              <span className="font-bold text-cyan-400 block mb-1">توجيهات وإرشادات الربط:</span>
+                              {dbTestResult.recommendations.map((rec, i) => (
+                                <div key={i} className="flex items-center gap-1.5">
+                                  <span className="text-cyan-400">•</span>
+                                  <span>{rec}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setDbTestResult(null)}
+                        className="text-slate-400 hover:text-white text-xs"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Provider Selector Tabs */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-2">
+                    اختيار مزوّد قاعدة البيانات للمنظومة:
+                  </label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => setDbSettings({ ...dbSettings, provider: 'firestore' })}
+                      className={`p-3 rounded-2xl border text-center transition flex flex-col items-center gap-1.5 ${
+                        dbSettings.provider === 'firestore'
+                          ? 'bg-amber-500/15 border-amber-500/50 text-amber-200 shadow-md'
+                          : 'bg-slate-800/60 border-slate-700 text-slate-400 hover:bg-slate-800'
+                      }`}
+                    >
+                      <Cloud className="w-5 h-5 text-amber-400" />
+                      <span className="text-xs font-bold">Google Firestore</span>
+                      <span className="text-[9px] text-slate-400">سحابة Google Firebase</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setDbSettings({ ...dbSettings, provider: 'vercel-postgres' })}
+                      className={`p-3 rounded-2xl border text-center transition flex flex-col items-center gap-1.5 ${
+                        dbSettings.provider === 'vercel-postgres'
+                          ? 'bg-purple-500/15 border-purple-500/50 text-purple-200 shadow-md'
+                          : 'bg-slate-800/60 border-slate-700 text-slate-400 hover:bg-slate-800'
+                      }`}
+                    >
+                      <Server className="w-5 h-5 text-purple-400" />
+                      <span className="text-xs font-bold">Vercel Postgres</span>
+                      <span className="text-[9px] text-slate-400">Serverless SQL سريع</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setDbSettings({ ...dbSettings, provider: 'custom-postgres' })}
+                      className={`p-3 rounded-2xl border text-center transition flex flex-col items-center gap-1.5 ${
+                        dbSettings.provider === 'custom-postgres'
+                          ? 'bg-cyan-500/15 border-cyan-500/50 text-cyan-200 shadow-md'
+                          : 'bg-slate-800/60 border-slate-700 text-slate-400 hover:bg-slate-800'
+                      }`}
+                    >
+                      <Database className="w-5 h-5 text-cyan-400" />
+                      <span className="text-xs font-bold">PostgreSQL مخصص</span>
+                      <span className="text-[9px] text-slate-400">سيرفر خارجي مخصص</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setDbSettings({ ...dbSettings, provider: 'local' })}
+                      className={`p-3 rounded-2xl border text-center transition flex flex-col items-center gap-1.5 ${
+                        dbSettings.provider === 'local'
+                          ? 'bg-blue-500/15 border-blue-500/50 text-blue-200 shadow-md'
+                          : 'bg-slate-800/60 border-slate-700 text-slate-400 hover:bg-slate-800'
+                      }`}
+                    >
+                      <HardDrive className="w-5 h-5 text-blue-400" />
+                      <span className="text-xs font-bold">المحلي المدمج</span>
+                      <span className="text-[9px] text-slate-400">تخزين ملفات السيرفر</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Form for Active Provider */}
+                {dbSettings.provider === 'firestore' && (
+                  <div className="space-y-4 p-4 rounded-2xl bg-slate-950/60 border border-slate-800 animate-fade-in">
+                    <div className="flex items-center gap-2 text-xs font-bold text-amber-300">
+                      <Cloud className="w-4 h-4" />
+                      <span>بيانات ربط Google Cloud Firestore (Firebase)</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-300 mb-1">
+                          معرّف المشروع في Google (Firebase Project ID)
+                        </label>
+                        <input
+                          type="text"
+                          value={dbSettings.firestore?.projectId || ''}
+                          onChange={(e) => setDbSettings({
+                            ...dbSettings,
+                            firestore: { ...dbSettings.firestore, projectId: e.target.value }
+                          })}
+                          className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white font-mono dir-ltr text-right focus:outline-none focus:border-amber-400"
+                          placeholder="مثال: taqdeer-portal-firebase"
+                        />
+                        <p className="text-[10px] text-slate-400 mt-1">
+                          يمكن أيضاً تركه ليُقرأ من متغير البيئة <code className="text-amber-300 font-mono">FIREBASE_PROJECT_ID</code>.
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-300 mb-1">
+                          اسم مجموعة الشهادات (Firestore Collection)
+                        </label>
+                        <input
+                          type="text"
+                          value={dbSettings.firestore?.collectionName || 'certificates'}
+                          onChange={(e) => setDbSettings({
+                            ...dbSettings,
+                            firestore: { ...dbSettings.firestore, collectionName: e.target.value }
+                          })}
+                          className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white font-mono dir-ltr text-right focus:outline-none focus:border-amber-400"
+                          placeholder="certificates"
+                        />
+                        <p className="text-[10px] text-slate-400 mt-1">
+                          المجموعة التي سيتم تخزين سجلات وتفاصيل الشهادات المعتمدة بداخلها.
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-300 mb-1">
+                          مفتاح واجهة برمجة التطبيقات (Web API Key - اختياري)
+                        </label>
+                        <input
+                          type="password"
+                          value={dbSettings.firestore?.apiKey || ''}
+                          onChange={(e) => setDbSettings({
+                            ...dbSettings,
+                            firestore: { ...dbSettings.firestore, apiKey: e.target.value }
+                          })}
+                          className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white font-mono dir-ltr text-right focus:outline-none focus:border-amber-400"
+                          placeholder="AIzaSy••••••••••••••••••••"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-300 mb-1">
+                          نطاق المصادقة (Auth Domain - اختياري)
+                        </label>
+                        <input
+                          type="text"
+                          value={dbSettings.firestore?.authDomain || ''}
+                          onChange={(e) => setDbSettings({
+                            ...dbSettings,
+                            firestore: { ...dbSettings.firestore, authDomain: e.target.value }
+                          })}
+                          className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white font-mono dir-ltr text-right focus:outline-none focus:border-amber-400"
+                          placeholder="project-id.firebaseapp.com"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {(dbSettings.provider === 'vercel-postgres' || dbSettings.provider === 'custom-postgres') && (
+                  <div className="space-y-4 p-4 rounded-2xl bg-slate-950/60 border border-slate-800 animate-fade-in">
+                    <div className="flex items-center gap-2 text-xs font-bold text-purple-300">
+                      <Server className="w-4 h-4" />
+                      <span>بيانات ربط PostgreSQL (Vercel Storage أو سيرفر مخصص)</span>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 mb-1">
+                        رابط الاتصال الكامل (PostgreSQL Connection String / URL)
+                      </label>
+                      <input
+                        type="password"
+                        value={dbSettings.postgres?.connectionUrl || dbSettings.postgres?.connectionString || ''}
+                        onChange={(e) => setDbSettings({
+                          ...dbSettings,
+                          postgres: {
+                            ...dbSettings.postgres,
+                            connectionUrl: e.target.value,
+                            connectionString: e.target.value
+                          }
+                        })}
+                        className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white font-mono dir-ltr text-right focus:outline-none focus:border-purple-400"
+                        placeholder="postgres://default:password@ep-host.vercel-storage.com:5432/verceldb?sslmode=require"
+                      />
+                      <p className="text-[10px] text-slate-400 mt-1">
+                        على Vercel: يُمكن تركه فارغاً ليُقرأ مباشرة من متغير <code className="text-purple-300 font-mono">POSTGRES_URL</code> المضاف تلقائياً عند ربط Vercel Storage.
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-300 mb-1">
+                          اسم قاعدة البيانات (Database Name - اختياري إذا محدد في الرابط)
+                        </label>
+                        <input
+                          type="text"
+                          value={dbSettings.postgres?.database || ''}
+                          onChange={(e) => setDbSettings({
+                            ...dbSettings,
+                            postgres: { ...dbSettings.postgres, database: e.target.value }
+                          })}
+                          className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white font-mono dir-ltr text-right focus:outline-none focus:border-purple-400"
+                          placeholder="verceldb"
+                        />
+                      </div>
+
+                      <div className="flex items-center pt-5">
+                        <label className="flex items-center gap-2.5 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={dbSettings.postgres?.ssl !== false}
+                            onChange={(e) => setDbSettings({
+                              ...dbSettings,
+                              postgres: { ...dbSettings.postgres, ssl: e.target.checked }
+                            })}
+                            className="w-4 h-4 rounded text-purple-500 focus:ring-0 bg-slate-700 border-slate-600 cursor-pointer"
+                          />
+                          <span className="text-xs font-bold text-slate-300">
+                            تفعيل اتصال مشفر آمن (SSL Mode: Require)
+                          </span>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {dbSettings.provider === 'local' && (
+                  <div className="p-4 rounded-2xl bg-blue-950/20 border border-blue-500/20 text-blue-200 text-xs flex items-start gap-3">
+                    <Info className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
+                    <div className="space-y-1">
+                      <p className="font-bold">قاعدة البيانات المحلية المدمجة مفعلة حالياً</p>
+                      <p className="text-[11px] text-slate-300 leading-relaxed">
+                        يتم تخزين الشهادات والمستخدمين محلياً داخل مجلد <code className="text-blue-300 font-mono">data/</code> على الخادم. للبيئات الإنتاجية على سيرفرات خارجية مثل Vercel، يُنصح بالتبديل إلى <strong>Google Firestore</strong> أو <strong>Vercel Postgres</strong> للحفاظ على ديمومة السجلات بدون فقدان.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Auto Sync Toggles */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <label className={`flex items-start gap-3 p-3.5 rounded-2xl border transition cursor-pointer ${
+                    dbSettings.autoSyncCertificates
+                      ? 'bg-cyan-500/10 border-cyan-500/40 text-cyan-200'
+                      : 'bg-slate-800/60 border-slate-700/60 text-slate-400 hover:bg-slate-800'
+                  }`}>
+                    <input
+                      type="checkbox"
+                      checked={dbSettings.autoSyncCertificates}
+                      onChange={(e) => setDbSettings({ ...dbSettings, autoSyncCertificates: e.target.checked })}
+                      className="w-4 h-4 mt-0.5 rounded text-cyan-500 focus:ring-0 bg-slate-700 border-slate-600 cursor-pointer"
+                    />
+                    <div className="text-right">
+                      <span className="block text-xs font-black">مزامنة الشهادات المحفوظة تلقائياً</span>
+                      <span className="block text-[10px] text-slate-400 mt-0.5">حفظ نسخة فورية من كل شهادة تصدر في القاعدة السحابية</span>
+                    </div>
+                  </label>
+
+                  <label className={`flex items-start gap-3 p-3.5 rounded-2xl border transition cursor-pointer ${
+                    (dbSettings.autoSyncAccounts ?? dbSettings.autoSyncUsers)
+                      ? 'bg-blue-500/10 border-blue-500/40 text-blue-200'
+                      : 'bg-slate-800/60 border-slate-700/60 text-slate-400 hover:bg-slate-800'
+                  }`}>
+                    <input
+                      type="checkbox"
+                      checked={dbSettings.autoSyncAccounts ?? dbSettings.autoSyncUsers ?? true}
+                      onChange={(e) => setDbSettings({
+                        ...dbSettings,
+                        autoSyncAccounts: e.target.checked,
+                        autoSyncUsers: e.target.checked
+                      })}
+                      className="w-4 h-4 mt-0.5 rounded text-blue-500 focus:ring-0 bg-slate-700 border-slate-600 cursor-pointer"
+                    />
+                    <div className="text-right">
+                      <span className="block text-xs font-black">مزامنة حسابات وسجلات المستخدمين</span>
+                      <span className="block text-[10px] text-slate-400 mt-0.5">تأمين سجلات الحسابات الإدارية والصلاحيات سحابياً</span>
+                    </div>
+                  </label>
+                </div>
+
+                {/* Comprehensive Linking Guide Accordion */}
+                <details className="p-4 bg-slate-950/70 border border-cyan-500/20 rounded-2xl">
+                  <summary className="text-xs font-bold text-cyan-300 cursor-pointer select-none flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <HelpCircle className="w-4 h-4 text-cyan-400" />
+                      <span>شرح طريقة وخطوات الربط بقواعد بيانات Google أو Vercel</span>
+                    </div>
+                    <span className="text-[11px] text-slate-400">انقر لعرض الشرح ▾</span>
+                  </summary>
+
+                  <div className="mt-4 space-y-4 text-xs text-slate-300 leading-relaxed border-t border-slate-800/80 pt-3">
+                    {/* Method 1: Google Cloud Firestore */}
+                    <div className="space-y-2">
+                      <h4 className="font-black text-amber-400 flex items-center gap-1.5">
+                        <span>1. طريقة الربط بقاعدة بيانات Google (Cloud Firestore / Firebase):</span>
+                      </h4>
+                      <ol className="list-decimal list-inside space-y-1.5 text-[11px] text-slate-300 pr-1">
+                        <li>توجه إلى منصة <a href="https://console.firebase.google.com" target="_blank" rel="noreferrer" className="text-amber-300 hover:underline">console.firebase.google.com</a> وسجل دخولك بحساب Google.</li>
+                        <li>اضغط على <strong>Create a project</strong> وأدخل اسم المشروع (مثلاً: <code className="text-amber-300 font-mono">taqdeer-db</code>).</li>
+                        <li>من القائمة الجانبية اختر <strong>Build &gt; Firestore Database</strong> ثم انقر <strong>Create database</strong>.</li>
+                        <li>اختر خادم المنطقة (مثل europe-west أو us-central) ثم حدد قواعد الأمان (يمكن البدء بـ Test mode أو Production).</li>
+                        <li>انسخ <strong>Project ID</strong> وضعه في خانة معرّف المشروع أعلاه أو في Vercel تحت اسم <code className="text-amber-300 font-mono">FIREBASE_PROJECT_ID</code>.</li>
+                        <li>اضغط زر <strong>فحص اتصال القاعدة</strong> بالأعلى للتأكد من نجاح الربط الفوري!</li>
+                      </ol>
+                    </div>
+
+                    {/* Method 2: Vercel Postgres */}
+                    <div className="space-y-2 border-t border-slate-800/80 pt-3">
+                      <h4 className="font-black text-purple-400 flex items-center gap-1.5">
+                        <span>2. طريقة الربط بقاعدة بيانات Vercel Postgres (بضغطة واحدة):</span>
+                      </h4>
+                      <ol className="list-decimal list-inside space-y-1.5 text-[11px] text-slate-300 pr-1">
+                        <li>توجه إلى لوحة تحكم مشروعك على <a href="https://vercel.com/dashboard" target="_blank" rel="noreferrer" className="text-purple-300 hover:underline">vercel.com</a>.</li>
+                        <li>انتقل إلى تبويب <strong>Storage</strong> في المشروع ثم انقر <strong>Create Database</strong>.</li>
+                        <li>اختر <strong>Postgres (Neon Powered)</strong> وحدد المنطقة الأقرب، ثم اضغط <strong>Create</strong>.</li>
+                        <li>اختر <strong>Connect to Project</strong> ليتم تلقائياً حقن المتغير <code className="text-purple-300 font-mono">POSTGRES_URL</code> في المشروع بدون تدخل يدوي.</li>
+                        <li>يمكنك أيضاً نسخ رابط الاتصال <code className="text-purple-300 font-mono">POSTGRES_URL</code> ولصقه في حقل الاتصال أعلاه ثم النقر على <strong>فحص اتصال القاعدة</strong>.</li>
+                      </ol>
+                    </div>
+
+                    {/* Important Deployment Note */}
+                    <div className="p-3 bg-cyan-950/40 border border-cyan-500/30 rounded-xl text-[11px] text-cyan-200">
+                      <strong>💡 فائدة الربط السحابي:</strong> عند رفع موقعك على Vercel أو خوادم بدون خادم (Serverless)، يكون القرص المحلي مؤقتاً ومقتصراً على تشغيل الطلب. بربط Google Firestore أو Vercel Postgres، تصبح منظومتك تعمل كمنصة مؤسسية عالمية تخزن مئات آلاف الشهادات والمستخدمين دون أدنى خشية من ضياع السجلات.
                     </div>
                   </div>
                 </details>
@@ -1815,6 +2637,18 @@ export const AdminDashboard: React.FC<Props> = ({
             </div>
           </div>
         )}
+
+        {/* ==========================================
+            TAB 5: DATABASE EXPLORER & BACKUPS
+           ========================================== */}
+        {activeTab === 'database' && (
+          <div className="animate-fade-in pb-12">
+            <DatabaseManager
+              onShowToast={onShowToast}
+              onRefreshParentData={loadUsersData}
+            />
+          </div>
+        )}
       </main>
 
       {/* ==========================================
@@ -1980,6 +2814,22 @@ export const AdminDashboard: React.FC<Props> = ({
           </div>
         </div>
       )}
+
+      {/* ==========================================
+          MODAL: ACCOUNT SETTINGS & FEATURE PERMISSIONS
+         ========================================== */}
+      <AccountSettingsModal
+        isOpen={isAccountModalOpen}
+        onClose={() => {
+          setIsAccountModalOpen(false);
+          setSelectedUserForModal(null);
+        }}
+        user={selectedUserForModal}
+        onUserUpdated={(updatedUser) => {
+          setUsers((prev) => prev.map((u) => (u.userId === updatedUser.userId ? updatedUser : u)));
+        }}
+        onShowToast={(msg) => onShowToast?.(msg)}
+      />
     </div>
   );
 };

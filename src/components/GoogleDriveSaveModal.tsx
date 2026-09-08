@@ -6,7 +6,9 @@ import {
   initDriveAuth,
   uploadCertificateToDrive,
   getAccessToken,
-  clearAccessToken
+  clearAccessToken,
+  disconnectDriveAccount,
+  getDriveConnectedAccount
 } from '../services/googleDriveService';
 import { generateVerificationCode } from '../utils/qrUtils';
 import { getSavedSystemConfig, getCertificateBarcodeUrl, getPlatformDriveSettings } from '../utils/systemConfig';
@@ -93,7 +95,7 @@ export const GoogleDriveSaveModal: React.FC<Props> = ({
   const [saveAsDefault, setSaveAsDefault] = useState(false);
   const [lastUploadedInfo, setLastUploadedInfo] = useState<{ format: string; engine: string; dpi: number } | null>(null);
 
-  const isPlatformActive = platformDrive.enabled && platformDrive.isDefaultForAllUsers && !usePersonalAccount;
+  const isPlatformActive = platformDrive.enabled && platformDrive.isDefaultForAllUsers && (!usePersonalAccount || platformDrive.allowPersonalGoogleAccount === false);
 
   useEffect(() => {
     if (isOpen) {
@@ -102,7 +104,12 @@ export const GoogleDriveSaveModal: React.FC<Props> = ({
       setUploadSuccess(!!certificateData.driveFileWebViewLink);
       setDriveUrl(certificateData.driveFileWebViewLink || '');
       setBarcodeTarget(certificateData.barcodeLinkTarget || getSavedSystemConfig().barcodeLinkTarget || 'portal');
-      setPlatformDrive(getPlatformDriveSettings());
+      const currentPlatform = getPlatformDriveSettings();
+      setPlatformDrive(currentPlatform);
+
+      if (currentPlatform.allowPersonalGoogleAccount === false) {
+        setUsePersonalAccount(false);
+      }
 
       // Refresh default settings
       const defaults = getSavedDefaultSettings();
@@ -112,7 +119,6 @@ export const GoogleDriveSaveModal: React.FC<Props> = ({
       if (defaults.exportImageQuality !== undefined) setDriveQuality(defaults.exportImageQuality);
 
       // Default mode: start on google-drive tab directly if platform drive is default or already uploaded
-      const currentPlatform = getPlatformDriveSettings();
       if (certificateData.driveFileWebViewLink || (currentPlatform.enabled && currentPlatform.isDefaultForAllUsers)) {
         setSaveMode('google-drive');
       } else {
@@ -194,8 +200,8 @@ const handleLogin = () => {
   setIsLoggingIn(true);
   setErrorMsg(null);
 
-  // استدعاء الفتح فوراً عند الضغط دون await قبله
-  googleSignIn()
+  // Sign in to Google Drive without altering the system's primary user account
+  googleSignIn({ isExplicitPrimaryLogin: false })
     .then((res) => {
       setUser(res.user);
       setToken(res.accessToken);
@@ -220,7 +226,7 @@ const handleLogin = () => {
 };
 
   const handleSignOut = async () => {
-    await googleSignOut();
+    disconnectDriveAccount();
     setUser(null);
     setToken(null);
   };
@@ -237,7 +243,7 @@ const handleLogin = () => {
       if (!activeToken) {
         try {
           setIsLoggingIn(true);
-          const res = await googleSignIn();
+          const res = await googleSignIn({ isExplicitPrimaryLogin: false });
           setUser(res.user);
           setToken(res.accessToken);
           activeToken = res.accessToken;
@@ -315,7 +321,7 @@ const handleLogin = () => {
           clearAccessToken();
           console.warn('Google Drive token expired. Re-authenticating...');
           try {
-            const authRes = await googleSignIn();
+            const authRes = await googleSignIn({ isExplicitPrimaryLogin: false });
             setUser(authRes.user);
             setToken(authRes.accessToken);
             driveRes = await uploadCertificateToDrive(
@@ -612,28 +618,47 @@ const handleLogin = () => {
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="text-xs font-black text-slate-900">
-                          {platformDrive.accountDisplayName || 'حساب Google Drive المعتمد للمنصة'}
+                          {platformDrive.hideAccountDetailsInModal
+                            ? 'سحابة التوثيق المعتمدة للمنظومة'
+                            : (platformDrive.accountDisplayName || 'حساب Google Drive المعتمد للمنصة')}
                         </span>
                         <span className="bg-emerald-200/80 text-emerald-900 text-[10px] font-black px-2 py-0.5 rounded-md">
-                          افتراضي نشط بدون تسجيل دخول ✅
+                          توثيق سحابي معتمد ✅
                         </span>
                       </div>
-                      <span className="block text-xs font-bold text-emerald-800 dir-ltr text-right mt-0.5 truncate">
-                        {platformDrive.accountEmail || 'eslam.kandeel2@gmail.com'}
-                      </span>
+                      {!platformDrive.hideAccountDetailsInModal ? (
+                        <span className="block text-xs font-bold text-emerald-800 dir-ltr text-right mt-0.5 truncate">
+                          {platformDrive.accountEmail || 'eslam.kandeel2@gmail.com'}
+                        </span>
+                      ) : (
+                        <span className="block text-[11px] font-bold text-emerald-800 text-right mt-0.5">
+                          أرشيف رسمي موحد ومحمي لكافة الشهادات
+                        </span>
+                      )}
                       <p className="text-[11px] text-slate-600 mt-0.5">
-                        يتم التوثيق والرفع التلقائي لجميع الشهادات مباشرة بهذا الحساب دون الحاجة لتسجيل دخول شخصي.
+                        {platformDrive.hideAccountDetailsInModal
+                          ? 'يتم توثيق ورفع الشهادة آلياً في السحابة الرسمية للمنظومة مباشرة دون الحاجة لتسجيل دخول.'
+                          : 'يتم التوثيق والرفع التلقائي لجميع الشهادات مباشرة بهذا الحساب دون الحاجة لتسجيل دخول شخصي.'}
                       </p>
                     </div>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => setUsePersonalAccount(true)}
-                    className="text-[11px] text-blue-700 hover:text-blue-900 font-bold underline px-2 py-1 transition cursor-pointer shrink-0"
-                  >
-                    استخدام حساب Google شخصي آخر
-                  </button>
+                  {platformDrive.allowPersonalGoogleAccount !== false && (
+                    <button
+                      type="button"
+                      onClick={() => setUsePersonalAccount(true)}
+                      className="text-[11px] text-blue-700 hover:text-blue-900 font-bold underline px-2 py-1 transition cursor-pointer shrink-0"
+                    >
+                      استخدام حساب Google شخصي آخر
+                    </button>
+                  )}
+                </div>
+              ) : platformDrive.allowPersonalGoogleAccount === false ? (
+                <div className="bg-amber-50 border border-amber-300 p-3.5 rounded-2xl text-right text-xs text-amber-900 space-y-1">
+                  <span className="font-bold block">التوثيق مقصور على سحابة المنظومة المعتمدة</span>
+                  <p className="text-[11px] text-amber-800">
+                    وفقاً لإعدادات الإدارة، يتم حفظ جميع الشهادات عبر سحابة التوثيق الرسمية للمنصة دون استخدام حسابات شخصية.
+                  </p>
                 </div>
               ) : user ? (
                 <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-2xl flex items-center justify-between gap-2">

@@ -70,9 +70,17 @@ export function isAccountSwitching(): boolean {
  */
 export function getAccountKey(user?: UserLike | null): string {
   if (!user) return 'guest';
+  // 1. Primary anchor: Unique Random User ID (strictly isolates account data and prevents data overlap)
+  const id = (user.userId || user.uid || '').trim();
+  if (id && id !== 'anonymous') {
+    return 'acc_' + id.replace(/[^a-zA-Z0-9_\-]/g, '_').toLowerCase();
+  }
+  // 2. Fallback: email
   const cleanEmail = (user.googleEmail || user.email || '').trim().toLowerCase();
-  const rawKey = cleanEmail || user.userId || user.uid || 'anonymous';
-  return 'acc_' + rawKey.replace(/[^a-zA-Z0-9_\-@.]/g, '_').toLowerCase();
+  if (cleanEmail) {
+    return 'acc_' + cleanEmail.replace(/[^a-zA-Z0-9_\-@.]/g, '_').toLowerCase();
+  }
+  return 'guest';
 }
 
 /**
@@ -84,6 +92,59 @@ export function getActiveAccountKey(): string {
     return localStorage.getItem(WORKSPACE_STORAGE_KEYS.ACTIVE_ACCOUNT_KEY) || 'guest';
   } catch {
     return 'guest';
+  }
+}
+
+/**
+ * Fully logs out of all accounts, clears active credentials,
+ * and restores global system defaults cleanly across the entire workspace.
+ */
+export async function logoutAllAccountsAndRestoreDefaults(): Promise<void> {
+  isSwitchingAccountLock = true;
+  try {
+    const activeKey = getActiveAccountKey();
+    // 1. Snapshot and save outgoing account's workspace vault
+    if (activeKey && activeKey !== 'guest') {
+      try {
+        const rawUser = localStorage.getItem('taqdeer_unified_active_user_v1');
+        const currentUser = rawUser ? JSON.parse(rawUser) : null;
+        const outgoingSnapshot = createWorkspaceSnapshot(currentUser);
+        localStorage.setItem(`taqdeer_vault_${activeKey}`, JSON.stringify(outgoingSnapshot));
+        if (currentUser && (currentUser.userId || currentUser.email)) {
+          syncFullAccountToCloud({
+            uid: currentUser.userId,
+            userId: currentUser.userId,
+            email: currentUser.email,
+            displayName: currentUser.displayName
+          }).catch(e => console.warn('Background sync on logout notice:', e));
+        }
+      } catch (e) {
+        console.warn('Snapshot error on logout:', e);
+      }
+    }
+
+    // 2. Wipe active workspace to clean initial system defaults
+    resetWorkspaceToDefaults();
+
+    // 3. Clear all authentication credentials & active user markers
+    localStorage.removeItem(WORKSPACE_STORAGE_KEYS.ACTIVE_ACCOUNT_KEY);
+    localStorage.removeItem('taqdeer_unified_active_user_v1');
+    localStorage.removeItem('taqdeer_gis_user');
+    localStorage.removeItem('taqdeer_drive_access_token');
+    localStorage.removeItem('taqdeer_drive_auth_account_v1');
+
+    // 4. Dispatch reload events with null user and clean system defaults
+    dispatchWorkspaceReloadEvents(null);
+    try {
+      window.dispatchEvent(new CustomEvent('taqdeer_auth_state_changed', { detail: null }));
+      window.dispatchEvent(new CustomEvent('taqdeer_drive_account_changed', { detail: null }));
+      window.dispatchEvent(new CustomEvent('taqdeer_all_accounts_logged_out'));
+      window.dispatchEvent(new Event('storage'));
+    } catch (e) {}
+  } finally {
+    setTimeout(() => {
+      isSwitchingAccountLock = false;
+    }, 200);
   }
 }
 

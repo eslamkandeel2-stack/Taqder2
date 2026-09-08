@@ -1,0 +1,27 @@
+{
+  "provider": "local",
+  "status": "connected",
+  "lastTestedAt": "2026-09-05T12:45:22.495Z",
+  "lastTestMessage": "قاعدة البيانات المحلية المدمجة متصلة ونشطة (5 ملفات)",
+  "firestore": {
+    "projectId": "",
+    "apiKey": "",
+    "authDomain": "",
+    "storageBucket": "",
+    "messagingSenderId": "",
+    "appId": "",
+    "collectionName": "certificates"
+  },
+  "postgres": {
+    "connectionUrl": "",
+    "host": "",
+    "port": 5432,
+    "database": "",
+    "user": "",
+    "password": "",
+    "ssl": true
+  },
+  "autoSyncCertificates": true,
+  "autoSyncAccounts": true,
+  "updatedAt": "2026-09-05T12:45:22.495Z"
+}

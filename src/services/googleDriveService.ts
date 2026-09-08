@@ -13,6 +13,7 @@ import { auth, default as app } from './firebaseConfig';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { syncUserSettingsToCloud, loadUserSettingsFromCloud } from './cloudDatabaseService';
 import { getPlatformDriveSettings, DEFAULT_PLATFORM_DRIVE_CONFIG } from '../utils/systemConfig';
+import { getStoredUnifiedAccount, saveStoredUnifiedAccount } from './unifiedAuthService';
 
 declare global {
   interface Window {
@@ -37,8 +38,42 @@ provider.setCustomParameters({
   prompt: 'select_account'
 });
 
-const TOKEN_STORAGE_KEY = 'taqdeer_drive_access_token';
-const GIS_USER_STORAGE_KEY = 'taqdeer_gis_user';
+export const TOKEN_STORAGE_KEY = 'taqdeer_drive_access_token';
+export const GIS_USER_STORAGE_KEY = 'taqdeer_gis_user';
+export const DRIVE_AUTH_ACCOUNT_KEY = 'taqdeer_drive_auth_account_v1';
+
+export interface DriveConnectedAccount {
+  email: string;
+  displayName: string;
+  photoURL?: string;
+  uid?: string;
+  accessToken: string;
+  connectedAt: string;
+}
+
+export function getDriveConnectedAccount(): DriveConnectedAccount | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(DRIVE_AUTH_ACCOUNT_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {
+    console.warn(e);
+  }
+  return null;
+}
+
+export function disconnectDriveAccount(): void {
+  if (typeof window === 'undefined') return;
+  cachedAccessToken = null;
+  localStorage.removeItem(TOKEN_STORAGE_KEY);
+  localStorage.removeItem(DRIVE_AUTH_ACCOUNT_KEY);
+  try {
+    window.dispatchEvent(new CustomEvent('taqdeer_drive_account_changed', { detail: null }));
+    window.dispatchEvent(new Event('storage'));
+  } catch (e) {
+    console.warn(e);
+  }
+}
 
 let isSigningIn = false;
 let cachedAccessToken: string | null = typeof window !== 'undefined' ? localStorage.getItem(TOKEN_STORAGE_KEY) : null;
@@ -46,10 +81,20 @@ let cachedAccessToken: string | null = typeof window !== 'undefined' ? localStor
 export const getCachedAccessToken = (): string | null =>
   cachedAccessToken || (typeof window !== 'undefined' ? localStorage.getItem(TOKEN_STORAGE_KEY) : null);
 
+export interface PersistGoogleSessionOptions {
+  isExplicitPrimaryLogin?: boolean;
+}
+
 /**
- * Persists Google user credentials and session across all storage keys & dispatches events
+ * Persists Google user credentials and session across all storage keys & dispatches events.
+ * Crucial rule: If a primary user is already logged in, an external Drive verification/upload
+ * connection must NOT change or overwrite the primary user account.
  */
-export const persistGoogleSession = (user: User, accessToken: string) => {
+export const persistGoogleSession = (
+  user: User,
+  accessToken: string,
+  options?: PersistGoogleSessionOptions
+) => {
   const token = accessToken || 'google_auth_token';
   cachedAccessToken = token;
   try {
@@ -61,7 +106,52 @@ export const persistGoogleSession = (user: User, accessToken: string) => {
   const email = user.email || '';
   const displayName = user.displayName || email.split('@')[0] || 'حساب Google';
   const photoURL = user.photoURL || '';
-  const userId = user.uid || ('GGL-' + (email ? email.replace(/[^a-zA-Z0-9]/g, '_') : Date.now().toString().slice(-6)));
+
+  // 1. ALWAYS persist Drive Auth Connection details (for Drive uploading/verification/generation)
+  const driveAccountObj: DriveConnectedAccount = {
+    email: email,
+    displayName: displayName,
+    photoURL: photoURL,
+    uid: user.uid,
+    accessToken: token,
+    connectedAt: new Date().toISOString()
+  };
+
+  try {
+    localStorage.setItem(DRIVE_AUTH_ACCOUNT_KEY, JSON.stringify(driveAccountObj));
+  } catch (e) {
+    console.warn('Failed to store drive auth account:', e);
+  }
+
+  // Notify listeners that Drive connection has been updated/connected
+  try {
+    window.dispatchEvent(new CustomEvent('taqdeer_drive_account_changed', { detail: driveAccountObj }));
+  } catch (e) {
+    console.warn('Dispatch drive account note:', e);
+  }
+
+  // 2. CHECK PRIMARY SYSTEM USER:
+  // Is a primary system user already logged in?
+  const existingPrimary = getStoredUnifiedAccount();
+  const isExplicitPrimaryLogin = options?.isExplicitPrimaryLogin === true;
+
+  if (existingPrimary && existingPrimary.userId && !isExplicitPrimaryLogin) {
+    // A primary user is already logged in, and this was an external Drive connect/upload/generation account change.
+    // KEEP THE PRIMARY ACCOUNT FIXED! DO NOT SWITCH!
+    if (email && !existingPrimary.googleEmail) {
+      existingPrimary.googleEmail = email;
+      existingPrimary.linkedGoogle = true;
+      saveStoredUnifiedAccount(existingPrimary);
+    }
+    console.log('[Auth] Primary user preserved:', existingPrimary.userId, 'Drive account connected:', email);
+    return;
+  }
+
+  // 3. If this IS an explicit primary login or no user was logged in:
+  let userId = existingPrimary?.userId;
+  if (!userId || userId.startsWith('guest')) {
+    userId = 'GGL_' + (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID().replace(/-/g, '').slice(0, 10) : Math.random().toString(36).substring(2, 10));
+  }
 
   const userObj = {
     uid: userId,
@@ -100,7 +190,7 @@ export const persistGoogleSession = (user: User, accessToken: string) => {
   }
 
   try {
-    const rawKey = (email || userId).replace(/[^a-zA-Z0-9_\-@.]/g, '_').toLowerCase();
+    const rawKey = userId.replace(/[^a-zA-Z0-9_\-]/g, '_').toLowerCase();
     localStorage.setItem('taqdeer_active_account_key', 'acc_' + rawKey);
   } catch (e) {
     console.warn('Failed to set active account key:', e);
@@ -112,7 +202,7 @@ export const persistGoogleSession = (user: User, accessToken: string) => {
     const raw = localStorage.getItem(REGISTRY_KEY);
     let accounts = raw ? JSON.parse(raw) : [];
     if (!Array.isArray(accounts)) accounts = [];
-    const accountKey = 'acc_' + (email || userId).replace(/[^a-zA-Z0-9_\-@.]/g, '_').toLowerCase();
+    const accountKey = 'acc_' + userId.replace(/[^a-zA-Z0-9_\-]/g, '_').toLowerCase();
     const existingIndex = accounts.findIndex((a: any) => a.accountKey === accountKey || a.userId === userId || (email && a.userEmail === email));
     const now = new Date().toISOString();
     const record = {
@@ -136,11 +226,11 @@ export const persistGoogleSession = (user: User, accessToken: string) => {
 
   // Notify isolation manager & App
   try {
-    window.dispatchEvent(new CustomEvent('taqdeer_account_switched', { detail: { user: userObj, accountKey: 'acc_' + (email || userId) } }));
+    window.dispatchEvent(new CustomEvent('taqdeer_account_switched', { detail: { user: userObj, accountKey: 'acc_' + userId } }));
     window.dispatchEvent(new CustomEvent('taqdeer_auth_state_changed', { detail: userObj }));
     window.dispatchEvent(new Event('storage'));
   } catch (e) {
-    console.warn('Failed to dispatch auth events:', e);
+    console.warn('Event dispatch note:', e);
   }
 };
 
@@ -452,28 +542,39 @@ export const initDriveAuth = (
   };
   window.addEventListener('taqdeer_auth_state_changed', handleCustomAuth);
 
-  const unsub = onAuthStateChanged(auth, async (user) => {
-    if (user) {
-      if (!cachedAccessToken) {
-        cachedAccessToken = localStorage.getItem(TOKEN_STORAGE_KEY);
-      }
-      if (onAuthSuccess) {
-        onAuthSuccess(user, cachedAccessToken || 'google_auth_token');
-      }
-    } else {
-      const current = getCurrentUser();
-      if (current) {
+  const unsub = onAuthStateChanged(
+    auth,
+    async (user) => {
+      if (user) {
+        if (!cachedAccessToken) {
+          cachedAccessToken = localStorage.getItem(TOKEN_STORAGE_KEY);
+        }
         if (onAuthSuccess) {
-          onAuthSuccess(current, localStorage.getItem(TOKEN_STORAGE_KEY) || cachedAccessToken || 'google_auth_token');
+          onAuthSuccess(user, cachedAccessToken || 'google_auth_token');
         }
       } else {
-        const handledByPlatform = triggerPlatformDefaultIfApplicable();
-        if (!handledByPlatform && onAuthFailure) {
-          onAuthFailure();
+        const current = getCurrentUser();
+        if (current) {
+          if (onAuthSuccess) {
+            onAuthSuccess(current, localStorage.getItem(TOKEN_STORAGE_KEY) || cachedAccessToken || 'google_auth_token');
+          }
+        } else {
+          const handledByPlatform = triggerPlatformDefaultIfApplicable();
+          if (!handledByPlatform && onAuthFailure) {
+            onAuthFailure();
+          }
         }
       }
+    },
+    (authErr) => {
+      // Gracefully handle auth token / network request issues in preview iframe or offline mode
+      console.debug('Google Drive auth observer handled offline/network notice:', authErr?.message || authErr);
+      const current = getCurrentUser();
+      if (current && onAuthSuccess) {
+        onAuthSuccess(current, localStorage.getItem(TOKEN_STORAGE_KEY) || cachedAccessToken || 'google_auth_token');
+      }
     }
-  });
+  );
 
   return () => {
     unsub();
@@ -527,7 +628,7 @@ if (typeof window !== 'undefined') {
   loadGsiScript().catch((err) => console.warn('Preloading GSI script note:', err));
 }
 
-export const googleSignIn = async (): Promise<{ user: User; accessToken: string }> => {
+export const googleSignIn = async (options?: PersistGoogleSessionOptions): Promise<{ user: User; accessToken: string }> => {
   const currentHost = typeof window !== 'undefined' ? window.location.hostname : '';
   const isVercel = currentHost.includes('vercel.app') || currentHost.includes('now.sh');
 
@@ -539,7 +640,7 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
     if (isVercel) {
       try {
         const gisResult = await requestGisToken();
-        persistGoogleSession(gisResult.user, gisResult.accessToken);
+        persistGoogleSession(gisResult.user, gisResult.accessToken, options);
         return gisResult;
       } catch (gisErr: any) {
         console.warn('Direct GIS on Vercel notice:', gisErr);
@@ -587,7 +688,7 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
       }
 
       const finalToken = token || 'google_auth_token';
-      persistGoogleSession(result.user, finalToken);
+      persistGoogleSession(result.user, finalToken, options);
 
       return { user: result.user, accessToken: finalToken };
     } catch (popupError: any) {
@@ -597,7 +698,7 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
       if (!isVercel) {
         try {
           const gisResult = await requestGisToken();
-          persistGoogleSession(gisResult.user, gisResult.accessToken);
+          persistGoogleSession(gisResult.user, gisResult.accessToken, options);
           return gisResult;
         } catch (gisErr: any) {
           console.warn('Google Identity Services fallback status:', gisErr?.code || gisErr?.message);
@@ -674,20 +775,7 @@ export const getAccessToken = async (): Promise<string | null> => {
 };
 
 export const getCurrentUser = (): User | null => {
-  if (auth.currentUser) {
-    return auth.currentUser;
-  }
-  const savedGisUser = localStorage.getItem(GIS_USER_STORAGE_KEY);
-  if (savedGisUser) {
-    try {
-      const parsed = JSON.parse(savedGisUser);
-      if (parsed && (parsed.uid || parsed.userId || parsed.email)) {
-        return parsed as User;
-      }
-    } catch (e) {
-      console.warn('Failed to parse GIS user:', e);
-    }
-  }
+  // 1. Primary Unified Account is the authoritative system user
   const savedUnified = localStorage.getItem('taqdeer_unified_active_user_v1');
   if (savedUnified) {
     try {
@@ -708,6 +796,25 @@ export const getCurrentUser = (): User | null => {
       console.warn('Failed to parse unified user:', e);
     }
   }
+
+  // 2. GIS user cache
+  const savedGisUser = localStorage.getItem(GIS_USER_STORAGE_KEY);
+  if (savedGisUser) {
+    try {
+      const parsed = JSON.parse(savedGisUser);
+      if (parsed && (parsed.uid || parsed.userId || parsed.email)) {
+        return parsed as User;
+      }
+    } catch (e) {
+      console.warn('Failed to parse GIS user:', e);
+    }
+  }
+
+  // 3. Fallback to auth.currentUser if no primary user is recorded
+  if (auth.currentUser) {
+    return auth.currentUser;
+  }
+
   return null;
 };
 
@@ -729,22 +836,45 @@ export const initAuthListener = (onUserChanged: (user: User | null) => void) => 
   const handleCustomAuth = (e: any) => {
     if (e?.detail) {
       onUserChanged(e.detail as User);
+    } else {
+      onUserChanged(null);
     }
   };
   window.addEventListener('taqdeer_auth_state_changed', handleCustomAuth);
 
-  const unsub = onAuthStateChanged(auth, (firebaseUser) => {
-    if (firebaseUser) {
-      onUserChanged(firebaseUser);
-    } else {
+  const unsub = onAuthStateChanged(
+    auth,
+    (firebaseUser) => {
+      // If a primary unified account is already active, DO NOT let secondary Drive auth override it!
+      const activePrimary = getStoredUnifiedAccount();
+      if (activePrimary && activePrimary.userId) {
+        if (firebaseUser) {
+          firebaseUser.getIdToken().then(t => {
+            if (t) cachedAccessToken = t;
+          }).catch(() => {});
+        }
+        return;
+      }
+
+      if (firebaseUser) {
+        onUserChanged(firebaseUser);
+      } else {
+        const activeUser = getCurrentUser();
+        if (activeUser) {
+          onUserChanged(activeUser);
+          return;
+        }
+        onUserChanged(null);
+      }
+    },
+    (authErr) => {
+      console.debug('User change auth observer offline/network notice:', authErr?.message || authErr);
       const activeUser = getCurrentUser();
       if (activeUser) {
         onUserChanged(activeUser);
-        return;
       }
-      onUserChanged(null);
     }
-  });
+  );
 
   return () => {
     unsub();

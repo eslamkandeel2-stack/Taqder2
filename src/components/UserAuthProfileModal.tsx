@@ -35,7 +35,14 @@ import {
   HelpCircle
 } from 'lucide-react';
 import { User } from 'firebase/auth';
-import { googleSignIn, googleSignInWithRedirect, googleSignOut } from '../services/googleDriveService';
+import { 
+  googleSignIn, 
+  googleSignInWithRedirect, 
+  googleSignOut,
+  getDriveConnectedAccount,
+  disconnectDriveAccount,
+  DriveConnectedAccount
+} from '../services/googleDriveService';
 import { GoogleInFrameButton } from './GoogleInFrameButton';
 import { 
   syncFullAccountToCloud, 
@@ -46,6 +53,7 @@ import {
   getKnownAccounts, 
   removeAccountFromDevice, 
   getAccountKey, 
+  logoutAllAccountsAndRestoreDefaults,
   KnownAccountRecord,
   UserLike
 } from '../services/accountIsolationManager';
@@ -135,9 +143,19 @@ export const UserAuthProfileModal: React.FC<UserAuthProfileModalProps> = ({
 
   const [showPopupBlockedHelper, setShowPopupBlockedHelper] = useState(false);
   const isInIframe = typeof window !== 'undefined' && window.self !== window.top;
+  const [driveAccount, setDriveAccount] = useState<DriveConnectedAccount | null>(() => getDriveConnectedAccount());
+
+  useEffect(() => {
+    const handleDriveChanged = (e: any) => {
+      setDriveAccount(e?.detail || getDriveConnectedAccount());
+    };
+    window.addEventListener('taqdeer_drive_account_changed', handleDriveChanged);
+    return () => window.removeEventListener('taqdeer_drive_account_changed', handleDriveChanged);
+  }, []);
 
   useEffect(() => {
     if (isOpen) {
+      setDriveAccount(getDriveConnectedAccount());
       setKnownAccounts(getKnownAccounts());
       const stored = getStoredUnifiedAccount();
       setUnifiedAccount(stored);
@@ -278,7 +296,7 @@ export const UserAuthProfileModal: React.FC<UserAuthProfileModalProps> = ({
   const handlePopupGoogleLogin = async () => {
     try {
       setIsLoading(true);
-      const res = await googleSignIn();
+      const res = await googleSignIn({ isExplicitPrimaryLogin: true });
       await handleInFrameGoogleSuccess({ user: res.user, accessToken: res.accessToken });
       onShowToast(`أهلاً بك! تم حفظ تسجيل الدخول بنجاح بحساب Google (${res.user.displayName || res.user.email}) ✨`);
       setTimeout(() => {
@@ -609,6 +627,51 @@ export const UserAuthProfileModal: React.FC<UserAuthProfileModalProps> = ({
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // 7b. Full Logout from all accounts and restore clean system defaults
+  const handleLogoutAllAccountsAndRestoreDefaults = async () => {
+    try {
+      setIsLoading(true);
+      await logoutAllAccountsAndRestoreDefaults();
+      setUnifiedAccount(null);
+      setDriveAccount(null);
+      onUserChange(null);
+      setLastSyncResult(null);
+      setKnownAccounts(getKnownAccounts());
+      setActiveTab('login');
+      onShowToast('تم تسجيل الخروج من جميع الحسابات واستعادة خيارات وإعدادات النظام العام بنجاح 🔄');
+    } catch (e: any) {
+      console.error(e);
+      onShowToast('حدث خطأ أثناء تسجيل الخروج واستعادة خيارات النظام العام');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // 7c. Manage Drive Connected Account independently from primary user
+  const handleChangeDriveAccount = async () => {
+    try {
+      setIsLoading(true);
+      const res = await googleSignIn({ isExplicitPrimaryLogin: false });
+      const driveAcc = getDriveConnectedAccount();
+      setDriveAccount(driveAcc);
+      onShowToast(`تم ربط وتحديث حساب Google Drive (${res.user.email || res.user.displayName}) مع بقاء حسابك الأساسي ثابتاً ومستقلاً ✨`);
+    } catch (err: any) {
+      if (err?.code === 'auth/popup-closed-by-user' || err?.isUserCancel) {
+        onShowToast('تم إلغاء عملية ربط حساب Google Drive');
+        return;
+      }
+      onShowToast(err.message || 'تعذر ربط حساب Google Drive');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDisconnectDriveAccount = () => {
+    disconnectDriveAccount();
+    setDriveAccount(null);
+    onShowToast('تم قطع الاتصال بـ Google Drive بنجاح مع بقاء حسابك الأساسي وإعداداتك محفوظة دون تغيير 🔒');
   };
 
   // 8. Manual Sync to Cloud Database
@@ -1031,6 +1094,59 @@ export const UserAuthProfileModal: React.FC<UserAuthProfileModalProps> = ({
                   <span>استرجاع بيانات الخزنة</span>
                 </button>
               </div>
+            </div>
+
+            {/* Google Drive Account Isolation & Independent Management Card */}
+            <div className="bg-slate-950/70 border border-slate-800 p-4 rounded-2xl space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Cloud className="w-4 h-4 text-sky-400" />
+                  <span className="text-xs font-bold text-white">حساب التوثيق والتخزين على Google Drive</span>
+                </div>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                  driveAccount?.email
+                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                    : 'bg-slate-800 text-slate-400 border-slate-700'
+                }`}>
+                  {driveAccount?.email ? 'متصل ومعزول ✅' : 'غير متصل'}
+                </span>
+              </div>
+
+              <div className="bg-slate-900/80 border border-slate-800 p-3 rounded-xl flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <span className="text-[10px] text-slate-400 block">حساب درايف الحالي المستخدم للتوليد والرفع:</span>
+                  <span className="text-xs font-mono font-bold text-sky-300 truncate block">
+                    {driveAccount?.email || 'لا يوجد حساب Google Drive متصل حالياً'}
+                  </span>
+                </div>
+                {driveAccount?.email && (
+                  <button
+                    type="button"
+                    onClick={handleDisconnectDriveAccount}
+                    className="px-2.5 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 hover:text-rose-200 text-[11px] font-bold rounded-lg transition border border-rose-500/30 shrink-0 cursor-pointer"
+                  >
+                    قطع الاتصال
+                  </button>
+                )}
+              </div>
+
+              <p className="text-[10.5px] text-slate-400 leading-relaxed">
+                🛡️ <strong className="text-amber-300">عزل تام:</strong> يمكنك تغيير أو تبديل حساب Google Drive المستخدم للتوليد والرفع بحرية دون أن يتغير حسابك الأساسي بالمنظومة ({displayUserId})، حيث تظل جميع إعداداتك ومسوداتك وبياناتك محفوظة ومحمية برقم المعرف الخاص بك.
+              </p>
+
+              <button
+                type="button"
+                onClick={handleChangeDriveAccount}
+                disabled={isLoading}
+                className="w-full py-2 bg-slate-800 hover:bg-slate-750 text-sky-300 hover:text-sky-200 text-xs font-bold rounded-xl transition border border-sky-500/30 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                {isLoading ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <ArrowLeftRight className="w-3.5 h-3.5 text-sky-400" />
+                )}
+                <span>{driveAccount?.email ? 'تغيير أو تبديل حساب Google Drive' : 'ربط حساب Google Drive للتوليد والرفع'}</span>
+              </button>
             </div>
           </div>
         ) : activeTab === 'link_google' && (currentUser || unifiedAccount) ? (
@@ -1614,14 +1730,31 @@ export const UserAuthProfileModal: React.FC<UserAuthProfileModalProps> = ({
         {/* Footer Actions */}
         <div className="flex items-center justify-between pt-2 border-t border-slate-800">
           {currentUser || unifiedAccount ? (
-            <button
-              onClick={handleLogout}
-              disabled={isLoading}
-              className="text-xs text-rose-400 hover:text-rose-300 font-bold flex items-center gap-1.5 cursor-pointer"
-            >
-              <LogOut className="w-4 h-4" />
-              <span>تسجيل الخروج وتأمين الحساب</span>
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handleLogout}
+                disabled={isLoading}
+                className="text-xs text-rose-400 hover:text-rose-300 font-bold flex items-center gap-1.5 cursor-pointer transition"
+                title="تسجيل الخروج من الحساب الحالي وحفظ بياناته في خزنته السحابية"
+              >
+                <LogOut className="w-4 h-4" />
+                <span>خروج من الحساب</span>
+              </button>
+
+              <span className="text-slate-700 hidden sm:inline">|</span>
+
+              <button
+                type="button"
+                onClick={handleLogoutAllAccountsAndRestoreDefaults}
+                disabled={isLoading}
+                className="text-xs text-amber-400 hover:text-amber-300 font-bold flex items-center gap-1.5 cursor-pointer transition"
+                title="تسجيل الخروج من جميع الحسابات واستعادة إعدادات وخيارات النظام العام الافتراضية"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>استعادة خيارات النظام العام</span>
+              </button>
+            </div>
           ) : (
             <button
               type="button"
