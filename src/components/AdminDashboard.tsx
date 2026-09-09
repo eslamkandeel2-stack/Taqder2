@@ -88,6 +88,7 @@ import { AccountSettingsModal } from './admin/AccountSettingsModal';
 import { FeaturePermissionsTab } from './admin/FeaturePermissionsTab';
 import { AccountDefaultsTab } from './admin/AccountDefaultsTab';
 import { FieldLocksTab } from './admin/FieldLocksTab';
+import { CloudIntegrationsHub } from './admin/CloudIntegrationsHub';
 
 interface Props {
   currentUser?: UnifiedAccount | null;
@@ -98,7 +99,7 @@ interface Props {
   onUpdateSystemConfig: (newConfig: SystemSettingsConfig) => void;
 }
 
-type AdminTab = 'overview' | 'users' | 'permissions' | 'field-locks' | 'account-defaults' | 'settings' | 'security' | 'database';
+type AdminTab = 'overview' | 'cloud-integrations' | 'users' | 'permissions' | 'field-locks' | 'account-defaults' | 'settings' | 'security' | 'database';
 
 export const AdminDashboard: React.FC<Props> = ({
   currentUser,
@@ -782,6 +783,20 @@ export const AdminDashboard: React.FC<Props> = ({
 
           <button
             type="button"
+            onClick={() => setActiveTab('cloud-integrations')}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer whitespace-nowrap ${
+              activeTab === 'cloud-integrations'
+                ? 'bg-amber-500 text-slate-950 font-black shadow-sm'
+                : 'text-amber-400 hover:text-white hover:bg-slate-800/60'
+            }`}
+          >
+            <Cloud className="w-4 h-4" />
+            <span>الربط السحابي والتشخيص (Drive/DB/SMTP)</span>
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+          </button>
+
+          <button
+            type="button"
             onClick={() => setActiveTab('users')}
             className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer whitespace-nowrap ${
               activeTab === 'users'
@@ -1063,6 +1078,28 @@ export const AdminDashboard: React.FC<Props> = ({
               </div>
 
               <div
+                onClick={() => setActiveTab('cloud-integrations')}
+                className="bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-sky-500/40 rounded-2xl p-4 cursor-pointer transition group"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-sky-500/20 text-sky-400 flex items-center justify-center group-hover:scale-105 transition">
+                    <Cloud className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <h3 className="text-sm font-bold text-white group-hover:text-sky-300 transition">
+                        الربط السحابي ورسوم الحالة المتقدمة
+                      </h3>
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                    </div>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Google Drive الثابت، قواعد بيانات Google/Vercel، البريد والتشخيص بالذكاء الاصطناعي
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div
                 onClick={() => setActiveTab('database')}
                 className="bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-amber-500/40 rounded-2xl p-4 cursor-pointer transition group"
               >
@@ -1081,6 +1118,18 @@ export const AdminDashboard: React.FC<Props> = ({
                 </div>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* ==========================================
+            TAB: CLOUD INTEGRATIONS & REAL-TIME STATUS
+           ========================================== */}
+        {activeTab === 'cloud-integrations' && (
+          <div className="animate-fade-in">
+            <CloudIntegrationsHub
+              onShowToast={(msg) => onShowToast?.(msg)}
+              onRefreshParentData={loadUsersData}
+            />
           </div>
         )}
 

@@ -481,24 +481,36 @@ export async function testServerDriveConnection(params?: any): Promise<{
   user?: any;
   storageQuota?: any;
   isSimulation?: boolean;
+  errorCode?: string;
+  suggestedFixes?: string[];
+  error?: string;
 }> {
-  const payload = typeof params === 'string' ? { accessToken: params } : (params || {});
-  const res = await fetch('/api/admin/drive/test', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  const data = await res.json();
-  if (!res.ok || !data.success) {
-    throw new Error(data.error || data.message || 'فشل فحص اتصال Google Drive');
+  try {
+    const payload = typeof params === 'string' ? { accessToken: params } : (params || {});
+    const res = await fetch('/api/admin/drive/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    return {
+      ...data,
+      connected: data.connected ?? data.success ?? false,
+      message: data.message || data.error || (data.connected ? 'تم الاتصال بنجاح' : 'فشل فحص اتصال Google Drive'),
+      folderId: data.folderId || (typeof params === 'object' ? params.folderId : undefined),
+      folderUrl: data.folderUrl || (data.folderId ? `https://drive.google.com/drive/folders/${data.folderId}` : undefined),
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      connected: false,
+      errorCode: 'NETWORK_ERROR',
+      message: `خطأ في الاتصال بالخادم: ${err.message}`,
+      suggestedFixes: ['تأكد من تشغيل الخادم والاتصال بالإنترنت'],
+    };
   }
-  return {
-    ...data,
-    connected: data.success ?? true,
-    folderId: data.folderId || (typeof params === 'object' ? params.folderId : undefined),
-    folderUrl: data.folderUrl || (data.folderId ? `https://drive.google.com/drive/folders/${data.folderId}` : undefined),
-  };
 }
+export const testPlatformDriveConnection = testServerDriveConnection;
 
 export async function fetchServerDatabaseConfig(): Promise<any> {
   try {
@@ -536,23 +548,36 @@ export async function testServerDatabaseConnection(payload: any): Promise<{
   latencyMs?: number;
   diagnostics?: any;
   recommendations?: string[];
+  errorCode?: string;
+  suggestedFixes?: string[];
+  error?: string;
 }> {
-  const res = await fetch('/api/admin/database/test', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  const data = await res.json();
-  if (!res.ok || !data.success) {
-    throw new Error(data.error || data.message || 'فشل فحص اتصال قاعدة البيانات');
+  try {
+    const res = await fetch('/api/admin/database/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    return {
+      ...data,
+      connected: data.connected ?? data.success ?? false,
+      message: data.message || data.error || (data.connected ? 'تم الاتصال بقاعدة البيانات بنجاح' : 'فشل فحص اتصال قاعدة البيانات'),
+      provider: data.provider || payload.provider || 'local',
+      suggestedFixes: data.suggestedFixes || data.recommendations || [],
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      connected: false,
+      errorCode: 'NETWORK_ERROR',
+      provider: payload.provider || 'local',
+      message: `خطأ في الاتصال بالخادم: ${err.message}`,
+      suggestedFixes: ['تأكد من تشغيل الخادم والاتصال بالإنترنت'],
+    };
   }
-  return {
-    ...data,
-    connected: data.connected ?? data.success ?? true,
-    message: data.message || 'تم الاتصال بقاعدة البيانات بنجاح',
-    provider: data.provider || payload.provider || 'local',
-  };
 }
+export const testDatabaseConnection = testServerDatabaseConnection;
 
 export interface DatabaseStatsOverview {
   provider: string;
@@ -698,6 +723,230 @@ export async function deleteDatabaseBackup(filename: string): Promise<{ success:
   const data = await res.json();
   if (!res.ok || !data.success) {
     throw new Error(data.error || 'فشل حذف ملف النسخة الاحتياطية');
+  }
+  return data;
+}
+
+// =======================================================
+// CLOUD INTEGRATIONS & EMAIL CONFIGURATION SERVICES
+// =======================================================
+
+export interface PlatformEmailConfig {
+  enabled: boolean;
+  provider: 'smtp' | 'gmail' | 'resend' | 'sendgrid' | 'simulated';
+  host: string;
+  port: number;
+  secure: boolean;
+  user: string;
+  password?: string;
+  hasPassword?: boolean;
+  fromEmail: string;
+  fromName: string;
+  replyTo?: string;
+  hasApiKey?: boolean;
+  apiKey?: string;
+  sendVerificationEmails: boolean;
+  sendCertificateEmails: boolean;
+  status: 'connected' | 'error' | 'untested';
+  lastTestedAt?: string;
+  lastTestMessage?: string;
+  updatedAt?: string;
+}
+
+export interface CloudAiDiagnostic {
+  summary: string;
+  rootCause: string;
+  steps: Array<{
+    step: number;
+    title: string;
+    action: string;
+    tip?: string;
+  }>;
+  quickTip?: string;
+  severity?: 'critical' | 'high' | 'medium' | 'low';
+}
+
+export interface CloudHealthMetricsData {
+  services: {
+    drive: {
+      name: string;
+      status: string;
+      accountEmail: string;
+      isDefaultForAllUsers: boolean;
+      folderName: string;
+      lastTestedAt?: string;
+      latencyMs: number;
+      storedFilesCount: number;
+      reliabilityRate: number;
+    };
+    database: {
+      name: string;
+      provider: string;
+      status: string;
+      latencyMs: number;
+      totalRecords: number;
+      certificatesCount: number;
+      usersCount: number;
+      lastTestedAt?: string;
+      reliabilityRate: number;
+    };
+    email: {
+      name: string;
+      status: string;
+      host: string;
+      port: number;
+      fromEmail: string;
+      totalDispatched: number;
+      sentCount: number;
+      simulatedCount: number;
+      failedCount: number;
+      latencyMs: number;
+      reliabilityRate: number;
+    };
+    ai: {
+      name: string;
+      status: string;
+      model: string;
+      latencyMs: number;
+      reliabilityRate: number;
+    };
+  };
+  storageBreakdown: Array<{
+    name: string;
+    count: number;
+    sizeMb: number;
+    color: string;
+  }>;
+  latencyBenchmarks: Array<{
+    service: string;
+    latency: number;
+    unit: string;
+    status: string;
+  }>;
+}
+
+export async function fetchEmailConfig(): Promise<PlatformEmailConfig | null> {
+  try {
+    const res = await fetch('/api/admin/email/config');
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && data.config) {
+        return data.config;
+      }
+    }
+  } catch (e) {
+    console.warn('fetchEmailConfig note:', e);
+  }
+  return null;
+}
+
+export async function saveEmailConfig(config: Partial<PlatformEmailConfig>): Promise<{ success: boolean; message: string; config?: PlatformEmailConfig }> {
+  const res = await fetch('/api/admin/email/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(config),
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || 'فشل حفظ إعدادات البريد الإلكتروني');
+  }
+  return data;
+}
+
+export async function testEmailConnection(payload: {
+  host?: string;
+  port?: number;
+  secure?: boolean;
+  user?: string;
+  password?: string;
+  fromEmail?: string;
+  fromName?: string;
+  testRecipient?: string;
+}): Promise<{
+  success: boolean;
+  connected: boolean;
+  message: string;
+  latencyMs?: number;
+  emailSent?: boolean;
+  recipient?: string;
+  errorCode?: string;
+  suggestedFixes?: string[];
+  diagnostics?: any;
+}> {
+  try {
+    const res = await fetch('/api/admin/email/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    return {
+      ...data,
+      connected: data.connected ?? data.success ?? false,
+      message: data.message || data.error || (data.connected ? 'تم الاتصال بنجاح' : 'فشل فحص الاتصال'),
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      connected: false,
+      errorCode: 'NETWORK_ERROR',
+      message: `خطأ في إرسال طلب الفحص: ${err.message}`,
+      suggestedFixes: ['تأكد من عمل خادم التطبيق والاتصال بالإنترنت.'],
+    };
+  }
+}
+
+export async function diagnoseCloudError(params: {
+  service: 'drive' | 'database' | 'email';
+  errorMessage: string;
+  errorCode?: string;
+  context?: any;
+}): Promise<{ success: boolean; diagnosis: CloudAiDiagnostic; isFallback?: boolean }> {
+  const res = await fetch('/api/admin/diagnose-error', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success || !data.diagnosis) {
+    throw new Error(data.error || 'فشل الحصول على تشخيص الذكاء الاصطناعي');
+  }
+  return data;
+}
+
+export async function fetchCloudHealthMetrics(): Promise<CloudHealthMetricsData | null> {
+  try {
+    const res = await fetch('/api/admin/cloud-health-metrics');
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && data.metrics) {
+        return data.metrics;
+      }
+    }
+  } catch (e) {
+    console.warn('fetchCloudHealthMetrics note:', e);
+  }
+  return null;
+}
+
+export async function sendCertificateEmailViaPlatform(params: {
+  toEmail: string;
+  recipientName: string;
+  subject?: string;
+  bodyText?: string;
+  driveLink?: string;
+  verificationCode?: string;
+  senderName?: string;
+  certificateImageUrl?: string;
+}): Promise<{ success: boolean; message: string; method?: string; logId?: string }> {
+  const res = await fetch('/api/email/send-certificate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || 'فشل إرسال الشهادة عبر البريد');
   }
   return data;
 }

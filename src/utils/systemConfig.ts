@@ -42,6 +42,7 @@ export interface PlatformDriveSettings {
   isDefaultForAllUsers: boolean;
   accountEmail: string;
   accountDisplayName: string;
+  accountName?: string;
   folderName: string;
   folderId?: string;
   accessToken?: string;
@@ -122,7 +123,45 @@ export interface SystemSettingsConfig {
   lockedElements: SystemLockedElements;
   platformDrive?: PlatformDriveSettings;
   database?: SystemDatabaseSettings;
+  email?: PlatformEmailSettings;
 }
+
+export type EmailProviderType = 'smtp' | 'gmail' | 'resend' | 'sendgrid' | 'simulated';
+
+export interface PlatformEmailSettings {
+  enabled: boolean;
+  provider: EmailProviderType;
+  host: string;
+  port: number;
+  secure: boolean;
+  user: string;
+  password?: string;
+  fromEmail: string;
+  fromName: string;
+  replyTo?: string;
+  apiKey?: string;
+  sendVerificationEmails: boolean;
+  sendCertificateEmails: boolean;
+  status: 'connected' | 'error' | 'untested';
+  lastTestedAt?: string;
+  lastTestMessage?: string;
+}
+
+export const DEFAULT_PLATFORM_EMAIL_SETTINGS: PlatformEmailSettings = {
+  enabled: true,
+  provider: 'smtp',
+  host: 'smtp.gmail.com',
+  port: 465,
+  secure: true,
+  user: 'eslam.kandeel2@gmail.com',
+  password: '',
+  fromEmail: 'eslam.kandeel2@gmail.com',
+  fromName: 'منصة تقدير للشهادات الرسمية',
+  replyTo: '',
+  sendVerificationEmails: true,
+  sendCertificateEmails: true,
+  status: 'untested',
+};
 
 export const DEFAULT_PLATFORM_DRIVE_CONFIG: PlatformDriveSettings = {
   enabled: true,
@@ -150,6 +189,7 @@ export const DEFAULT_SYSTEM_CONFIG: SystemSettingsConfig = {
   barcodeLinkTarget: 'portal',
   platformDrive: DEFAULT_PLATFORM_DRIVE_CONFIG,
   database: DEFAULT_DATABASE_SETTINGS,
+  email: DEFAULT_PLATFORM_EMAIL_SETTINGS,
   features: {
     enableAutoArchive: true,
     enableAutoGenderInflection: true,
@@ -215,6 +255,10 @@ export function getSavedSystemConfig(): SystemSettingsConfig {
         database: {
           ...DEFAULT_DATABASE_SETTINGS,
           ...(parsed.database || {})
+        },
+        email: {
+          ...DEFAULT_PLATFORM_EMAIL_SETTINGS,
+          ...(parsed.email || {})
         }
       };
     }
@@ -241,6 +285,14 @@ export function getDatabaseSettings(): SystemDatabaseSettings {
 }
 
 /**
+ * Gets the current platform email settings
+ */
+export function getPlatformEmailSettings(): PlatformEmailSettings {
+  const config = getSavedSystemConfig();
+  return config.email || DEFAULT_PLATFORM_EMAIL_SETTINGS;
+}
+
+/**
  * Updates and saves platform Google Drive settings
  */
 export function savePlatformDriveSettings(settings: Partial<PlatformDriveSettings>): SystemSettingsConfig {
@@ -251,6 +303,38 @@ export function savePlatformDriveSettings(settings: Partial<PlatformDriveSetting
       ...(current.platformDrive || DEFAULT_PLATFORM_DRIVE_CONFIG),
       ...settings,
       lastSyncAt: new Date().toISOString()
+    }
+  };
+  saveSystemConfig(updated);
+  return updated;
+}
+
+/**
+ * Updates and saves system database settings
+ */
+export function saveDatabaseSettings(settings: Partial<SystemDatabaseSettings>): SystemSettingsConfig {
+  const current = getSavedSystemConfig();
+  const updated: SystemSettingsConfig = {
+    ...current,
+    database: {
+      ...(current.database || DEFAULT_DATABASE_SETTINGS),
+      ...settings,
+    }
+  };
+  saveSystemConfig(updated);
+  return updated;
+}
+
+/**
+ * Updates and saves platform email settings
+ */
+export function savePlatformEmailSettings(settings: Partial<PlatformEmailSettings>): SystemSettingsConfig {
+  const current = getSavedSystemConfig();
+  const updated: SystemSettingsConfig = {
+    ...current,
+    email: {
+      ...(current.email || DEFAULT_PLATFORM_EMAIL_SETTINGS),
+      ...settings,
     }
   };
   saveSystemConfig(updated);
