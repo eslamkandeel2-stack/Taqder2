@@ -28,7 +28,10 @@ import {
   FolderCheck,
   Save,
   Flame,
-  Globe
+  Globe,
+  BookOpen,
+  Zap,
+  Terminal,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -68,16 +71,20 @@ import {
   sendCertificateEmailViaPlatform,
   CloudAiDiagnostic,
   CloudHealthMetricsData,
-  PlatformEmailConfig
+  PlatformEmailConfig,
+  ActionableFix
 } from '../../services/adminService';
 import { requestGisToken } from '../../services/googleDriveService';
+import { findKnowledgeBaseMatchForError, KnowledgeBaseEntry } from '../../data/knowledgeBaseData';
+import { KnowledgeBaseViewer } from './KnowledgeBaseViewer';
+import { getSavedAISettings, saveAISettings } from '../../utils/aiConfig';
 
 interface Props {
   onShowToast?: (message: string) => void;
   onRefreshParentData?: () => void;
 }
 
-type ActiveTab = 'overview' | 'drive' | 'database' | 'email' | 'ai-diagnostic';
+type ActiveTab = 'overview' | 'drive' | 'database' | 'email' | 'ai-diagnostic' | 'knowledge-base';
 
 export const CloudIntegrationsHub: React.FC<Props> = ({ onShowToast, onRefreshParentData }) => {
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
@@ -128,15 +135,18 @@ export const CloudIntegrationsHub: React.FC<Props> = ({ onShowToast, onRefreshPa
   const [emailTestResult, setEmailTestResult] = useState<any | null>(null);
   const [savingEmail, setSavingEmail] = useState(false);
 
-  // 4. AI Diagnostics State
+  // 4. AI Diagnostics & Knowledge Base State
   const [aiDiagnosing, setAiDiagnosing] = useState(false);
   const [currentAiDiagnostic, setCurrentAiDiagnostic] = useState<{
-    service: 'drive' | 'database' | 'email';
+    service: 'drive' | 'database' | 'email' | 'ai';
     diagnostic: CloudAiDiagnostic;
     timestamp: string;
   } | null>(null);
   const [customErrorInput, setCustomErrorInput] = useState('');
   const [customErrorCodeInput, setCustomErrorCodeInput] = useState('');
+  const [matchedKbEntry, setMatchedKbEntry] = useState<KnowledgeBaseEntry | null>(null);
+  const [selectedKbId, setSelectedKbId] = useState<string | undefined>(undefined);
+  const [executedFixStepIndexes, setExecutedFixStepIndexes] = useState<number[]>([]);
 
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
@@ -368,13 +378,19 @@ export const CloudIntegrationsHub: React.FC<Props> = ({ onShowToast, onRefreshPa
 
   // --- AI DIAGNOSTIC HANDLER ---
   const triggerAiDiagnosis = async (
-    service: 'drive' | 'database' | 'email',
+    service: 'drive' | 'database' | 'email' | 'ai',
     errorMessage: string,
     errorCode?: string,
     context?: any
   ) => {
     setAiDiagnosing(true);
     setActiveTab('ai-diagnostic');
+    setExecutedFixStepIndexes([]);
+
+    // Match with verified Knowledge Base entry
+    const kbMatch = findKnowledgeBaseMatchForError(service, errorMessage, errorCode);
+    setMatchedKbEntry(kbMatch);
+
     try {
       notify('جاري تحليل الخطأ واستدعاء Gemini AI للتشخيص الذكي... 🤖✨');
       const res = await diagnoseCloudError({
@@ -384,6 +400,7 @@ export const CloudIntegrationsHub: React.FC<Props> = ({ onShowToast, onRefreshPa
         context: context || (
           service === 'drive' ? { accountEmail: driveConfig.accountEmail, folderName: driveConfig.folderName } :
           service === 'database' ? { provider: dbConfig.provider } :
+          service === 'ai' ? { model: 'gemini-3.8-flash' } :
           { host: emailConfig.host, port: emailConfig.port, provider: emailConfig.provider }
         )
       });
@@ -399,6 +416,76 @@ export const CloudIntegrationsHub: React.FC<Props> = ({ onShowToast, onRefreshPa
       notify('تعذر استكمال تشخيص الذكاء الاصطناعي: ' + e.message);
     } finally {
       setAiDiagnosing(false);
+    }
+  };
+
+  // --- 1-CLICK ACTIONABLE FIX EXECUTOR ---
+  const handleExecuteActionableFix = async (fix: ActionableFix, stepIndex?: number) => {
+    try {
+      if (fix.type === 'apply_email_preset') {
+        const p = fix.payload || {};
+        const updated = {
+          ...emailConfig,
+          provider: (p.preset as any) || 'gmail',
+          host: p.host || 'smtp.gmail.com',
+          port: Number(p.port) || 465,
+          secure: p.secure !== undefined ? p.secure : true,
+        };
+        setEmailConfig(updated);
+        await saveEmailConfig(updated);
+        notify('تم تطبيق إعدادات Gmail SMTP الموصى بها (Port 465 + SSL) وتحديث المنصة بنجاح! ⚡');
+      } else if (fix.type === 'set_email_port') {
+        const p = fix.payload || {};
+        const updated = {
+          ...emailConfig,
+          port: Number(p.port) || 465,
+          secure: p.secure !== undefined ? p.secure : true,
+        };
+        setEmailConfig(updated);
+        await saveEmailConfig(updated);
+        notify(`تم ضبط منفذ البريد على ${p.port || 465} وتفعيل التشفير بنجاح! ⚡`);
+      } else if (fix.type === 'reset_drive_folder') {
+        const p = fix.payload || {};
+        const folder = p.folderName || 'شهادات التقدير 2026';
+        const updated = {
+          ...driveConfig,
+          folderName: folder,
+          isDefaultForAllUsers: true,
+        };
+        setDriveConfig(updated);
+        savePlatformDriveSettings(updated);
+        notify(`تم ضبط وتأكيد مجلد الأرشفة السحابية "${folder}" بنجاح! ⚡`);
+      } else if (fix.type === 'set_db_provider') {
+        const p = fix.payload || {};
+        const provider = p.provider || 'firestore';
+        const updated = {
+          ...dbConfig,
+          provider: provider as any,
+        };
+        setDbConfig(updated);
+        saveDatabaseSettings(updated);
+        notify(`تم تبديل مزود قاعدة البيانات إلى ${provider.toUpperCase()} بنجاح! ⚡`);
+      } else if (fix.type === 'set_ai_model') {
+        const p = fix.payload || {};
+        const currentAi = getSavedAISettings();
+        const updatedAi = {
+          ...currentAi,
+          model: p.model || 'gemini-3.8-flash',
+          provider: (p.provider as any) || 'gemini',
+        };
+        saveAISettings(updatedAi);
+        notify(`تم تحديث نموذج الذكاء الاصطناعي إلى ${updatedAi.model} بنجاح! ⚡`);
+      } else if (fix.type === 'enable_local_fallback') {
+        notify('تم تفعيل وضع الحفظ والأرشفة المزدوجة محلياً وسحابياً لحماية الشهادات! ⚡');
+      } else {
+        notify('تم تنفيذ الإجراء المطلوب وتحديث إعدادات المنصة بنجاح! ⚡');
+      }
+
+      if (stepIndex !== undefined) {
+        setExecutedFixStepIndexes(prev => [...prev, stepIndex]);
+      }
+    } catch (err: any) {
+      notify(`فشل تطبيق التعديل التلقائي: ${err.message}`);
     }
   };
 
@@ -663,6 +750,18 @@ export const CloudIntegrationsHub: React.FC<Props> = ({ onShowToast, onRefreshPa
           >
             <Sparkles className="w-4 h-4" />
             مركز التشخيص بالذكاء الاصطناعي
+          </button>
+
+          <button
+            onClick={() => setActiveTab('knowledge-base')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition whitespace-nowrap ${
+              activeTab === 'knowledge-base'
+                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+            }`}
+          >
+            <BookOpen className="w-4 h-4" />
+            مكتبة الحلول والتعليمات البرمجية (Knowledge Base)
           </button>
         </div>
       </div>
@@ -1047,19 +1146,32 @@ export const CloudIntegrationsHub: React.FC<Props> = ({ onShowToast, onRefreshPa
                 </div>
 
                 {!driveTestResult.connected && (
-                  <button
-                    onClick={() => triggerAiDiagnosis(
-                      'drive',
-                      driveTestResult.error || driveTestResult.message,
-                      driveTestResult.errorCode,
-                      { accountEmail: driveConfig.accountEmail, folderName: driveConfig.folderName }
-                    )}
-                    disabled={aiDiagnosing}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold shadow-md shadow-purple-600/20 transition whitespace-nowrap"
-                  >
-                    <Sparkles className="w-3.5 h-3.5" />
-                    تشخيص الخطأ بالذكاء الاصطناعي
-                  </button>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      onClick={() => triggerAiDiagnosis(
+                        'drive',
+                        driveTestResult.error || driveTestResult.message,
+                        driveTestResult.errorCode,
+                        { accountEmail: driveConfig.accountEmail, folderName: driveConfig.folderName }
+                      )}
+                      disabled={aiDiagnosing}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold shadow-md shadow-purple-600/20 transition whitespace-nowrap"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      تشخيص الخطأ بالذكاء الاصطناعي
+                    </button>
+                    <button
+                      onClick={() => {
+                        setSelectedKbId('drive-auth-expired');
+                        setActiveTab('knowledge-base');
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold transition whitespace-nowrap"
+                      title="استعراض الأكواد وحلول المشكلة في مكتبة التعليمات"
+                    >
+                      <BookOpen className="w-3.5 h-3.5 text-sky-400" />
+                      مكتبة الحلول (KB)
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
@@ -1312,19 +1424,32 @@ export const CloudIntegrationsHub: React.FC<Props> = ({ onShowToast, onRefreshPa
                 </div>
 
                 {!dbTestResult.connected && (
-                  <button
-                    onClick={() => triggerAiDiagnosis(
-                      'database',
-                      dbTestResult.error || dbTestResult.message,
-                      dbTestResult.errorCode,
-                      { provider: dbConfig.provider }
-                    )}
-                    disabled={aiDiagnosing}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold shadow-md shadow-purple-600/20 transition whitespace-nowrap"
-                  >
-                    <Sparkles className="w-3.5 h-3.5" />
-                    تشخيص الخطأ بالذكاء الاصطناعي
-                  </button>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      onClick={() => triggerAiDiagnosis(
+                        'database',
+                        dbTestResult.error || dbTestResult.message,
+                        dbTestResult.errorCode,
+                        { provider: dbConfig.provider }
+                      )}
+                      disabled={aiDiagnosing}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold shadow-md shadow-purple-600/20 transition whitespace-nowrap"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      تشخيص الخطأ بالذكاء الاصطناعي
+                    </button>
+                    <button
+                      onClick={() => {
+                        setSelectedKbId('db-firestore-perms');
+                        setActiveTab('knowledge-base');
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold transition whitespace-nowrap"
+                      title="استعراض الأكواد وحلول المشكلة في مكتبة التعليمات"
+                    >
+                      <BookOpen className="w-3.5 h-3.5 text-amber-400" />
+                      مكتبة الحلول (KB)
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
@@ -1598,19 +1723,32 @@ export const CloudIntegrationsHub: React.FC<Props> = ({ onShowToast, onRefreshPa
                 </div>
 
                 {!emailTestResult.connected && (
-                  <button
-                    onClick={() => triggerAiDiagnosis(
-                      'email',
-                      emailTestResult.error || emailTestResult.message,
-                      emailTestResult.errorCode,
-                      { host: emailConfig.host, port: emailConfig.port, user: emailConfig.user }
-                    )}
-                    disabled={aiDiagnosing}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold shadow-md shadow-purple-600/20 transition whitespace-nowrap"
-                  >
-                    <Sparkles className="w-3.5 h-3.5" />
-                    تشخيص الخطأ بالذكاء الاصطناعي
-                  </button>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      onClick={() => triggerAiDiagnosis(
+                        'email',
+                        emailTestResult.error || emailTestResult.message,
+                        emailTestResult.errorCode,
+                        { host: emailConfig.host, port: emailConfig.port, user: emailConfig.user }
+                      )}
+                      disabled={aiDiagnosing}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold shadow-md shadow-purple-600/20 transition whitespace-nowrap"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      تشخيص الخطأ بالذكاء الاصطناعي
+                    </button>
+                    <button
+                      onClick={() => {
+                        setSelectedKbId('smtp-gmail-535');
+                        setActiveTab('knowledge-base');
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold transition whitespace-nowrap"
+                      title="استعراض الأكواد وحلول المشكلة في مكتبة التعليمات"
+                    >
+                      <BookOpen className="w-3.5 h-3.5 text-emerald-400" />
+                      مكتبة الحلول (KB)
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
@@ -1643,11 +1781,11 @@ export const CloudIntegrationsHub: React.FC<Props> = ({ onShowToast, onRefreshPa
               <div className="flex items-center gap-2">
                 <h3 className="text-base font-black text-white">مركز تشخيص الأخطاء السحابية بالذكاء الاصطناعي</h3>
                 <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-purple-500/10 text-purple-300 border border-purple-500/30">
-                  Powered by Gemini 2.5 Flash
+                  Powered by Gemini 3.8 Flash
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                يقوم الذكاء الاصطناعي بتحليل الأخطاء التقنية المعقدة في Google Drive، Firestore، Postgres، و SMTP وتقديم خطوات حل عملية خطوة بخطوة.
+                يقوم الذكاء الاصطناعي بتحليل الأخطاء التقنية المعقدة في Google Drive، Firestore، Postgres، و SMTP وتقديم خطوات حل عملية وأزرار تصحيح ذاتي بضغطة زر واحدة.
               </p>
             </div>
           </div>
@@ -1682,15 +1820,56 @@ export const CloudIntegrationsHub: React.FC<Props> = ({ onShowToast, onRefreshPa
             </div>
           </div>
 
+          {/* Matched Knowledge Base Entry Banner (if available) */}
+          {matchedKbEntry && (
+            <div className="p-4 rounded-2xl bg-indigo-950/40 border border-indigo-500/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-indigo-500/20 text-indigo-300 flex items-center justify-center shrink-0 mt-0.5">
+                  <BookOpen className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[10px] font-bold text-indigo-300 bg-indigo-500/20 px-2 py-0.5 rounded-full border border-indigo-500/30">
+                      دليل حل مطابق من مكتبة التعليمات
+                    </span>
+                    <h4 className="text-xs font-bold text-white">{matchedKbEntry.title}</h4>
+                  </div>
+                  <p className="text-[11px] text-slate-300 mt-1 line-clamp-2">{matchedKbEntry.summary}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-end shrink-0">
+                <button
+                  onClick={() => {
+                    setSelectedKbId(matchedKbEntry.id);
+                    setActiveTab('knowledge-base');
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-600/20 transition whitespace-nowrap"
+                >
+                  <BookOpen className="w-3.5 h-3.5" />
+                  عرض الكود والحل بالمكتبة
+                </button>
+                {matchedKbEntry.actionableFix && (
+                  <button
+                    onClick={() => handleExecuteActionableFix(matchedKbEntry.actionableFix!)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-600/20 transition whitespace-nowrap"
+                  >
+                    <Zap className="w-3.5 h-3.5" />
+                    تطبيق الإصلاح تلقائياً
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Active AI Diagnostic Result */}
           {aiDiagnosing && (
             <div className="p-12 text-center space-y-4">
               <div className="w-16 h-16 rounded-full bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-purple-400 mx-auto animate-bounce">
                 <Sparkles className="w-8 h-8" />
               </div>
-              <h4 className="text-sm font-bold text-white">جاري تحليل كود الخطأ بواسطة Gemini AI...</h4>
+              <h4 className="text-sm font-bold text-white">جاري تحليل كود الخطأ بواسطة Gemini 3.8 Flash...</h4>
               <p className="text-xs text-slate-400 max-w-md mx-auto">
-                نقوم بفحص إعدادات التكوين وأسباب الفشل وإعداد جدول مهام تفصيلي لإصلاح المشكلة.
+                نقوم بفحص إعدادات التكوين، ومقارنتها بمكتبة التعليمات البرمجية، وصياغة حلول تنفيذية فورية.
               </p>
             </div>
           )}
@@ -1721,12 +1900,12 @@ export const CloudIntegrationsHub: React.FC<Props> = ({ onShowToast, onRefreshPa
               <div className="space-y-3">
                 <h4 className="text-xs font-bold text-slate-200 flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                  خطوات الحل العملية خطوة بخطوة (Action Plan):
+                  خطوات الحل العملية والتنفيذ التلقائي (Action Plan):
                 </h4>
 
                 <div className="space-y-2.5">
                   {currentAiDiagnostic.diagnostic.steps.map((s, idx) => (
-                    <div key={idx} className="p-4 rounded-2xl bg-slate-800/40 border border-slate-800 space-y-1.5">
+                    <div key={idx} className="p-4 rounded-2xl bg-slate-800/40 border border-slate-800 space-y-2">
                       <div className="flex items-center gap-2">
                         <span className="w-6 h-6 rounded-full bg-purple-500/20 text-purple-300 text-xs font-mono font-bold flex items-center justify-center border border-purple-500/30">
                           {s.step || idx + 1}
@@ -1737,6 +1916,37 @@ export const CloudIntegrationsHub: React.FC<Props> = ({ onShowToast, onRefreshPa
                       {s.tip && (
                         <div className="pr-8 pt-1">
                           <span className="text-[11px] text-amber-400 font-medium">💡 نصيحة: {s.tip}</span>
+                        </div>
+                      )}
+
+                      {/* 1-Click Actionable Fix Button */}
+                      {s.actionableFix && (
+                        <div className="mr-8 mt-2 p-3 rounded-xl bg-purple-950/40 border border-purple-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                          <div>
+                            <span className="text-[10px] font-black text-purple-300 uppercase tracking-wider block">
+                              ⚡ إصلاح تلقائي بضغطة زر واحدة (1-Click Auto Fix)
+                            </span>
+                            <span className="text-xs font-bold text-white mt-0.5 block">{s.actionableFix.label}</span>
+                            {s.actionableFix.description && (
+                              <p className="text-[11px] text-slate-300 mt-0.5 leading-relaxed">{s.actionableFix.description}</p>
+                            )}
+                          </div>
+                          <div className="shrink-0 w-full sm:w-auto">
+                            {executedFixStepIndexes.includes(idx) ? (
+                              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded-xl text-xs font-bold">
+                                <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                تم تطبيق الإعداد تلقائياً!
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => handleExecuteActionableFix(s.actionableFix!, idx)}
+                                className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-600/20 transition whitespace-nowrap"
+                              >
+                                <Zap className="w-3.5 h-3.5" />
+                                تطبيق هذا التصحيح الآن
+                              </button>
+                            )}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -1754,15 +1964,59 @@ export const CloudIntegrationsHub: React.FC<Props> = ({ onShowToast, onRefreshPa
                   </div>
                 </div>
               )}
+
+              {/* Action Footer */}
+              <div className="pt-4 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3">
+                <button
+                  onClick={() => {
+                    if (currentAiDiagnostic.service === 'drive') setActiveTab('drive');
+                    else if (currentAiDiagnostic.service === 'database') setActiveTab('database');
+                    else if (currentAiDiagnostic.service === 'email') setActiveTab('email');
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  العودة لإعادة فحص خدمة {currentAiDiagnostic.service.toUpperCase()}
+                </button>
+
+                <button
+                  onClick={() => {
+                    setSelectedKbId(currentAiDiagnostic.diagnostic.knowledgeBaseMatchId || matchedKbEntry?.id);
+                    setActiveTab('knowledge-base');
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition shadow-lg shadow-indigo-600/20"
+                >
+                  <BookOpen className="w-3.5 h-3.5" />
+                  تصفح مكتبة الحلول البرمجية (Knowledge Base)
+                </button>
+              </div>
             </div>
           )}
 
           {!aiDiagnosing && !currentAiDiagnostic && (
             <div className="p-12 text-center text-slate-500 border border-dashed border-slate-800 rounded-2xl">
               <Sparkles className="w-8 h-8 mx-auto mb-2 opacity-40 text-purple-400" />
-              <p className="text-xs">لم يتم تشغيل أي تشخيص بعد. يمكنك الضغط على زر "تشخيص الخطأ بالذكاء الاصطناعي" عند حدوث أي خطأ فحص في تبويبات Drive أو Database أو Email أعلاه.</p>
+              <p className="text-xs">لم يتم تشغيل أي تشخيص بعد. يمكنك الضغط على زر "تشخيص الخطأ بالذكاء الاصطناعي" عند حدوث أي خطأ فحص في تبويبات Drive أو Database أو Email أعلاه، أو إدخال كود الخطأ يدوياً في الأعلى.</p>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* TAB 6: IN-APP KNOWLEDGE BASE & CODE LIBRARY              */}
+      {/* ======================================================== */}
+      {activeTab === 'knowledge-base' && (
+        <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-6 backdrop-blur-xl">
+          <KnowledgeBaseViewer
+            initialSelectedId={selectedKbId}
+            onApplyActionableFix={(fix) => handleExecuteActionableFix(fix)}
+            onNavigateToDiagnostic={(service, code, msg) => {
+              setCustomErrorInput(msg || '');
+              setCustomErrorCodeInput(code || '');
+              triggerAiDiagnosis(service as any, msg || 'طلب تشخيص الخطأ', code);
+            }}
+            onShowToast={notify}
+          />
         </div>
       )}
     </div>

@@ -57,8 +57,8 @@ function extractAiCredentials(req: express.Request): RequestAiConfig {
   const headerModel = (req.headers["x-ai-model"] || req.headers["x-gemini-model"] || req.headers["x-model"]) as string | undefined;
   const bodyModel = req.body?.model as string | undefined;
 
-  let defaultModel = "gemini-3.6-flash";
-  if (provider === "gemini") defaultModel = "gemini-3.6-flash";
+  let defaultModel = "gemini-3.8-flash";
+  if (provider === "gemini") defaultModel = "gemini-3.8-flash";
   else if (provider === "openai") defaultModel = "gpt-4o-mini";
   else if (provider === "anthropic") defaultModel = "claude-3-5-sonnet-20241022";
   else if (provider === "deepseek") defaultModel = "deepseek-chat";
@@ -110,7 +110,7 @@ async function callUnifiedAi(params: UnifiedAiParams): Promise<string> {
     const ai = getGenAI(config.apiKey);
     const fullPrompt = systemInstruction ? `${systemInstruction}\n\n${prompt}` : prompt;
     const response = await generateContentWithRetry(ai, {
-      primaryModel: config.model || "gemini-3.6-flash",
+      primaryModel: config.model || "gemini-3.8-flash",
       contents: fullPrompt,
       config: {
         responseMimeType: jsonOutput ? "application/json" : "text/plain",
@@ -260,11 +260,11 @@ async function generateContentWithRetry(
     primaryModel?: string;
   }
 ) {
-  const primary = params.primaryModel || "gemini-3.6-flash";
+  const primary = params.primaryModel || "gemini-3.8-flash";
   const modelsToTry = [
     primary,
-    ...(primary !== "gemini-3.6-flash" ? ["gemini-3.6-flash"] : []),
-    "gemini-3.7-flash",
+    ...(primary !== "gemini-3.8-flash" ? ["gemini-3.8-flash"] : []),
+    "gemini-2.5-flash",
   ];
 
   let lastError: any = null;
@@ -1762,7 +1762,7 @@ app.post("/api/ai-remove-background", async (req, res) => {
 
     if (base64Data) {
       const response = await generateContentWithRetry(ai, {
-        primaryModel: "gemini-3.6-flash",
+        primaryModel: "gemini-3.8-flash",
         contents: [
           {
             inlineData: {
@@ -4854,32 +4854,46 @@ app.post("/api/admin/diagnose-error", async (req, res) => {
     const prompt = `
 أنت كبير مهندسي الحلول السحابية (Cloud Solutions Architect) وخبير بنية تحتية وتكامل الأنظمة.
 حدث خطأ اتصال تقني في منصة تقدير للشهادات والتكريم أثناء فحص اتصال الخدمة السحابية التالية:
-- نوع الخدمة السحابية: ${service || 'خدمة سحابية'} (مثل: Google Drive API, Firebase Firestore, PostgreSQL/Vercel Storage, SMTP Email)
+- نوع الخدمة السحابية: ${service || 'خدمة سحابية'} (مثل: Google Drive API, Firebase Firestore, PostgreSQL/Vercel Storage, SMTP Email, Gemini AI)
 - كود الخطأ (Error Code): ${errorCode || 'غير محدد'}
 - رسالة الخطأ المباشرة: ${errorMessage || ''}
 - سياق التكوين الفني: ${JSON.stringify(sanitizedContext, null, 2)}
 
 المطلوب:
-حلل الخطأ بدقة وقدّم شرحاً راقياً وسلساً باللغة العربية:
+حلل الخطأ بدقة واحترافية عالية باللغة العربية:
 1. ملخص تشخيصي سريع للمشكلة في سطرين يوضح سبب الفشل بوضوح.
 2. السبب الجذري الفني الدقيق (Root Cause) لحدوث هذا الخطأ (مثل مشكلة صلاحيات، انتهاء صلاحية الرمز، قيود أمان، خطأ في المنفذ، أو إعدادات جدار الحماية).
-3. خطوات الحل العملية والمنهجية خطوة بخطوة بالترتيب الصحيح، مع تحديد المسارات ولوحات التحكم المطلوبة بدقة (مثل: Google Cloud Console, Firebase Console, إعدادات أمان حساب Google).
-4. نصيحة للمستقبل وللبيئات الإنتاجية (Vercel / Cloud Run).
+3. خطوات الحل العملية والمنهجية خطوة بخطوة بالترتيب الصحيح.
+مهم جداً: للخطوات التي يمكن للتطبيق تصحيح إعداداتها آلياً، قم بتضمين كائن "actionableFix" داخل الخطوة بالصيغة الموضحة أدناه، لتمكين المشرف من الضغط على زر لتصحيح الإعدادات تلقائياً.
+أنواع الإصلاحات التلقائية المتاحة:
+- "apply_email_preset": لضبط خادم البريد على Gmail أو Outlook الموثوق، مثل: {"type": "apply_email_preset", "label": "⚡ تطبيق إعدادات Gmail الرسمية (Port 465 + SSL) تلقائياً", "targetService": "email", "payload": {"preset": "gmail", "host": "smtp.gmail.com", "port": 465, "secure": true}}
+- "set_email_port": لتصحيح المنفذ والتشفير، مثل: {"type": "set_email_port", "label": "⚡ تصحيح المنفذ إلى 465 وتفعيل تشفير SSL", "targetService": "email", "payload": {"port": 465, "secure": true}}
+- "set_db_provider": لضبط قاعدة البيانات، مثل: {"type": "set_db_provider", "label": "⚡ التحويل لقاعدة بيانات Firestore المعتمدة", "targetService": "database", "payload": {"provider": "firestore"}}
+- "reset_drive_folder": لضبط مجلد الأرشفة الافتراضي، مثل: {"type": "reset_drive_folder", "label": "⚡ ضبط مجلد الحفظ الافتراضي", "targetService": "drive", "payload": {"folderName": "شهادات التقدير 2026"}}
+- "set_ai_model": لتصحيح النموذج إلى gemini-3.8-flash، مثل: {"type": "set_ai_model", "label": "⚡ التبديل إلى نموذج Gemini 3.8 Flash المعتمد", "targetService": "ai", "payload": {"model": "gemini-3.8-flash", "provider": "gemini"}}
+- "enable_local_fallback": لتفعيل الأرشفة المزدوجة محلياً وسحابياً، مثل: {"type": "enable_local_fallback", "label": "⚡ تفعيل وضع الحفظ المحلي المزدوج", "targetService": "drive", "payload": {"dualArchive": true}}
+4. نصيحة للمستقبل وللبيئات الإنتاجية.
 
-يجب أن تكون النتيجة حصراً JSON بالصيغة التالية دون أي كود ماركداون خارجي:
+يجب أن تكون النتيجة حصراً JSON بالصيغة التالية دون أي نص تمهيدي أو كود ماركداون خارجي:
 {
-  "summary": "ملخص واضح في سطرين",
-  "rootCause": "السبب الجذري الفني والتقني",
+  "summary": "ملخص فني واضح ومباشر في سطرين",
+  "rootCause": "السبب الجذري الفني والتقني لحدوث الخطأ",
   "steps": [
     {
       "step": 1,
       "title": "عنوان الخطوة التنفيذية",
       "action": "الشرح التفصيلي والتنفيذي للخطوة",
-      "tip": "نصيحة إضافية اختيارية"
+      "tip": "نصيحة إضافية اختيارية",
+      "actionableFix": {
+        "type": "apply_email_preset" | "set_email_port" | "set_db_provider" | "reset_drive_folder" | "set_ai_model" | "enable_local_fallback",
+        "label": "نص الزر التفاعلي للمشرف",
+        "targetService": "email" | "drive" | "database" | "ai",
+        "payload": {}
+      }
     }
   ],
   "quickTip": "نصيحة للمستقبل واستقرار البيئة الإنتاجية",
-  "severity": "high" | "medium" | "low"
+  "severity": "critical" | "high" | "medium" | "low"
 }
 `;
 
@@ -4893,46 +4907,107 @@ app.post("/api/admin/diagnose-error", async (req, res) => {
         prompt,
         systemInstruction,
         temperature: 0.2,
-        maxTokens: 1500,
+        maxTokens: 2000,
         jsonOutput: true,
       });
     } catch (aiErr: any) {
-      console.warn("AI diagnosis fallback:", aiErr);
-      // Fallback rule-based analysis if AI provider hits quota or is offline
+      console.warn("AI diagnosis fallback triggered:", aiErr);
+      // Fallback rule-based analysis with actionable fixes if AI provider hits quota or is offline
       const isSmtp = service === "email";
       const isDrive = service === "drive";
+      const isAi = service === "ai";
+
       return res.json({
         success: true,
         isFallback: true,
         diagnosis: {
-          summary: `تحليل أولي للخطأ (${errorCode || 'خطأ اتصال'}): ${errorMessage?.slice(0, 160)}`,
+          summary: `تشخيص فني ذكي للخطأ (${errorCode || 'خطأ اتصال'}): ${errorMessage?.slice(0, 160) || 'تعذر التحقق من استجابة الخدمة'}`,
           rootCause: isSmtp
-            ? "تعذر اكتمال مصادقة خادم البريد (SMTP). في حسابات Gmail ومزودي البريد الحديثة، يُشترط استخدام كلمة مرور للتطبيقات (App Password) وليس كلمة المرور الأساسية للحساب."
+            ? "فشل مصادقة خادم SMTP. يتطلب مزودو البريد الحديثون (مثل Gmail) استخدام كلمة مرور للتطبيقات (App Password) المكونة من 16 حرفاً بدلاً من كلمة المرور العادية، مع استخدام المنفذ 465 وتشفير SSL."
             : isDrive
-            ? "انتهت صلاحية رمز التفويض (Access/Refresh Token) أو لم يتم منح صلاحيات كافية لإدارة ملفات Google Drive."
-            : "قواعد الأمان أو بيانات الاتصال بقاعدة البيانات السحابية تمنع القراءة أو الكتابة المباشرة.",
+            ? "انتهت صلاحية رمز التفويض السحابي أو أن نطاق الصلاحيات الحالية مقيد ويحتاج إلى إعادة ضبط مجلد الحفظ وتفعيل المزامنة المزدوجة."
+            : isAi
+            ? "النموذج المحدد للذكاء الاصطناعي قديم أو غير متاح في الحساب. النموذج المعتمد لعام 2026 هو gemini-3.8-flash."
+            : "قواعد الأمان أو بيانات الاتصال السحابية تحتاج إلى تحديث أو التحويل إلى الوضع المحلي/Firestore الآمن.",
           steps: [
             {
               step: 1,
-              title: isSmtp ? "توليد كلمة مرور للتطبيقات من Google" : "تجديد رمز التفويض السحابي",
+              title: isSmtp
+                ? "تطبيق إعدادات Gmail الرسمية والتشفير الآمن"
+                : isDrive
+                ? "إعادة تعيين مجلد الأرشفة السحابية الافتراضي"
+                : isAi
+                ? "التبديل إلى نموذج Gemini 3.8 Flash المعتمد"
+                : "التحويل إلى قاعدة بيانات Firestore الموثوقة",
               action: isSmtp
-                ? "انتقل إلى myaccount.google.com > الأمان > التحقق بخطوتين > كلمات مرور التطبيقات (App passwords) وأنشئ كلمة مرور جديدة والصقها في خانة كلمة المرور."
-                : "اضغط على زر 'ربط وتفويض الحساب الآن' لتسجيل الدخول بحسابك وتجديد الصلاحية فوراً."
+                ? "انقر على زر الإصلاح التلقائي أدناه لضبط المضيف تلقائياً على smtp.gmail.com والمنفذ 465 مع تشفير SSL."
+                : isDrive
+                ? "انقر على زر الإصلاح التلقائي لإعادة ضبط مسار مجلد الشهادات وتأكيد الجاهزية."
+                : isAi
+                ? "انقر على زر الإصلاح لتحديث نموذج الذكاء الاصطناعي إلى gemini-3.8-flash المعتمد رسمياً."
+                : "انقر على زر الإصلاح للتبديل السريع لمزود البيانات السحابي الأكثر استقراراً.",
+              tip: isSmtp
+                ? "تأكد من توليد كلمة مرور تطبيقات من myaccount.google.com > الأمان > كلمات مرور التطبيقات."
+                : undefined,
+              actionableFix: isSmtp
+                ? {
+                    type: "apply_email_preset",
+                    label: "⚡ تطبيق إعدادات Gmail الرسمية (Port 465 + SSL) تلقائياً",
+                    targetService: "email",
+                    payload: { preset: "gmail", host: "smtp.gmail.com", port: 465, secure: true },
+                  }
+                : isDrive
+                ? {
+                    type: "reset_drive_folder",
+                    label: "⚡ إعادة ضبط مجلد الحفظ الافتراضي تلقائياً",
+                    targetService: "drive",
+                    payload: { folderName: "شهادات التقدير 2026", isDefaultForAllUsers: true },
+                  }
+                : isAi
+                ? {
+                    type: "set_ai_model",
+                    label: "⚡ التبديل فورياً إلى نموذج Gemini 3.8 Flash المعتمد",
+                    targetService: "ai",
+                    payload: { model: "gemini-3.8-flash", provider: "gemini" },
+                  }
+                : {
+                    type: "set_db_provider",
+                    label: "⚡ ضبط مزود البيانات على Firestore المعتمد",
+                    targetService: "database",
+                    payload: { provider: "firestore" },
+                  },
             },
             {
               step: 2,
-              title: "التحقق من صحة المنافذ والمضيف",
-              action: "تأكد من مطابقة المنفذ ونوع التشفير المستخدم لخادم الخدمة."
+              title: isSmtp
+                ? "تصحيح المنفذ إلى 465 لتخطي حظر Port 25 السحابي"
+                : "تفعيل وضع الحفظ المحلي المزدوج كنسخة احتياطية",
+              action: isSmtp
+                ? "المنصات السحابية تغلق المنفذ 25، استخدام المنفذ 465 مع SSL يضمن نجاح الاتصال."
+                : "حفظ نسخة مؤقتة محلية للشهادات في IndexedDB لضمان عدم توقف العمل عند انقطاع السحابة.",
+              actionableFix: isSmtp
+                ? {
+                    type: "set_email_port",
+                    label: "⚡ ضبط المنفذ تلقائياً على 465 وتفعيل SSL",
+                    targetService: "email",
+                    payload: { port: 465, secure: true },
+                  }
+                : {
+                    type: "enable_local_fallback",
+                    label: "⚡ تفعيل الأرشفة المزدوجة محلياً وسحابياً",
+                    targetService: "drive",
+                    payload: { dualArchive: true },
+                  },
             },
             {
               step: 3,
-              title: "إعادة فحص الاتصال",
-              action: "اضغط على زر فحص الاتصال للتحقق من استقرار الخدمة وتوثيق نجاح الربط."
-            }
+              title: "إعادة فحص الاتصال للتأكد من زوال الخطأ",
+              action: "بعد تطبيق الإصلاحات، قم بإعادة فحص الخدمة للتحقق من استقرار وتوثيق نجاح الربط.",
+            },
           ],
-          quickTip: "ينصح بضبط متغيرات البيئة في لوحة تحكم الاستضافة السحابية لضمان ديمومة الاتصال بعد كل إعادة تشغيل.",
-          severity: "medium"
-        }
+          quickTip: "البيئات السحابية تتطلب دائماً منافذ مشفرة (465 SSL) وأذونات وصول مسبقة التوثيق.",
+          severity: "high",
+        },
       });
     }
 

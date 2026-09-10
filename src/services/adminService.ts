@@ -1,4 +1,5 @@
 import { UnifiedAccount } from './unifiedAuthService';
+import { getAIRequestHeaders, getSavedAISettings } from '../utils/aiConfig';
 import {
   UserFeatureFlags,
   UserDefaultSettings,
@@ -753,6 +754,22 @@ export interface PlatformEmailConfig {
   updatedAt?: string;
 }
 
+export interface ActionableFix {
+  type:
+    | 'apply_email_preset'
+    | 'set_email_port'
+    | 'set_db_provider'
+    | 'reset_drive_folder'
+    | 'set_ai_model'
+    | 'enable_local_fallback'
+    | 'custom_setting';
+  label: string;
+  description?: string;
+  targetService: 'email' | 'drive' | 'database' | 'ai';
+  payload?: any;
+  executed?: boolean;
+}
+
 export interface CloudAiDiagnostic {
   summary: string;
   rootCause: string;
@@ -761,9 +778,11 @@ export interface CloudAiDiagnostic {
     title: string;
     action: string;
     tip?: string;
+    actionableFix?: ActionableFix;
   }>;
   quickTip?: string;
   severity?: 'critical' | 'high' | 'medium' | 'low';
+  knowledgeBaseMatchId?: string;
 }
 
 export interface CloudHealthMetricsData {
@@ -897,14 +916,19 @@ export async function testEmailConnection(payload: {
 }
 
 export async function diagnoseCloudError(params: {
-  service: 'drive' | 'database' | 'email';
+  service: 'drive' | 'database' | 'email' | 'ai';
   errorMessage: string;
   errorCode?: string;
   context?: any;
 }): Promise<{ success: boolean; diagnosis: CloudAiDiagnostic; isFallback?: boolean }> {
+  const aiSettings = getSavedAISettings();
+  const headers = {
+    'Content-Type': 'application/json',
+    ...getAIRequestHeaders(aiSettings),
+  };
   const res = await fetch('/api/admin/diagnose-error', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify(params),
   });
   const data = await res.json();

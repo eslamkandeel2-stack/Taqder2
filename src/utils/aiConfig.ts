@@ -51,13 +51,13 @@ export const AI_PROVIDERS: AIProviderInfo[] = [
     badge: 'الافتراضي والأسرع ⚡',
     description: 'نماذج Google المتطورة المدعومة بتقنيات الفهم اللغوي البلاغي فائق الدقة.',
     defaultBaseUrl: 'https://generativelanguage.googleapis.com',
-    defaultModel: 'gemini-3.6-flash',
+    defaultModel: 'gemini-3.8-flash',
     keyPlaceholder: 'AIzaSy...',
     keyDocsUrl: 'https://aistudio.google.com/app/apikey',
     models: [
       {
-        id: 'gemini-3.6-flash',
-        name: 'Gemini 3.6 Flash',
+        id: 'gemini-3.8-flash',
+        name: 'Gemini 3.8 Flash',
         badge: 'الأحدث والموصى به ⚡',
         description: 'النموذج المعتمد والأسرع لصياغة وتعديل الشهادات وتأنيث/تذكير النصوص بدقة عالية وبلاغة استثنائية.',
         provider: 'gemini',
@@ -213,7 +213,7 @@ export const SUPPORTED_AI_MODELS: AIModelOption[] = AI_PROVIDERS.flatMap((p) => 
 export const DEFAULT_AI_SETTINGS: AISettings = {
   provider: 'gemini',
   apiKey: '',
-  model: 'gemini-3.6-flash',
+  model: 'gemini-3.8-flash',
   customApiUrl: '',
   temperature: 0.7,
   maxTokens: 1000,
@@ -237,9 +237,10 @@ export function getSavedAISettings(): AISettings {
         model === 'gemini-2.0-flash' ||
         model === 'gemini-2.5-flash' ||
         model === 'gemini-2.5-pro' ||
-        model === 'gemini-3.0-flash'
+        model === 'gemini-3.0-flash' ||
+        model === 'gemini-3.6-flash'
       ) {
-        model = 'gemini-3.6-flash';
+        model = 'gemini-3.8-flash';
       }
       return {
         ...DEFAULT_AI_SETTINGS,
@@ -315,7 +316,7 @@ export async function testAIConnection(settings?: AISettings): Promise<{
       body: JSON.stringify({
         provider: cfg.provider || 'gemini',
         apiKey: cfg.apiKey?.trim() || undefined,
-        model: cfg.model?.trim() || 'gemini-3.6-flash',
+        model: cfg.model?.trim() || 'gemini-3.8-flash',
         customApiUrl: cfg.customApiUrl?.trim() || undefined,
       }),
     });
@@ -497,7 +498,7 @@ export async function improveCertificateTextWithAi(params: ImproveTextParams): P
         temperature: cfg.temperature,
         systemInstruction: cfg.systemInstruction,
         apiKey: cfg.apiKey?.trim() || undefined,
-        model: cfg.model?.trim() || 'gemini-3.6-flash',
+        model: cfg.model?.trim() || 'gemini-3.8-flash',
       }),
     });
 
