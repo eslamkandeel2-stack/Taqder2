@@ -58,7 +58,10 @@ import {
   SpellCheck,
   Globe,
   FolderCheck,
-  Link
+  Link,
+  Mail,
+  Flame,
+  HardDrive
 } from 'lucide-react';
 import { CertificateData, FontOption, FrameStyle, LayoutPreset, AspectRatioOption, BadgeIconType, BadgeBgShape, VerificationBoxPattern, VerificationCodePattern } from '../types';
 import {
@@ -101,12 +104,32 @@ import {
   SystemLockedElements,
   SystemFeatureToggles,
   setBarcodeLinkTarget,
-  isFeatureEnabled
+  isFeatureEnabled,
+  savePlatformDriveSettings,
+  saveDatabaseSettings,
+  savePlatformEmailSettings,
+  getPlatformDriveSettings,
+  getDatabaseSettings,
+  getPlatformEmailSettings,
+  SystemDatabaseSettings,
+  PlatformDriveSettings,
+  PlatformEmailSettings
 } from '../utils/systemConfig';
 import { EXPORT_ENGINES } from '../utils/exportUtils';
 import { useDragScroll } from '../utils/useDragScroll';
 import { getAccessToken, googleSignIn, getCurrentUser } from '../services/googleDriveService';
 import { syncFullAccountToCloud, restoreAccountFromCloud } from '../services/cloudDatabaseService';
+import {
+  saveServerDriveConfig,
+  testServerDriveConnection,
+  saveServerDatabaseConfig,
+  testServerDatabaseConnection,
+  saveEmailConfig,
+  testEmailConnection
+} from '../services/adminService';
+import { CloudIntegrationSettingsSection } from './settings/CloudIntegrationSettingsSection';
+import { AiDiagnosticAndKnowledgeHub } from './settings/AiDiagnosticAndKnowledgeHub';
+import { ActionableFix } from '../data/knowledgeBaseData';
 
 interface Props {
   currentCertificate?: CertificateData;
@@ -219,11 +242,35 @@ export const AppSettingsModal: React.FC<Props> = ({
   const [activeFaq, setActiveFaq] = useState<number | null>(0);
   const [driveRequests, setDriveRequests] = useState<DriveVerificationRequest[]>([]);
 
+  // Cloud integrations settings state (Firestore, Default Drive, Default Email)
+  const [dbSettings, setDbSettings] = useState<SystemDatabaseSettings>(() => getDatabaseSettings());
+  const [driveSettings, setDriveSettings] = useState<PlatformDriveSettings>(() => getPlatformDriveSettings());
+  const [emailSettings, setEmailSettings] = useState<PlatformEmailSettings>(() => getPlatformEmailSettings());
+
+  const [isSavingDb, setIsSavingDb] = useState(false);
+  const [isTestingDb, setIsTestingDb] = useState(false);
+  const [isSavingDrive, setIsSavingDrive] = useState(false);
+  const [isTestingDrive, setIsTestingDrive] = useState(false);
+  const [isSavingEmail, setIsSavingEmail] = useState(false);
+  const [isTestingEmail, setIsTestingEmail] = useState(false);
+  const [showDriveSecrets, setShowDriveSecrets] = useState(false);
+  const [showEmailSecrets, setShowEmailSecrets] = useState(false);
+
+  // Active diagnostic trigger state to link Cloud tabs directly to AI Diagnostic modal/section
+  const [activeDiagnostic, setActiveDiagnostic] = useState<{
+    service: 'drive' | 'database' | 'email' | 'ai';
+    msg: string;
+    code?: string;
+  } | null>(null);
+
   useEffect(() => {
     setDefaultSettings(getSavedDefaultSettings());
     setAiSettings(getSavedAISettings());
     setSystemConfig(getSavedSystemConfig());
     setDriveRequests(getDriveVerificationRequests());
+    setDbSettings(getDatabaseSettings());
+    setDriveSettings(getPlatformDriveSettings());
+    setEmailSettings(getPlatformEmailSettings());
 
     const handleReqChange = () => {
       setDriveRequests(getDriveVerificationRequests());
@@ -238,8 +285,14 @@ export const AppSettingsModal: React.FC<Props> = ({
     const handleSystemConfigChange = (e: any) => {
       if (e?.detail) {
         setSystemConfig(e.detail);
+        if (e.detail.databaseSettings) setDbSettings(e.detail.databaseSettings);
+        if (e.detail.platformDriveSettings) setDriveSettings(e.detail.platformDriveSettings);
+        if (e.detail.platformEmailSettings) setEmailSettings(e.detail.platformEmailSettings);
       } else {
         setSystemConfig(getSavedSystemConfig());
+        setDbSettings(getDatabaseSettings());
+        setDriveSettings(getPlatformDriveSettings());
+        setEmailSettings(getPlatformEmailSettings());
       }
     };
 
@@ -347,6 +400,228 @@ export const AppSettingsModal: React.FC<Props> = ({
       if (onShowToast) {
         onShowToast('تم حذف الطلب بنجاح');
       }
+    }
+  };
+
+  // Cloud integrations handlers: Firestore, Default Drive, Default Email
+  const handleSaveFirestoreConfig = async () => {
+    setIsSavingDb(true);
+    try {
+      saveDatabaseSettings(dbSettings);
+      try {
+        await saveServerDatabaseConfig(dbSettings);
+      } catch (err) {
+        console.warn('Backend database sync note:', err);
+      }
+      if (onShowToast) {
+        onShowToast('تم حفظ بيانات ربط Google Cloud Firestore بنجاح! ☁️🔥');
+      }
+    } catch (e: any) {
+      if (onShowToast) onShowToast(e.message || 'فشل حفظ إعدادات قاعدة البيانات');
+    } finally {
+      setIsSavingDb(false);
+    }
+  };
+
+  const handleTestFirestoreConfig = async () => {
+    setIsTestingDb(true);
+    try {
+      const res = await testServerDatabaseConnection(dbSettings);
+      if (res.connected || res.success) {
+        if (onShowToast) onShowToast(res.message || 'تم الاتصال بقاعدة بيانات Firestore بنجاح! 🟢🔥');
+      } else {
+        if (onShowToast) onShowToast(res.message || 'فشل الاتصال بقاعدة البيانات. تحقق من صحة المفاتيح 🔴');
+      }
+    } catch (err: any) {
+      if (onShowToast) onShowToast(err.message || 'تعذر فحص اتصال قاعدة البيانات');
+    } finally {
+      setIsTestingDb(false);
+    }
+  };
+
+  const handleSaveDriveConfig = async () => {
+    setIsSavingDrive(true);
+    try {
+      savePlatformDriveSettings(driveSettings);
+      try {
+        await saveServerDriveConfig(driveSettings);
+      } catch (err) {
+        console.warn('Backend drive config sync note:', err);
+      }
+      if (onShowToast) {
+        onShowToast('تم حفظ بيانات ربط Google Drive الافتراضي بنجاح! 💾📁');
+      }
+    } catch (e: any) {
+      if (onShowToast) onShowToast(e.message || 'فشل حفظ إعدادات Google Drive');
+    } finally {
+      setIsSavingDrive(false);
+    }
+  };
+
+  const handleTestDriveConfig = async () => {
+    setIsTestingDrive(true);
+    try {
+      const res = await testServerDriveConnection(driveSettings);
+      if (res.connected || res.success) {
+        if (onShowToast) onShowToast(res.message || 'تم الاتصال بحساب Google Drive الافتراضي بنجاح! 🟢📁');
+      } else {
+        if (onShowToast) onShowToast(res.message || 'فشل فحص اتصال Drive. تحقق من صلاحيات المجلد والاعتمادات 🔴');
+      }
+    } catch (err: any) {
+      if (onShowToast) onShowToast(err.message || 'تعذر فحص اتصال Google Drive');
+    } finally {
+      setIsTestingDrive(false);
+    }
+  };
+
+  const handleSaveEmailConfig = async () => {
+    setIsSavingEmail(true);
+    try {
+      savePlatformEmailSettings(emailSettings);
+      try {
+        await saveEmailConfig({
+          enabled: emailSettings.enabled,
+          provider: (emailSettings.provider as any) || 'smtp',
+          host: emailSettings.host,
+          port: emailSettings.port,
+          secure: emailSettings.secure,
+          user: emailSettings.user,
+          password: emailSettings.password,
+          fromEmail: emailSettings.fromEmail,
+          fromName: emailSettings.fromName,
+          apiKey: emailSettings.apiKey,
+          sendVerificationEmails: emailSettings.sendVerificationEmails ?? true,
+          sendCertificateEmails: emailSettings.sendCertificateEmails ?? true
+        });
+      } catch (err) {
+        console.warn('Backend email config sync note:', err);
+      }
+      if (onShowToast) {
+        onShowToast('تم حفظ بيانات البريد الإلكتروني الافتراضي للنظام بنجاح! 📧✉️');
+      }
+    } catch (e: any) {
+      if (onShowToast) onShowToast(e.message || 'فشل حفظ إعدادات البريد');
+    } finally {
+      setIsSavingEmail(false);
+    }
+  };
+
+  const handleTestEmailConfig = async () => {
+    setIsTestingEmail(true);
+    try {
+      const res = await testEmailConnection({
+        host: emailSettings.host,
+        port: emailSettings.port,
+        secure: emailSettings.secure,
+        user: emailSettings.user,
+        password: emailSettings.password,
+        fromEmail: emailSettings.fromEmail,
+        fromName: emailSettings.fromName
+      });
+      if (res.connected || res.success) {
+        if (onShowToast) onShowToast(res.message || 'تم فحص خادم البريد الإلكتروني بنجاح! 🟢✉️');
+      } else {
+        if (onShowToast) onShowToast(res.message || 'فشل الاتصال بخادم البريد. تحقق من المنفذ وكلمة المرور 🔴');
+      }
+    } catch (err: any) {
+      if (onShowToast) onShowToast(err.message || 'تعذر فحص خادم البريد');
+    } finally {
+      setIsTestingEmail(false);
+    }
+  };
+
+  // Actionable Fix Handler (from AI Diagnostic / Knowledge Base)
+  const handleApplyActionableFix = async (fix: ActionableFix) => {
+    try {
+      if (fix.type === 'apply_email_preset') {
+        const p = fix.payload || {};
+        const updated = {
+          ...emailSettings,
+          enabled: true,
+          provider: (p.preset as any) || 'gmail',
+          host: p.host || 'smtp.gmail.com',
+          port: Number(p.port) || 465,
+          secure: p.secure !== undefined ? p.secure : true,
+        };
+        setEmailSettings(updated);
+        savePlatformEmailSettings(updated);
+        try {
+          await saveEmailConfig(updated as any);
+        } catch (err) {
+          console.warn('Backend sync note:', err);
+        }
+        if (onShowToast) onShowToast('تم تطبيق إعدادات Gmail SMTP الرسمية (Port 465 + SSL) بنجاح! ⚡');
+      } else if (fix.type === 'set_email_port') {
+        const p = fix.payload || {};
+        const updated = {
+          ...emailSettings,
+          port: Number(p.port) || 465,
+          secure: p.secure !== undefined ? p.secure : true,
+        };
+        setEmailSettings(updated);
+        savePlatformEmailSettings(updated);
+        try {
+          await saveEmailConfig(updated as any);
+        } catch (err) {
+          console.warn('Backend sync note:', err);
+        }
+        if (onShowToast) onShowToast(`تم تصحيح المنفذ إلى ${p.port || 465} وتفعيل التشفير بنجاح! ⚡`);
+      } else if (fix.type === 'reset_drive_folder') {
+        const p = fix.payload || {};
+        const folder = p.folderName || 'شهادات التقدير 2026';
+        const updated = {
+          ...driveSettings,
+          enabled: true,
+          folderName: folder,
+          isDefaultForAllUsers: true,
+        };
+        setDriveSettings(updated);
+        savePlatformDriveSettings(updated);
+        try {
+          await saveServerDriveConfig(updated);
+        } catch (err) {
+          console.warn('Backend drive sync note:', err);
+        }
+        if (onShowToast) onShowToast(`تم ضبط وتأكيد مجلد الأرشفة السحابية "${folder}" بنجاح! ⚡`);
+      } else if (fix.type === 'set_db_provider') {
+        const p = fix.payload || {};
+        const provider = p.provider || 'firestore';
+        const updated = {
+          ...dbSettings,
+          enabled: true,
+          provider: provider as any,
+        };
+        setDbSettings(updated);
+        saveDatabaseSettings(updated);
+        try {
+          await saveServerDatabaseConfig(updated);
+        } catch (err) {
+          console.warn('Backend db sync note:', err);
+        }
+        if (onShowToast) onShowToast(`تم تبديل مزود قاعدة البيانات إلى ${provider.toUpperCase()} بنجاح! ⚡`);
+      } else if (fix.type === 'set_ai_model') {
+        const p = fix.payload || {};
+        const updatedAi = {
+          ...aiSettings,
+          model: p.model || 'gemini-3.8-flash',
+          provider: (p.provider as any) || 'gemini',
+        };
+        setAiSettings(updatedAi);
+        saveAISettings(updatedAi);
+        if (onShowToast) onShowToast(`تم تحديث نموذج الذكاء الاصطناعي إلى ${updatedAi.model} بنجاح! ⚡`);
+      } else if (fix.type === 'enable_local_fallback') {
+        const updatedAi = {
+          ...aiSettings,
+          autoLocalFallback: true,
+        };
+        setAiSettings(updatedAi);
+        saveAISettings(updatedAi);
+        if (onShowToast) onShowToast('تم تفعيل وضع الحفظ والأرشفة المزدوجة ومولد الذكاء المحلي بنجاح! ⚡');
+      } else {
+        if (onShowToast) onShowToast(`تم تطبيق الإجراء: ${fix.label}`);
+      }
+    } catch (e: any) {
+      if (onShowToast) onShowToast(e.message || 'فشل تطبيق الإصلاح التنفيذي');
     }
   };
 
@@ -3084,6 +3359,14 @@ export const AppSettingsModal: React.FC<Props> = ({
             )}
           </div>
 
+          {/* AI Error Diagnosis & Knowledge Base with 1-Click Actionable Fixes */}
+          <AiDiagnosticAndKnowledgeHub
+            onShowToast={onShowToast}
+            onApplyActionableFix={handleApplyActionableFix}
+            initialService="ai"
+            initialError={aiTestResult && !aiTestResult.success ? (aiTestResult.details || aiTestResult.message) : ''}
+          />
+
         </div>
       )}
 
@@ -3445,6 +3728,61 @@ export const AppSettingsModal: React.FC<Props> = ({
                   </button>
                 </div>
               </div>
+
+              {/* Cloud Core Infrastructure (Firestore, Default Drive, Default Email) */}
+              <CloudIntegrationSettingsSection
+                dbSettings={dbSettings}
+                setDbSettings={setDbSettings}
+                driveSettings={driveSettings}
+                setDriveSettings={setDriveSettings}
+                emailSettings={emailSettings}
+                setEmailSettings={setEmailSettings}
+                isSavingDb={isSavingDb}
+                isTestingDb={isTestingDb}
+                onSaveDb={handleSaveFirestoreConfig}
+                onTestDb={handleTestFirestoreConfig}
+                isSavingDrive={isSavingDrive}
+                isTestingDrive={isTestingDrive}
+                showDriveSecrets={showDriveSecrets}
+                setShowDriveSecrets={setShowDriveSecrets}
+                onSaveDrive={handleSaveDriveConfig}
+                onTestDrive={handleTestDriveConfig}
+                isSavingEmail={isSavingEmail}
+                isTestingEmail={isTestingEmail}
+                showEmailSecrets={showEmailSecrets}
+                setShowEmailSecrets={setShowEmailSecrets}
+                onSaveEmail={handleSaveEmailConfig}
+                onTestEmail={handleTestEmailConfig}
+                onDiagnoseError={(service, msg, code) => {
+                  setActiveDiagnostic({ service, msg, code });
+                }}
+              />
+
+              {/* In-place AI Diagnostic Hub if triggered from Cloud integrations */}
+              {activeDiagnostic && (
+                <div className="space-y-3 p-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                      <Sparkles className="w-4 h-4 text-amber-500" />
+                      جلسة التشخيص الذكي النشطة لخدمة {activeDiagnostic.service.toUpperCase()}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setActiveDiagnostic(null)}
+                      className="text-xs text-rose-600 hover:text-rose-800 font-bold px-2 py-1 rounded-lg hover:bg-rose-50"
+                    >
+                      إغلاق التشخيص ✕
+                    </button>
+                  </div>
+                  <AiDiagnosticAndKnowledgeHub
+                    onShowToast={onShowToast}
+                    onApplyActionableFix={handleApplyActionableFix}
+                    initialService={activeDiagnostic.service}
+                    initialError={activeDiagnostic.msg}
+                    initialErrorCode={activeDiagnostic.code}
+                  />
+                </div>
+              )}
 
               {/* Backup & Restore Card */}
               <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
