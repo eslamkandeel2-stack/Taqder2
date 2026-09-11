@@ -16,11 +16,7 @@
   ],
   "rewrites": [
     {
-      "source": "/api/auth/:match*",
-      "destination": "/api/auth/:match*"
-    },
-    {
-      "source": "/api/((?!auth/).*)",
+      "source": "/api/(.*)",
       "destination": "/api/index"
     },
     {

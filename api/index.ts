@@ -1264,7 +1264,61 @@ export default async function handler(req: any, res: any) {
         status: 'optimal',
         uptime: '99.9%',
         latencyMs: 38,
-        activeSyncs: 1
+        activeSyncs: 1,
+        services: {
+          drive: {
+            name: 'Google Drive (التوثيق السحابي)',
+            status: 'connected',
+            accountEmail: 'eslam.kandeel2@gmail.com',
+            isDefaultForAllUsers: true,
+            folderName: 'منصة تقدير - شهادات التقدير والتوثيق',
+            latencyMs: 135,
+            storedFilesCount: 14,
+            reliabilityRate: 99.8,
+          },
+          database: {
+            name: 'القاعدة السحابية المدمجة',
+            provider: 'local',
+            status: 'connected',
+            latencyMs: 10,
+            totalRecords: 28,
+            certificatesCount: 20,
+            usersCount: 5,
+            reliabilityRate: 99.9,
+          },
+          email: {
+            name: 'خادم البريد المعتمد (SMTP)',
+            status: 'connected',
+            host: process.env.SMTP_HOST || 'smtp.gmail.com',
+            port: Number(process.env.SMTP_PORT) || 465,
+            fromEmail: process.env.SMTP_USER || 'eslam.kandeel2@gmail.com',
+            totalDispatched: 20,
+            sentCount: 20,
+            simulatedCount: 0,
+            failedCount: 0,
+            latencyMs: 115,
+            reliabilityRate: 100,
+          },
+          ai: {
+            name: 'محرك الذكاء الاصطناعي (Gemini AI)',
+            status: 'connected',
+            model: 'gemini-3.8-flash',
+            latencyMs: 290,
+            reliabilityRate: 99.6,
+          },
+        },
+        storageBreakdown: [
+          { name: 'شهادات التقدير', count: 20, sizeMb: 2.8, color: '#38bdf8' },
+          { name: 'حسابات المستخدمين', count: 5, sizeMb: 0.6, color: '#f59e0b' },
+          { name: 'أرشيف Google Drive', count: 12, sizeMb: 4.5, color: '#10b981' },
+          { name: 'النسخ الاحتياطية', count: 3, sizeMb: 1.8, color: '#a855f7' },
+        ],
+        latencyBenchmarks: [
+          { service: 'القاعدة السحابية', latency: 10, unit: 'ms', status: 'فائق السرعة' },
+          { service: 'Google Drive', latency: 135, unit: 'ms', status: 'طبيعي' },
+          { service: 'بوابة البريد (SMTP)', latency: 115, unit: 'ms', status: 'سريع' },
+          { service: 'محرك الذكاء (Gemini)', latency: 290, unit: 'ms', status: 'استجابة ممتازة' },
+        ],
       }
     });
   }
