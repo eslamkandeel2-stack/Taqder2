@@ -591,8 +591,8 @@ export const CloudIntegrationsHub: React.FC<Props> = ({ onShowToast, onRefreshPa
               </span>
             </div>
             <div className="mt-3 flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-800/60 pt-2">
-              <span className="truncate max-w-[130px]">{driveConfig?.accountEmail || 'eslam.kandeel2@gmail.com'}</span>
-              <span className="font-mono text-sky-400">{metrics?.services?.drive?.latencyMs ?? 135} ms</span>
+              <span className="truncate max-w-[130px]">{driveConfig.accountEmail}</span>
+              <span className="font-mono text-sky-400">{metrics?.services.drive.latencyMs || 135} ms</span>
             </div>
           </div>
 
@@ -613,7 +613,7 @@ export const CloudIntegrationsHub: React.FC<Props> = ({ onShowToast, onRefreshPa
                 <div>
                   <h4 className="text-xs font-bold text-white">قاعدة البيانات السحابية</h4>
                   <span className="text-[10px] text-slate-400">
-                    {dbConfig?.provider === 'firestore' ? 'Google Firestore' : dbConfig?.provider === 'vercel-postgres' ? 'Vercel Postgres' : 'محلية مدمجة'}
+                    {dbConfig.provider === 'firestore' ? 'Google Firestore' : dbConfig.provider === 'vercel-postgres' ? 'Vercel Postgres' : 'محلية مدمجة'}
                   </span>
                 </div>
               </div>
@@ -622,8 +622,8 @@ export const CloudIntegrationsHub: React.FC<Props> = ({ onShowToast, onRefreshPa
               </span>
             </div>
             <div className="mt-3 flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-800/60 pt-2">
-              <span>{metrics?.services?.database?.totalRecords ?? 18} سجل محفوظ</span>
-              <span className="font-mono text-amber-400">{metrics?.services?.database?.latencyMs ?? 10} ms</span>
+              <span>{metrics?.services.database.totalRecords || 18} سجل محفوظ</span>
+              <span className="font-mono text-amber-400">{metrics?.services.database.latencyMs || 10} ms</span>
             </div>
           </div>
 
@@ -647,16 +647,16 @@ export const CloudIntegrationsHub: React.FC<Props> = ({ onShowToast, onRefreshPa
                 </div>
               </div>
               <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
-                emailConfig?.status === 'connected'
+                emailConfig.status === 'connected'
                   ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
                   : 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/30'
               }`}>
-                {emailConfig?.status === 'connected' ? 'SMTP نشط' : 'SMTP جاهز'}
+                {emailConfig.status === 'connected' ? 'SMTP نشط' : 'SMTP جاهز'}
               </span>
             </div>
             <div className="mt-3 flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-800/60 pt-2">
-              <span className="truncate max-w-[130px]">{emailConfig?.host || 'smtp.gmail.com'}</span>
-              <span className="font-mono text-emerald-400">{emailConfig?.port || 465}</span>
+              <span className="truncate max-w-[130px]">{emailConfig.host}</span>
+              <span className="font-mono text-emerald-400">{emailConfig.port}</span>
             </div>
           </div>
 
@@ -685,7 +685,7 @@ export const CloudIntegrationsHub: React.FC<Props> = ({ onShowToast, onRefreshPa
             </div>
             <div className="mt-3 flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-800/60 pt-2">
               <span>تحليل فوري وحلول</span>
-              <span className="font-mono text-purple-400">{metrics?.services?.ai?.latencyMs ?? 290} ms</span>
+              <span className="font-mono text-purple-400">290 ms</span>
             </div>
           </div>
         </div>
@@ -789,10 +789,10 @@ export const CloudIntegrationsHub: React.FC<Props> = ({ onShowToast, onRefreshPa
                 </span>
               </div>
 
-              <div className="h-64 w-full min-h-[256px]">
+              <div className="h-64 w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
-                    data={metrics?.latencyBenchmarks?.length ? metrics.latencyBenchmarks : [
+                    data={metrics?.latencyBenchmarks || [
                       { service: 'القاعدة المحلية', latency: 10, unit: 'ms', status: 'optimal' },
                       { service: 'Google Drive', latency: 135, unit: 'ms', status: 'optimal' },
                       { service: 'بوابة البريد', latency: 115, unit: 'ms', status: 'optimal' },
@@ -804,7 +804,7 @@ export const CloudIntegrationsHub: React.FC<Props> = ({ onShowToast, onRefreshPa
                     <YAxis stroke="#64748b" tick={{ fontSize: 11, fill: '#94a3b8' }} unit="ms" />
                     <Tooltip
                       contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '12px', color: '#f8fafc', fontSize: '12px', direction: 'rtl' }}
-                      formatter={(val: any) => [`${val ?? 0} ملي ثانية`, 'زمن الاستجابة']}
+                      formatter={(val: any) => [`${val} ملي ثانية`, 'زمن الاستجابة']}
                     />
                     <Bar dataKey="latency" fill="#f59e0b" radius={[8, 8, 0, 0]}>
                       <Cell fill="#10b981" />
@@ -853,11 +853,11 @@ export const CloudIntegrationsHub: React.FC<Props> = ({ onShowToast, onRefreshPa
                 </span>
               </div>
 
-              <div className="h-64 w-full min-h-[256px] flex items-center justify-center">
+              <div className="h-64 w-full flex items-center justify-center">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
-                      data={metrics?.storageBreakdown?.length ? metrics.storageBreakdown : [
+                      data={metrics?.storageBreakdown || [
                         { name: 'شهادات التقدير', count: 18, sizeMb: 2.8, color: '#38bdf8' },
                         { name: 'حسابات المستخدمين', count: 4, sizeMb: 0.6, color: '#f59e0b' },
                         { name: 'أرشيف Google Drive', count: 8, sizeMb: 4.5, color: '#10b981' },
@@ -871,18 +871,18 @@ export const CloudIntegrationsHub: React.FC<Props> = ({ onShowToast, onRefreshPa
                       innerRadius={45}
                       paddingAngle={4}
                     >
-                      {(metrics?.storageBreakdown?.length ? metrics.storageBreakdown : [
+                      {(metrics?.storageBreakdown || [
                         { color: '#38bdf8' },
                         { color: '#f59e0b' },
                         { color: '#10b981' },
                         { color: '#a855f7' },
-                      ]).map((entry: any, index: number) => (
-                        <Cell key={`cell-${index}`} fill={entry?.color || '#38bdf8'} />
+                      ]).map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
                       ))}
                     </Pie>
                     <Tooltip
                       contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '12px', color: '#f8fafc', fontSize: '12px', direction: 'rtl' }}
-                      formatter={(val: any, name: any, item: any) => [`${val ?? 0} MB (${item?.payload?.count ?? 0} عنصر)`, name]}
+                      formatter={(val: any, name: any, item: any) => [`${val} MB (${item.payload.count} عنصر)`, name]}
                     />
                     <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
                   </PieChart>
